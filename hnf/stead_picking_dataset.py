@@ -35,6 +35,8 @@ class SteadTraceRef:
     is_event: int
     p_sample: Optional[int]
     s_sample: Optional[int]
+    source_distance_km: Optional[float] = None
+    source_depth_km: Optional[float] = None
 
 
 class STEADPickingDataset(Dataset):
@@ -53,6 +55,7 @@ class STEADPickingDataset(Dataset):
         aug_noise_snr_db: tuple[float, float] = (5.0, 20.0),
         aug_time_shift_sec: float = 0.05,
         aug_channel_scale: tuple[float, float] = (0.8, 1.2),
+        load_geometry: bool = True,
     ):
         if split not in {"train", "val", "test"}:
             raise ValueError(f"Unknown split: {split}")
@@ -67,6 +70,7 @@ class STEADPickingDataset(Dataset):
         self.aug_noise_snr_db = aug_noise_snr_db
         self.aug_time_shift_sec = aug_time_shift_sec
         self.aug_channel_scale = aug_channel_scale
+        self.load_geometry = load_geometry
         self._handles: dict[int, h5py.File] = {}
         self._paths = {
             i: STEAD_DIR / f"chunk{i}_eofextract" / f"chunk{i}.hdf5"
@@ -100,6 +104,8 @@ class STEADPickingDataset(Dataset):
             cols = ["trace_name", "trace_category"]
             if chunk > 1:
                 cols += ["p_arrival_sample", "s_arrival_sample"]
+            if self.load_geometry:
+                cols += ["source_distance_km", "source_depth_km"]
             df = pd.read_csv(csv_path, usecols=cols, low_memory=False)
 
             for row in df.itertuples(index=False):
@@ -107,7 +113,14 @@ class STEADPickingDataset(Dataset):
                 is_event = 0 if row.trace_category == "noise" else 1
                 p_sample = int(row.p_arrival_sample) if is_event and not pd.isna(row.p_arrival_sample) else None
                 s_sample = int(row.s_arrival_sample) if is_event and not pd.isna(row.s_arrival_sample) else None
-                ref = SteadTraceRef(name, chunk, is_event, p_sample, s_sample)
+                dist = None
+                depth = None
+                if self.load_geometry and is_event:
+                    if hasattr(row, "source_distance_km") and not pd.isna(row.source_distance_km):
+                        dist = float(row.source_distance_km)
+                    if hasattr(row, "source_depth_km") and not pd.isna(row.source_depth_km):
+                        depth = float(row.source_depth_km)
+                ref = SteadTraceRef(name, chunk, is_event, p_sample, s_sample, dist, depth)
                 if name in TEST_SPLIT:
                     test_refs.append(ref)
                 else:
@@ -222,5 +235,14 @@ class STEADPickingDataset(Dataset):
             "s_valid": torch.tensor(s_valid, dtype=torch.float32),
             "p_target": p_target,
             "s_target": s_target,
+            "trace_name": ref.trace_name,
+            "source_distance_km": torch.tensor(
+                float(ref.source_distance_km) if ref.source_distance_km is not None else float("nan"),
+                dtype=torch.float32,
+            ),
+            "source_depth_km": torch.tensor(
+                float(ref.source_depth_km) if ref.source_depth_km is not None else float("nan"),
+                dtype=torch.float32,
+            ),
         }
 
