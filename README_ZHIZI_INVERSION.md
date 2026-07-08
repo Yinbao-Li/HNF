@@ -1,25 +1,25 @@
-# Zhizi Inversion Bridge（宏参数路线）
+# Zhizi Inversion Bridge (macro head)
 
-冻结 run20 拾取主干 + macro Physics Head（scale / contrast / Vs ratio）→ `vp0/vs0`，再经短步波形精修。定位：**更好的 FWI-lite 初值**。
+Frozen run20 picking backbone + macro Physics Head (`scale` / `contrast` / `Vs ratio`) → `vp0/vs0`, then short waveform refinement. Goal: a **better FWI-lite initializer**.
 
-## 结论
+See the full HNF write-up and embedded figures in [`README.md`](README.md).
 
-| 实验 | 结果 |
-|------|------|
-| Route A2，32 事件 | 反演后胜率 **≈0.94**；VpRMSE 智子 **0.924** vs 扰动 **0.982** |
-| Route A2，64 事件 | 胜率 **≈0.875**；智子 **0.935** vs **0.977** |
-| STEAD 真实几何精修，48 事件 | 胜率 **77.1%**；TT 均值 **3.08** vs 扰动 **11.22** |
-| 宏头短训 | best Val Vp RMSE **≈0.277**（约 epoch 4） |
+## Results
 
-一次前向初值不必强于扰动；宏参数形变更常引导后续波形反演到更好的解。全链路说明见 [`README.md`](README.md)。
+| Experiment | Outcome |
+|------------|---------|
+| Route A2, 32 events | Win-rate **≈0.94**; VpRMSE Zhizi **0.924** vs perturb **0.982** |
+| Route A2, 64 events | Win-rate **≈0.875**; **0.935** vs **0.977** |
+| STEAD geom-aware refine, 48 events | Win-rate **77.1%**; TT mean **3.08** vs **11.22** |
+| Macro short train | Best Val Vp RMSE **≈0.277** (~epoch 4) |
 
-## 资产
+## Assets
 
-- 拾取：`outputs/run20/20_wrongpeak_sharp/best.pt`
-- 物理头：`outputs/zhizi_inversion_bridge_macro/best_physics_head.pt`
-- 模式：`--head-mode macro`
+- Picking: `outputs/run20/20_wrongpeak_sharp/best.pt`
+- Physics head: `outputs/zhizi_inversion_bridge_macro/best_physics_head.pt`
+- Mode: `--head-mode macro`
 
-## 复现
+## Reproduce
 
 ```bash
 python train_zhizi_inversion.py \
@@ -39,21 +39,21 @@ python run_proof_suite.py --device cuda --max-events 48 --n-synth 32 \
 bash scripts/reproduce_macro_route.sh
 ```
 
-## 管线
+## Pipeline
 
 ```
-波形 → 冻结智子特征（rho / envelope / kernel / picks）
-     → macro 头 → vp0/vs0
-     → 短步波形 / 走时精修 → m*
+waveform → frozen Zhizi features (rho / envelope / kernel / picks)
+        → macro head → vp0/vs0
+        → short waveform / TT refine → m*
 ```
 
-## 主要可视化
+## Figures
 
-| 路径 | 内容 |
-|------|------|
-| `outputs/proof_suite/training_curves.png` | 训练曲线 |
-| `outputs/proof_suite/stead_refine_scatter.png` | STEAD 精修对比 |
-| `outputs/proof_suite/synth_full_compare_bars.png` | 合成全方法柱状图 |
-| `outputs/proof_suite/example_paths.png` | 射线路径 |
-| `outputs/proof_suite/latent/` | ρ(t)、envelope、P/S 面板 |
-| `outputs/proof_suite/analysis/` | 几何条件与宏参诊断 |
+| Path | Content |
+|------|---------|
+| `docs/figures/training_curves.png` | Macro-head training |
+| `docs/figures/stead_refine_scatter.png` | STEAD refine scatter |
+| `docs/figures/synth_full_compare_bars.png` | Synthetic baselines |
+| `docs/figures/example_paths.png` | Ray paths |
+| `docs/figures/latent_case_00.png` | ρ(t) / envelope / picks |
+| `docs/figures/macro_latent_diagnostics.png` | Macro & latent diagnostics |
