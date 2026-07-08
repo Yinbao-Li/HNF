@@ -1,0 +1,25 @@
+# 数据集与训练产物（体积大，勿上传）
+STEAD/
+outputs/
+*.pt
+*.hdf5
+*.h5
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# IDE / 系统
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# 日志与临时文件
+*.log
+nohup.out

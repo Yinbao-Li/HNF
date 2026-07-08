@@ -1,0 +1,303 @@
+{
+  "id": "z5nmbmmddt",
+  "doi": {
+    "id": "10.17632/z5nmbmmddt.1",
+    "status": "allocated",
+    "prefix": "10.17632"
+  },
+  "name": "2019 Ambon Aftershocks Catalogue Data Compiled Using Local and Regional Seismic Networks",
+  "description": "These Datasets present earthquake catalogs of the 2019 Ambon aftershocks compiled from the regional seismic networks of the Agency for Meteorology, Climatology, and Geophysics of Indonesia (BMKG) and the local network deployed by Institut Teknologi Bandung (ITB), Indonesian National Agency for Disaster Management (BNPB) and BMKG. The final earthquake catalogs are comprised of 1,009 and 1,764 aftershocks compiled from the regional and local network, respectively, which span the period of October 18th to December 15th, 2019. The range of their spatial region is -3.70o to -3.30o on the latitude and 128.15o to 128.60o on the longitude. Additionally, focal mechanism solutions of the main Mw 6.5 and its biggest triggered aftershock Mw 5.2 events were acquired. Such datasets could provide a basis for further seismology analysis, including seismic tomography, and source mechanism analysis, as well as further seismic hazard analysis in the Ambon and Seram islands. This dataset with its linked article is a companion for an article in the Tectonophysics with the title “Source Mechanism and Triggered Large Aftershocks of the Mw 6.5 Ambon, Indonesia Earthquake” (Sahara et. al., review process). ",
+  "version": 1,
+  "contributors": [
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Conceptualization, Methodology, Software",
+      "profile_id": "53feda5f-f332-3433-9c90-c921712a9e71",
+      "first_name": "D. P.",
+      "last_name": "Sahara"
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Conceptualization, Methodology, Software",
+      "profile_id": "a68b3fe1-00c0-3ee7-b051-5f70a8c11a59",
+      "first_name": "A. D.",
+      "last_name": "Nugraha"
+    },
+    {
+      "institution": {
+        "name": "National Disaster Management Authority of Indonesia, Jakarta, Indonesia"
+      },
+      "contribution": "Conceptualization, Methodology, Software",
+      "profile_id": "644fc661-fffa-3bbd-b95c-9abaf62f7542",
+      "first_name": "A.",
+      "last_name": "Muhari "
+    },
+    {
+      "institution": {
+        "name": "Agency for Meteorology, Climatology and Geophysics of Indonesia, Jakarta, Indonesia"
+      },
+      "contribution": " Conceptualization, Methodology, Software",
+      "first_name": "A. A. ",
+      "last_name": "Rusdin "
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Conceptualization, Methodology, Software",
+      "profile_id": "6206083d-5356-318b-9ece-c29d48f8f12d",
+      "first_name": "S.",
+      "last_name": " Rosalia "
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Writing-Original draft preparation",
+      "first_name": "A.",
+      "last_name": "Priyono"
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Writing-Original draft preparation",
+      "first_name": "Z.",
+      "last_name": " Zulfakriza "
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Conceptualization, Methodology, Software",
+      "first_name": "S.",
+      "last_name": "Widiyantoro "
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Writing-Original draft preparation",
+      "first_name": "N. T. ",
+      "last_name": "Puspito "
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Visualization, Software and Validation",
+      "profile_id": "44864fcb-2b06-3d19-b660-f883b68a41f1",
+      "first_name": "A.",
+      "last_name": "Lesmana "
+    },
+    {
+      "institution": {
+        "name": "Global Geophysics Research Group, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Visualization, Software and Validation",
+      "profile_id": "5208c719-4294-31d4-8cef-5d4f97bbfca2",
+      "first_name": "D.",
+      "last_name": "Kusumawati "
+    },
+    {
+      "institution": {
+        "name": "Geophysical Engineering Study Program, Faculty of Mining and Petroleum Engineering, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Visualization, Software and Validation",
+      "first_name": "A. ",
+      "last_name": "Ardianto "
+    },
+    {
+      "institution": {
+        "name": " Geophysical Engineering Study Program, Faculty of Mining and Petroleum Engineering, Institut Teknologi Bandung, Bandung, Indonesia"
+      },
+      "contribution": "Visualization, Software and Validation",
+      "profile_id": "50da9be5-e315-31f7-9319-4310f8996ce2",
+      "first_name": "A. W.",
+      "last_name": "Baskara"
+    },
+    {
+      "institution": {
+        "name": "Agency for Meteorology, Climatology and Geophysics of Indonesia, Jakarta, Indonesia"
+      },
+      "contribution": "Visualization, Software and Validation",
+      "profile_id": "ec576b9f-6490-3277-ae8e-1e9a914cf872",
+      "first_name": "Y.",
+      "last_name": " Halauwet"
+    },
+    {
+      "institution": {
+        "name": "Department of Earth Science, University of Bergen, Allegaten 41, N-5007 Bergen, Norway."
+      },
+      "contribution": "Software, Slip Model",
+      "profile_id": "e68951df-8103-3f60-8993-f59750e22558",
+      "first_name": "H. A.",
+      "last_name": "Shiddiqi"
+    }
+  ],
+  "files": [
+    {
+      "filename": "[01]Station_Velocity_Model_Datainbrief_Ambon.xlsx",
+      "id": "66d0be8d-e1fe-4b04-8fa7-b70c470d8c8f",
+      "content_details": {
+        "id": "745e35bc-dacf-4912-a7ee-77d51d6be9f4",
+        "sha256_hash": "46c3e0d9b44da36ae4acd69f43fcc53a50ef021f65190e4cee23f74ebdc47d51",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "size": 9698,
+        "created_date": "2020-12-08T07:31:06.35Z",
+        "download_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/66d0be8d-e1fe-4b04-8fa7-b70c470d8c8f/file_downloaded",
+        "view_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/66d0be8d-e1fe-4b04-8fa7-b70c470d8c8f/file_viewed",
+        "download_expiry_time": "2126-07-07T10:04:26.709382301Z"
+      },
+      "metrics": {
+        "downloads": 0,
+        "previews": 0
+      },
+      "size": 9698,
+      "status": "COMPLETED"
+    },
+    {
+      "filename": "[02]Catalog_Hypocenter_Datainbrief_Ambon.xlsx",
+      "id": "9941fd30-2433-4ef2-8dc5-f0bc4f17e75f",
+      "content_details": {
+        "id": "f786059c-4486-4dad-8ed8-e689bebb0676",
+        "sha256_hash": "1a5d6c387ac35abbe4f5471ce3f56a6d10365ac07ce8ac6fbe8c83e5f645dbe7",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "size": 579153,
+        "created_date": "2020-12-08T07:31:06.485Z",
+        "download_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/9941fd30-2433-4ef2-8dc5-f0bc4f17e75f/file_downloaded",
+        "view_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/9941fd30-2433-4ef2-8dc5-f0bc4f17e75f/file_viewed",
+        "download_expiry_time": "2126-07-07T10:04:26.709397921Z"
+      },
+      "metrics": {
+        "downloads": 0,
+        "previews": 0
+      },
+      "size": 579153,
+      "status": "COMPLETED"
+    },
+    {
+      "filename": "[03]Catalog_Focal Mechanism_Datainbrief_Ambon.xlsx",
+      "id": "6c46dbea-b3d7-40ff-b5bb-96d7bb17e6b3",
+      "content_details": {
+        "id": "7b52cae3-8f46-401e-b75a-96ffd823e322",
+        "sha256_hash": "b7d8f51d317205e43a92d746191f6758386f407745a5649d0c6cac8d548f212c",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "size": 10049,
+        "created_date": "2020-12-08T07:31:06.369Z",
+        "download_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/6c46dbea-b3d7-40ff-b5bb-96d7bb17e6b3/file_downloaded",
+        "view_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/6c46dbea-b3d7-40ff-b5bb-96d7bb17e6b3/file_viewed",
+        "download_expiry_time": "2126-07-07T10:04:26.709408361Z"
+      },
+      "metrics": {
+        "downloads": 0,
+        "previews": 0
+      },
+      "size": 10049,
+      "status": "COMPLETED"
+    },
+    {
+      "filename": "[04]Slip_model_Datainbrief_Ambon_eq.xlsx",
+      "id": "1aa02d93-07cd-4298-af2b-834f49b0b3a4",
+      "content_details": {
+        "id": "a78f1bec-5c3e-454a-a8ee-b4d999733337",
+        "sha256_hash": "0c9ba4c01f64f9800792070d50e05e1dc203b060d12baef9e1170ffc72ee06cd",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "size": 11121,
+        "created_date": "2020-12-08T07:31:06.388Z",
+        "download_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/1aa02d93-07cd-4298-af2b-834f49b0b3a4/file_downloaded",
+        "view_url": "https://data.mendeley.com/public-files/datasets/z5nmbmmddt/files/1aa02d93-07cd-4298-af2b-834f49b0b3a4/file_viewed",
+        "download_expiry_time": "2126-07-07T10:04:26.709421241Z"
+      },
+      "metrics": {
+        "downloads": 0,
+        "previews": 0
+      },
+      "size": 11121,
+      "status": "COMPLETED"
+    }
+  ],
+  "versions": [
+    {
+      "version": 1,
+      "available": true,
+      "publish_date": "2020-12-10T10:30:53.85Z"
+    }
+  ],
+  "articles": [],
+  "categories": [
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-170589434",
+      "label": "Earth Sciences"
+    },
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-170590667",
+      "label": "Geology"
+    },
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-189720803",
+      "label": "Geophysics"
+    },
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-210633425",
+      "label": "Seismology"
+    },
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-253227206",
+      "label": "Earthquake Hazard"
+    },
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-253475921",
+      "label": "Earthquake Engineering"
+    },
+    {
+      "id": "data.elsevier.com/vocabulary/OmniScience/Concept-257193598",
+      "label": "Earthquake"
+    }
+  ],
+  "institutions": [],
+  "metrics": {
+    "views": 0,
+    "file_downloads": 0,
+    "file_previews": 0
+  },
+  "available": true,
+  "size": 610021,
+  "owner": {
+    "institution": {
+      "name": " Geophysical Engineering Study Program, Faculty of Mining and Petroleum Engineering, Institut Teknologi Bandung, Bandung, Indonesia"
+    },
+    "contribution": "Visualization, Software and Validation",
+    "profile_id": "50da9be5-e315-31f7-9319-4310f8996ce2",
+    "first_name": "A. W.",
+    "last_name": "Baskara"
+  },
+  "channel": "WEB",
+  "owner_id": "50da9be5-e315-31f7-9319-4310f8996ce2",
+  "publish_date": "2020-12-10T10:30:53.85Z",
+  "data_licence": {
+    "id": "01d9c749-3c4d-4431-9df3-620b2dcfe144",
+    "description": "You can share, copy and modify this dataset so long as you give appropriate credit, provide a link to the CC BY license, and indicate if changes were made, but you may not do so in a way that suggests the rights holder has endorsed you or your use of the dataset. Note that further permission may be required for any content within the dataset that is identified as belonging to a third party.",
+    "url": "http://creativecommons.org/licenses/by/4.0",
+    "category": "Creative",
+    "short_name": "CC BY 4.0",
+    "full_name": "Creative Commons Attribution 4.0 International"
+  },
+  "related_links": [],
+  "funders": [],
+  "customer_id": "7377952c-6404-4428-bbfc-77242cfc301e",
+  "modified_on": "2020-12-08T10:07:12.674Z",
+  "created_on": "2020-12-06T15:57:03.401Z",
+  "confidential": false,
+  "links": {
+    "view": "https://data.mendeley.com/datasets/z5nmbmmddt"
+  },
+  "repository": {
+    "id": "MENDELEY_DATA",
+    "name": "Mendeley Data"
+  }
+}
