@@ -47,6 +47,12 @@ def evaluate_checkpoint(
         residual_pick_head=merged.get("residual_pick_head", True),
         residual_det_head=merged.get("residual_det_head", True),
         enhanced_det_head=merged.get("enhanced_det_head", False),
+        noise_cancel=merged.get("noise_cancel", False),
+        noise_source_dim=merged.get("noise_source_dim", 16),
+        noise_det_pick_split=merged.get("noise_det_pick_split", False),
+        noise_pick_cues=merged.get("noise_pick_cues", False),
+        principle=merged.get("principle", "huygens"),
+        obliquity_scale=float(merged.get("obliquity_scale", 1.0)),
     ).to(dev)
     load_picking_model_state(model, ckpt["state_dict"], strict=False)
 

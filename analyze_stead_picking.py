@@ -46,6 +46,8 @@ def load_model(checkpoint: Path, device: torch.device, bypass_noise_cancel: bool
         noise_source_dim=args.get("noise_source_dim", 16),
         noise_det_pick_split=args.get("noise_det_pick_split", False),
         noise_pick_cues=args.get("noise_pick_cues", False),
+        principle=args.get("principle", "huygens"),
+        obliquity_scale=float(args.get("obliquity_scale", 1.0)),
     ).to(device)
     load_picking_model_state(model, ckpt["state_dict"], strict=False)
     model.bypass_noise_cancel = bypass_noise_cancel

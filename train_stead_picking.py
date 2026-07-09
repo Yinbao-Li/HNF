@@ -107,6 +107,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--multi-scale", action="store_true", help="Use multi-scale DeepHuygens encoder")
     p.add_argument("--sparse-band", action="store_true", help="Banded sparse light-cone matmul")
     p.add_argument("--num-anchors", type=int, default=0, help="Low-rank anchor count for shared propagation (0=off)")
+    p.add_argument(
+        "--principle",
+        choices=["huygens", "huygens_fresnel"],
+        default="huygens",
+        help="Wave kernel principle (huygens baseline vs Huygens–Fresnel obliquity)",
+    )
+    p.add_argument("--obliquity-scale", type=float, default=1.0, help="Fresnel obliquity lateral scale")
     p.set_defaults(residual_pick_head=True, residual_det_head=True)
     p.add_argument("--no-residual-pick-head", action="store_false", dest="residual_pick_head")
     p.add_argument("--no-residual-det-head", action="store_false", dest="residual_det_head")
@@ -117,6 +124,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--aug-noise-snr-max", type=float, default=20.0)
     p.add_argument("--aug-time-shift-sec", type=float, default=0.05)
     return p.parse_args()
+
+
+def move_batch_to_device(batch: dict, device: torch.device, non_blocking: bool = False) -> dict:
+    out = {}
+    for k, v in batch.items():
+        if torch.is_tensor(v):
+            out[k] = v.to(device, non_blocking=non_blocking)
+        else:
+            out[k] = v
+    return out
 
 
 def set_seed(seed: int) -> None:
@@ -342,7 +359,7 @@ def evaluate(
     tol = tolerance_bins(seq_len, pick_tolerance_sec)
 
     for batch in loader:
-        batch = {k: v.to(device) for k, v in batch.items()}
+        batch = move_batch_to_device(batch, device)
         outputs = model(batch["x"], batch["t"])
         loss = compute_loss(
             outputs,
@@ -570,6 +587,8 @@ def train() -> None:
         noise_source_dim=args.noise_source_dim,
         noise_det_pick_split=args.noise_det_pick_split,
         noise_pick_cues=args.noise_pick_cues,
+        principle=args.principle,
+        obliquity_scale=args.obliquity_scale,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -635,6 +654,7 @@ def train() -> None:
         f"lr={args.lr} per_time_det={args.per_time_det} focal={args.focal_gamma} "
         f"ps_order_w={args.ps_order_loss_weight} multi_scale={args.multi_scale} "
         f"sparse_band={args.sparse_band} num_anchors={args.num_anchors} "
+        f"principle={args.principle} obliquity_scale={args.obliquity_scale} "
         f"res_pick={args.residual_pick_head} res_det={args.residual_det_head} augment={args.augment} "
         f"pick_head={args.pick_head_hidden}x{args.pick_head_layers} score_mode={args.score_mode} "
         f"freeze_bb={args.freeze_backbone_epochs} freeze_det={args.freeze_det_epochs} "
@@ -685,7 +705,7 @@ def train() -> None:
             bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
         )
         for step, batch in enumerate(pbar, start=1):
-            batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
+            batch = move_batch_to_device(batch, device, non_blocking=True)
             with torch.amp.autocast("cuda", enabled=amp_enabled):
                 outputs = model(batch["x"], batch["t"])
                 loss = compute_loss(

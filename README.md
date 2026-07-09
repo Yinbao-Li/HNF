@@ -9,6 +9,7 @@ Kernel + density design
   → 1D travel-time / FWI-lite baselines
   → Zhizi inversion bridge (macro Physics Head)
   → Proof suite (geometry-aware STEAD + baselines + latent plots)
+  → Interpretability suite (kernel χ, contrib rows, ablations)
 ```
 
 | Stage | Artifact | Result |
@@ -44,8 +45,10 @@ pytest hnf/tests -q
 Huygens kernel (`hnf/kernel.py`):
 
 \[
-K(x_i,x_j)=\frac{1}{r^2+\varepsilon}\exp(-\gamma r^2)\exp(i\,\omega r)
+K_{\text{Huygens}}(x_i,x_j)=\frac{1}{r^2+\varepsilon}\exp(-\gamma r^2)\exp(i\,\omega r)
 \]
+
+**Huygens–Fresnel** variant (`--principle huygens_fresnel`): spherical \(1/r\) amplitude, extra \(i\omega/(2\pi)\) phase, and obliquity \(\chi(\theta)=\tfrac12(1+\cos\theta)\) suppressing off-axis secondary sources. Selected via `--principle` on the picking trainer; default remains `huygens`.
 
 | Piece | Role |
 |-------|------|
@@ -285,7 +288,76 @@ Reproduce helper: `bash scripts/reproduce_macro_route.sh`.
 
 ---
 
-## 7. Repository layout
+## 7. Interpretability suite
+
+Quantitative + visual evidence that internal variables align with physical phase structure (not post-hoc labels).
+
+```bash
+python run_interpret_suite.py --device cuda --copy-to-docs
+# → outputs/interpret_suite/interpret_report.json
+# → docs/figures/interpret/
+```
+
+### A. Kernel physics (Huygens vs Fresnel)
+
+![Fresnel obliquity and kernel difference](docs/figures/interpret/kernel_obliquity_diff.png)
+
+*Figure: Fresnel obliquity χ (left), log|K| Huygens (center), |K_Fresnel|−|K_Huygens| (right). Obliquity damps off-axis lags; kernel difference concentrates on longer causal lags.*
+
+![Kernel row slice](docs/figures/interpret/kernel_row_slice.png)
+
+*Figure: χ and |K| along one causal receiver row — forward cone structure.*
+
+### B. Picking explainability (run20)
+
+![Kernel contribution at GT P](docs/figures/interpret/kernel_contrib/kernel_contrib_00.png)
+
+*Figure: Z trace, ρ(t), P/S envelopes, **|K| row at GT P index** (causal contributions), and pick curves. Kernel energy peaks near the P onset window.*
+
+![ρ S-window vs noise](docs/figures/interpret/kernel_contrib/rho_s_over_noise_hist.png)
+
+*Figure: ratio of mean ρ in S window vs pre-event noise; values > 1 indicate ρ tracks energetic phases.*
+
+### C. Bridge latents (macro head)
+
+![Bridge latent panel](docs/figures/interpret/bridge_latent/bridge_latent_00.png)
+
+*Figure: frozen run20 features through the Zhizi bridge — ρ(t), envelope, P/S logits vs GT onsets.*
+
+![Bridge ρ vs distance](docs/figures/interpret/bridge_latent/bridge_rho_vs_distance.png)
+
+### D. Init → wave refine (Route A2)
+
+![Inversion init vs refine](docs/figures/interpret/inversion_init_refine.png)
+
+*Left: one-shot init VpRMSE vs after waveform refine (points below diagonal = refine helps). Right: paired zhizi−perturb wave delta (negative = Zhizi better).*
+
+| Quantity | How to read it |
+|----------|----------------|
+| `rho(t)` | Soft latent weight; rises with S / high-energy intervals — **not** crustal density |
+| χ obliquity | Fresnel aperture; forward lags weighted more than grazing paths |
+| Kernel row | Which past samples causally contribute to a pick index |
+| macro (scale, contrast, ratio) | Low-dim deformation of the reference layered model |
+
+### E. Principle ablation: Huygens–Fresnel (completed)
+
+`python run_huygens_fresnel_iterate.py` replayed picking + macro inversion with `--principle huygens_fresnel`.
+
+![Picking principle compare](docs/figures/interpret/picking_principle_compare.png)
+
+| Task | Huygens (run20) | Fresnel | Verdict |
+|------|-----------------|---------|---------|
+| Picking det F1 | 0.994 | **0.996** | Fresnel +0.002 |
+| Picking P F1 | **0.959** | 0.925 | Fresnel −0.034 |
+| Picking S F1 | **0.949** | 0.928 | Fresnel −0.022 |
+| Route A2 win-rate | **93.8%** | 90.6% | still PASS |
+| STEAD refine win-rate | **77.1%** | 77.1% | tie |
+
+**Conclusion:** Fresnel does **not** replace the frozen run20 backbone (P/S regression). It remains an optional `--principle` for ablation; production path stays **run20 + macro**.
+
+---
+
+## 8. Repository layout
 
 ```
 HNF/
@@ -296,10 +368,12 @@ HNF/
 │   ├── zhizi_*.py
 │   └── tests/
 ├── docs/figures/                # figures embedded in this README
+│   └── interpret/               # interpretability suite mirrors
 ├── train_stead_picking.py
 ├── run11 … run20_stead_picking.py
 ├── train_zhizi_inversion.py
 ├── run_route_a2_waveform.py / run_zhizi_inv05_real.py / run_proof_suite.py
+├── run_interpret_suite.py / run_huygens_fresnel_iterate.py
 ├── run_inv*.py
 ├── example_2d_reconstruction.py / train_stead.py
 ├── explain_stead_picking.py
@@ -309,7 +383,7 @@ HNF/
 
 ---
 
-## 8. Short reproduce path
+## 9. Short reproduce path
 
 ```bash
 # Picking (skip if run20 checkpoint exists)
@@ -318,8 +392,11 @@ python run20_stead_picking.py
 # Macro head (skip if best_physics_head.pt exists)
 python train_zhizi_inversion.py --head-mode macro --epochs 8 ...
 
-# Metrics + figures
+# Performance proof (metrics + figures)
 python run_proof_suite.py --device cuda --max-events 48 --n-synth 32
+
+# Interpretability proof (kernel χ, contrib, ablations → docs/figures/interpret/)
+python run_interpret_suite.py --device cuda --copy-to-docs
 ```
 
-Open `outputs/proof_suite/proof_report.json` and the plots under `docs/figures/` / `outputs/proof_suite/`.
+Open `outputs/proof_suite/proof_report.json`, `outputs/interpret_suite/interpret_report.json`, and `docs/figures/`.

@@ -13,9 +13,15 @@ import torch.nn.functional as F
 
 class HuygensKernel(nn.Module):
     """
-    惠更斯核函数 (Huygens Kernel)
+    Huygens / Huygens–Fresnel kernel.
 
-    K(x_i, x_j) = 1/(r^2 + eps) * exp(-gamma * r^2) * exp(i * omega * r)
+    Huygens (legacy):
+      K = 1/(r^2+eps) * exp(-γ r^2) * exp(i ω r)
+
+    Huygens–Fresnel:
+      K = [i ω / (2π (r+eps))] * χ(θ) * exp(-γ r^2) * exp(i ω r)
+      χ(θ) = (1 + cosθ) / 2   (Fresnel–Kirchhoff obliquity)
+      cosθ ≈ (c·Δt) / sqrt((c·Δt)^2 + α||x_i-x_j||^2 + eps)
     """
 
     def __init__(
@@ -32,10 +38,15 @@ class HuygensKernel(nn.Module):
         distance_mode: str = "feature",
         local_window_sec: Optional[float] = None,
         sparse_band: bool = False,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
+        learnable_obliquity: bool = False,
     ):
         super().__init__()
         if distance_mode not in {"feature", "time", "hybrid"}:
             raise ValueError(f"Unknown distance_mode: {distance_mode}")
+        if principle not in {"huygens", "huygens_fresnel"}:
+            raise ValueError(f"Unknown principle: {principle}")
 
         if learnable_gamma:
             self.gamma = nn.Parameter(torch.tensor(gamma, dtype=torch.float32))
@@ -52,14 +63,23 @@ class HuygensKernel(nn.Module):
         else:
             self.register_buffer("wave_speed", torch.tensor(wave_speed, dtype=torch.float32))
 
+        if learnable_obliquity:
+            self.obliquity_scale = nn.Parameter(torch.tensor(obliquity_scale, dtype=torch.float32))
+        else:
+            self.register_buffer(
+                "obliquity_scale", torch.tensor(obliquity_scale, dtype=torch.float32)
+            )
+
         self.eps = eps
         self.causal = causal
         self.use_complex = use_complex
         self.distance_mode = distance_mode
         self.local_window_sec = local_window_sec
         self.sparse_band = sparse_band
+        self.principle = principle
         self._learnable_gamma = learnable_gamma
         self._learnable_wave_speed = learnable_wave_speed
+        self._learnable_obliquity = learnable_obliquity
 
     def effective_gamma(self) -> torch.Tensor:
         if self._learnable_gamma:
@@ -70,6 +90,11 @@ class HuygensKernel(nn.Module):
         if self._learnable_wave_speed:
             return F.softplus(self.wave_speed) + 1e-3
         return self.wave_speed
+
+    def effective_obliquity_scale(self) -> torch.Tensor:
+        if self._learnable_obliquity:
+            return F.softplus(self.obliquity_scale) + 1e-3
+        return self.obliquity_scale
 
     def compute_time_lag_matrix(self, t: torch.Tensor) -> torch.Tensor:
         """Temporal lag dt[i,j] = t_i - t_j (seconds). Positive => j is in the past."""
@@ -122,14 +147,51 @@ class HuygensKernel(nn.Module):
             mask = mask * (r <= wave_speed * dt + 1e-6).float()
         return mask
 
+    def _fresnel_obliquity(
+        self,
+        r: torch.Tensor,
+        t: Optional[torch.Tensor] = None,
+        x: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        χ = (1 + cosθ)/2 with soft aperture geometry.
+        cosθ ≈ axial / hypot(axial, lateral), axial = c·Δt.
+        """
+        if t is None:
+            return torch.ones_like(r)
+
+        dt = self.compute_time_lag_matrix(t).clamp_min(0.0)
+        c = self.effective_wave_speed()
+        axial = c * dt
+        alpha = self.effective_obliquity_scale()
+        if x is not None and self.distance_mode in {"feature", "hybrid"}:
+            lateral2 = (alpha * self.compute_distance_matrix(x)) ** 2
+        else:
+            # Time-axis: soft lateral grows with lag (memory-light vs full feature cdist).
+            lateral2 = (alpha ** 2) * (r.clamp_min(0.0) + self.eps)
+
+        denom = torch.sqrt(axial ** 2 + lateral2 + self.eps)
+        cos_theta = (axial / denom).clamp(-1.0, 1.0)
+        return 0.5 * (1.0 + cos_theta)
+
+    def _spherical_amplitude_mag(self, r: torch.Tensor) -> torch.Tensor:
+        """Real non-negative spherical factor (Fresnel iω phase is applied separately)."""
+        if self.principle == "huygens_fresnel":
+            return (self.omega.abs() / (2.0 * math.pi)) / (r + self.eps)
+        return 1.0 / (r ** 2 + self.eps)
+
     def _build_kernel(
         self,
         r: torch.Tensor,
         t: Optional[torch.Tensor] = None,
         rho: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
+        x: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        amplitude = 1.0 / (r ** 2 + self.eps)
+        amplitude = self._spherical_amplitude_mag(r)
+
+        if self.principle == "huygens_fresnel":
+            amplitude = amplitude * self._fresnel_obliquity(r, t=t, x=x)
 
         if rho is not None:
             if rho.dim() == 3 and rho.size(-1) == 1:
@@ -138,13 +200,17 @@ class HuygensKernel(nn.Module):
             amplitude = amplitude * torch.exp(-rho_mean * r)
 
         envelope = torch.exp(-self.effective_gamma() * r ** 2)
+        amp = amplitude * envelope
 
         if self.use_complex:
+            # Fresnel–Kirchhoff carries an extra factor of i (= +π/2 phase)
             phase = torch.exp(1j * self.omega * r)
+            if self.principle == "huygens_fresnel":
+                phase = (1j) * phase
+            k = amp.to(phase.dtype) * phase
         else:
             phase = torch.cos(self.omega * r)
-
-        k = amplitude * envelope * phase
+            k = amp * phase
 
         if mask is None and t is not None:
             mask = self.compute_causal_mask(r, t)
@@ -176,16 +242,28 @@ class HuygensKernel(nn.Module):
     ) -> torch.Tensor:
         """Complex kernel K(i, i-d) as a function of lag only (uniform time grid)."""
         r = max(lag_sec, float(self.eps))
-        amp = 1.0 / (r**2 + self.eps)
+        amp = self._spherical_amplitude_mag(
+            torch.tensor(r, device=self.omega.device, dtype=torch.float32)
+        )
+        if self.principle == "huygens_fresnel":
+            c = float(self.effective_wave_speed().detach())
+            axial = max(c * r, 0.0)
+            alpha = float(self.effective_obliquity_scale().detach())
+            lateral = alpha * math.sqrt(r + float(self.eps))
+            cos_theta = axial / math.sqrt(axial ** 2 + lateral ** 2 + float(self.eps))
+            amp = amp * (0.5 * (1.0 + cos_theta))
         if rho_i is not None and rho_j is not None:
             rho_mean = (rho_i + rho_j) / 2.0
             amp = amp * torch.exp(-rho_mean * r)
         envelope = torch.exp(-self.effective_gamma() * r**2)
+        amp = amp * envelope
         if self.use_complex:
             phase = torch.exp(1j * self.omega * r)
-        else:
-            phase = torch.cos(self.omega * r)
-        return amp * envelope * phase
+            if self.principle == "huygens_fresnel":
+                phase = (1j) * phase
+            return amp.to(phase.dtype) * phase
+        phase = torch.cos(self.omega * r)
+        return amp * phase
 
     def _passes_light_cone(self, lag_sec: float) -> bool:
         if lag_sec <= 0:
@@ -229,7 +307,14 @@ class HuygensKernel(nn.Module):
         valid = (src >= 0) & (lags.squeeze(-1) <= (self.local_window_sec or 1e9) + 1e-6)
         src_clamped = src.clamp(min=0)
 
-        amp = 1.0 / (lags**2 + self.eps)
+        amp = self._spherical_amplitude_mag(lags)
+        if self.principle == "huygens_fresnel":
+            c = self.effective_wave_speed()
+            axial = (c * lags).clamp_min(0.0)
+            alpha = self.effective_obliquity_scale()
+            lateral2 = (alpha ** 2) * (lags.clamp_min(0.0) + self.eps)
+            cos_theta = (axial / torch.sqrt(axial ** 2 + lateral2 + self.eps)).clamp(-1.0, 1.0)
+            amp = amp * (0.5 * (1.0 + cos_theta))
         if rho is not None:
             rho_1d = rho.squeeze(-1) if rho.dim() == 3 and rho.size(-1) == 1 else rho
             rho_i = rho_1d.unsqueeze(1).expand(b, w_max, n)
@@ -242,11 +327,15 @@ class HuygensKernel(nn.Module):
             amp = amp.squeeze(-1).unsqueeze(0).expand(b, -1, -1)
 
         envelope = torch.exp(-self.effective_gamma() * lags**2).squeeze(-1)
+        amp = amp * envelope.unsqueeze(0)
         if self.use_complex:
             phase = torch.exp(1j * self.omega * lags).squeeze(-1)
+            if self.principle == "huygens_fresnel":
+                phase = (1j) * phase
+            k_stack = (amp.to(phase.dtype) * phase.unsqueeze(0)) * valid.unsqueeze(0)
         else:
             phase = torch.cos(self.omega * lags).squeeze(-1)
-        k_stack = (amp * envelope.unsqueeze(0) * phase.unsqueeze(0)) * valid.unsqueeze(0)
+            k_stack = (amp * phase.unsqueeze(0)) * valid.unsqueeze(0)
 
         idx_h = src_clamped.unsqueeze(0).unsqueeze(-1).expand(b, w_max, n, d_feat).long()
         h_stack = torch.gather(
@@ -268,7 +357,7 @@ class HuygensKernel(nn.Module):
     ) -> torch.Tensor:
         """K(x, x) with batch dim (B, N, D) -> (B, N, N)."""
         r = self.resolve_distance(x, t=t)
-        k = self._build_kernel(r, t=t, rho=rho)
+        k = self._build_kernel(r, t=t, rho=rho, x=x)
 
         if regularization > 0:
             eye = torch.eye(k.size(-1), device=k.device, dtype=k.dtype)
@@ -285,19 +374,36 @@ class HuygensKernel(nn.Module):
         rho_a: Optional[torch.Tensor] = None,
         rho_b: Optional[torch.Tensor] = None,
         return_complex: bool = True,
+        t_a: Optional[torch.Tensor] = None,
+        t_b: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Cross-kernel K(x_a, x_b): (B, Na, D) x (B, Nb, D) -> (B, Na, Nb)."""
         r = self.compute_distance_matrix(x_a, x_b)
-        amplitude = 1.0 / (r ** 2 + self.eps)
+        amplitude = self._spherical_amplitude_mag(r)
+        if self.principle == "huygens_fresnel":
+            alpha = self.effective_obliquity_scale()
+            if t_a is not None and t_b is not None:
+                ta = t_a.squeeze(-1) if t_a.dim() == 3 else t_a
+                tb = t_b.squeeze(-1) if t_b.dim() == 3 else t_b
+                dt = (ta.unsqueeze(-1) - tb.unsqueeze(-2)).clamp_min(0.0)
+                axial = (self.effective_wave_speed() * dt).clamp_min(0.0)
+            else:
+                axial = r
+            lateral2 = (alpha * r) ** 2
+            cos_theta = (axial / torch.sqrt(axial ** 2 + lateral2 + self.eps)).clamp(-1.0, 1.0)
+            amplitude = amplitude * (0.5 * (1.0 + cos_theta))
         if rho_a is not None and rho_b is not None:
             rho_mean = (rho_a.unsqueeze(-1) + rho_b.unsqueeze(-2)) / 2.0
             amplitude = amplitude * torch.exp(-rho_mean * r)
         envelope = torch.exp(-self.effective_gamma() * r ** 2)
+        amp = amplitude * envelope
         if self.use_complex:
             phase = torch.exp(1j * self.omega * r)
+            if self.principle == "huygens_fresnel":
+                phase = (1j) * phase
+            k = amp.to(phase.dtype) * phase
         else:
-            phase = torch.cos(self.omega * r)
-        k = amplitude * envelope * phase
+            k = amp * torch.cos(self.omega * r)
         if return_complex and self.use_complex:
             return k
         return torch.abs(k) if self.use_complex else k

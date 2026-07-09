@@ -235,6 +235,8 @@ class STEADHNFPickingModel(nn.Module):
         noise_source_dim: int = 16,
         noise_det_pick_split: bool = False,
         noise_pick_cues: bool = False,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -245,6 +247,7 @@ class STEADHNFPickingModel(nn.Module):
         self.noise_pick_cues = noise_pick_cues
         self.multi_scale = multi_scale
         self.num_anchors = max(0, int(num_anchors))
+        self.principle = principle
         self.source_embed = ComponentSecondarySources(embed_dim)
         self.medium_net = TemporalMediumDensity(channels=input_dim)
         self.dropout = nn.Dropout(dropout)
@@ -262,6 +265,8 @@ class STEADHNFPickingModel(nn.Module):
                 wave_speed=6.0,
                 dropout=dropout,
                 sparse_band=sparse_band,
+                principle=principle,
+                obliquity_scale=obliquity_scale,
             )
             self.shared_layers = None
         else:
@@ -278,6 +283,8 @@ class STEADHNFPickingModel(nn.Module):
                         learnable_kernel_params=True,
                         dropout=dropout,
                         sparse_band=sparse_band,
+                        principle=principle,
+                        obliquity_scale=obliquity_scale,
                     )
                     for i in range(num_shared_layers)
                 ]
@@ -295,6 +302,8 @@ class STEADHNFPickingModel(nn.Module):
                     learnable_kernel_params=True,
                     dropout=dropout,
                     sparse_band=sparse_band,
+                    principle=principle,
+                    obliquity_scale=obliquity_scale,
                 )
                 for i in range(num_branch_layers)
             ]
@@ -311,6 +320,8 @@ class STEADHNFPickingModel(nn.Module):
                     learnable_kernel_params=True,
                     dropout=dropout,
                     sparse_band=sparse_band,
+                    principle=principle,
+                    obliquity_scale=obliquity_scale,
                 )
                 for i in range(num_branch_layers)
             ]
@@ -362,6 +373,8 @@ class STEADHNFPickingModel(nn.Module):
                 wave_speed=6.0,
                 local_window_sec=local_window_sec,
                 learnable_kernel_params=True,
+                principle=principle,
+                obliquity_scale=obliquity_scale,
             )
             if noise_pick_cues:
                 self.noise_cue_adapter = NoiseCueAdapter(
@@ -711,6 +724,8 @@ def build_picking_model(
     noise_source_dim: int = 16,
     noise_det_pick_split: bool = False,
     noise_pick_cues: bool = False,
+    principle: str = "huygens",
+    obliquity_scale: float = 1.0,
 ) -> STEADHNFPickingModel:
     """Factory for STEAD HNF picking models."""
     return STEADHNFPickingModel(
@@ -738,6 +753,8 @@ def build_picking_model(
         noise_source_dim=noise_source_dim,
         noise_det_pick_split=noise_det_pick_split,
         noise_pick_cues=noise_pick_cues,
+        principle=principle,
+        obliquity_scale=obliquity_scale,
     )
 
 

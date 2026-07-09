@@ -65,6 +65,8 @@ class DeepHuygensStack(nn.Module):
         gamma_decay: float = 0.95,
         omega_growth: float = 1.05,
         sparse_band: bool = False,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
     ):
         super().__init__()
         self.layers = nn.ModuleList(
@@ -79,6 +81,8 @@ class DeepHuygensStack(nn.Module):
                     learnable_kernel_params=True,
                     dropout=dropout,
                     sparse_band=sparse_band,
+                    principle=principle,
+                    obliquity_scale=obliquity_scale,
                 )
                 for i in range(num_layers)
             ]
@@ -113,6 +117,8 @@ class MultiScaleHuygensEncoder(nn.Module):
         wave_speed: float = 6.0,
         dropout: float = 0.1,
         sparse_band: bool = False,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
     ):
         super().__init__()
         if not scale_specs:
@@ -153,6 +159,8 @@ class MultiScaleHuygensEncoder(nn.Module):
                     local_window_sec=spec.local_window_sec,
                     dropout=dropout,
                     sparse_band=sparse_band,
+                    principle=principle,
+                    obliquity_scale=obliquity_scale,
                 )
             )
 

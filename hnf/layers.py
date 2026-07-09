@@ -26,6 +26,8 @@ class HuygensWaveLayer(nn.Module):
         use_projection: bool = True,
         learnable_kernel_params: bool = False,
         use_bias: bool = True,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
     ):
         super().__init__()
         self.in_features = in_features
@@ -38,6 +40,9 @@ class HuygensWaveLayer(nn.Module):
             wave_speed=wave_speed,
             learnable_gamma=learnable_kernel_params,
             learnable_omega=learnable_kernel_params,
+            principle=principle,
+            obliquity_scale=obliquity_scale,
+            learnable_obliquity=learnable_kernel_params and principle == "huygens_fresnel",
         )
 
         self.proj = (
@@ -74,6 +79,8 @@ class HuygensAttention(nn.Module):
         wave_speed: float = 0.5,
         dropout: float = 0.0,
         use_fmm: bool = False,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
     ):
         super().__init__()
         assert embed_dim % num_heads == 0
@@ -88,6 +95,8 @@ class HuygensAttention(nn.Module):
             omega=omega,
             causal=causal,
             wave_speed=wave_speed,
+            principle=principle,
+            obliquity_scale=obliquity_scale,
         )
 
         self.v_proj = nn.Linear(embed_dim, embed_dim, bias=False)
@@ -134,6 +143,8 @@ class HuygensWaveBlock(nn.Module):
         learnable_kernel_params: bool = True,
         dropout: float = 0.0,
         sparse_band: bool = False,
+        principle: str = "huygens",
+        obliquity_scale: float = 1.0,
     ):
         super().__init__()
         self.kernel = HuygensKernel(
@@ -147,6 +158,9 @@ class HuygensWaveBlock(nn.Module):
             distance_mode=distance_mode,
             local_window_sec=local_window_sec,
             sparse_band=sparse_band,
+            principle=principle,
+            obliquity_scale=obliquity_scale,
+            learnable_obliquity=learnable_kernel_params and principle == "huygens_fresnel",
         )
         self.proj_real = nn.Linear(dim, dim, bias=False)
         self.proj_imag = nn.Linear(dim, dim, bias=False)

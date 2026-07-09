@@ -57,3 +57,5 @@ waveform → frozen Zhizi features (rho / envelope / kernel / picks)
 | `docs/figures/example_paths.png` | Ray paths |
 | `docs/figures/latent_case_00.png` | ρ(t) / envelope / picks |
 | `docs/figures/macro_latent_diagnostics.png` | Macro & latent diagnostics |
+
+Interpretability (kernel χ, contrib rows, Fresnel ablation): `python run_interpret_suite.py --device cuda --copy-to-docs` → `docs/figures/interpret/`.
