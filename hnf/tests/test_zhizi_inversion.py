@@ -4,6 +4,7 @@
 import torch
 
 from hnf.inversion_1d import default_station_distances, default_synth_model, synthesize_travel_times
+from hnf.stead_zhizi_inversion_dataset import SteadZhiziInversionDataset
 from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, features_to_head_inputs
 from hnf.zhizi_inversion_loss import zhizi_inversion_loss
 from hnf.zhizi_physics_head import (
@@ -75,6 +76,24 @@ def test_inversion_loss_differentiable():
     loss.backward()
     assert head.out.weight.grad is not None
     assert metrics["loss_tt"] >= 0.0
+
+
+def test_physics_head_geo_conditioning():
+    head = ZhiziPhysicsHead(embed_dim=16, n_layers=5, hidden=16, geo_dim=2)
+    ws = torch.randn(1, 32)
+    rho_l = torch.rand(1, 5)
+    v_lat = torch.tensor([[8.0, 4.5]])
+    geo = torch.tensor([[0.5, 0.3]])
+    out = head(ws, rho_l, v_lat, geo=geo)
+    assert out.vp.shape == (1, 5)
+
+
+def test_stead_zhizi_dataset_len():
+    ds = SteadZhiziInversionDataset(split="val", seq_len=200, max_traces=8, seed=0)
+    assert len(ds) >= 1
+    item = ds[0]
+    assert item["x"].shape[-1] == 3
+    assert item["geo"].shape == (2,)
 
 
 def test_bridge_trainable_count_only_head():

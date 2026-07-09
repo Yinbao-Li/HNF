@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import gc
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -53,6 +54,19 @@ def features_to_head_inputs(
     return wave_stats, rho_layers, v_latent, pick_times
 
 
+def load_physics_head_state(
+    head: ZhiziPhysicsHead,
+    state_dict: dict[str, torch.Tensor],
+) -> tuple[list[str], list[str], int]:
+    """Load compatible tensors only (e.g. geo_dim mismatch skips first trunk layer)."""
+    current = head.state_dict()
+    filtered = {
+        k: v for k, v in state_dict.items() if k in current and current[k].shape == v.shape
+    }
+    missing, unexpected = head.load_state_dict(filtered, strict=False)
+    return missing, unexpected, len(filtered)
+
+
 class ZhiziInversionBridge(nn.Module):
     """
     Frozen Zhizi backbone + trainable Physics Head.
@@ -69,11 +83,17 @@ class ZhiziInversionBridge(nn.Module):
         freeze_backbone: bool = True,
         infer_seq_len: int | None = 600,
         head_mode: str = "residual",
+        geo_condition: bool = False,
     ):
         super().__init__()
         self.backbone = backbone
+        self.geo_condition = geo_condition
         self.physics_head = ZhiziPhysicsHead(
-            embed_dim=embed_dim, n_layers=n_layers, hidden=hidden, mode=head_mode
+            embed_dim=embed_dim,
+            n_layers=n_layers,
+            hidden=hidden,
+            mode=head_mode,
+            geo_dim=2 if geo_condition else 0,
         )
         self.n_layers = n_layers
         self.infer_seq_len = infer_seq_len
@@ -142,10 +162,13 @@ class ZhiziInversionBridge(nn.Module):
         x: torch.Tensor,
         t: torch.Tensor,
         include_picks: bool = True,
+        geo: torch.Tensor | None = None,
     ):
         """x: (N, T, 3) -> PhysicsHeadOutput with batch dim 1."""
         ws, rl, vl, pt, rho_layers = self.extract_event_features(x, t, include_picks)
-        out = self.physics_head(ws, rl, vl, pt)
+        if geo is not None and geo.dim() == 1:
+            geo = geo.unsqueeze(0)
+        out = self.physics_head(ws, rl, vl, pt, geo=geo)
         return out, rho_layers
 
     def trainable_parameter_count(self) -> int:
@@ -153,3 +176,37 @@ class ZhiziInversionBridge(nn.Module):
 
     def total_parameter_count(self) -> int:
         return sum(p.numel() for p in self.parameters())
+
+
+def load_inversion_bridge_from_checkpoint(
+    backbone: nn.Module,
+    physics_head_path: str | Path,
+    device: torch.device,
+    *,
+    head_mode: str = "macro",
+    embed_dim: int = 64,
+    n_layers: int = 5,
+    infer_seq_len: int = 600,
+) -> ZhiziInversionBridge:
+    """Build eval bridge and load physics head weights."""
+    path = Path(physics_head_path)
+    head_state = torch.load(path, map_location=device, weights_only=False)
+    geo_condition = bool(head_state.get("geo_condition", False))
+    if not geo_condition and isinstance(head_state.get("args"), dict):
+        geo_condition = bool(head_state["args"].get("geo_condition", False))
+    ckpt_mode = head_mode
+    if isinstance(head_state.get("args"), dict):
+        ckpt_mode = head_state["args"].get("head_mode", head_mode)
+    bridge = ZhiziInversionBridge(
+        backbone=backbone,
+        n_layers=n_layers,
+        embed_dim=embed_dim,
+        hidden=48,
+        freeze_backbone=True,
+        infer_seq_len=infer_seq_len,
+        head_mode=ckpt_mode,
+        geo_condition=geo_condition,
+    ).to(device)
+    load_physics_head_state(bridge.physics_head, head_state["physics_head"])
+    bridge.eval()
+    return bridge

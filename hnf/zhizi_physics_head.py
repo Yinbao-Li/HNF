@@ -127,6 +127,7 @@ class ZhiziPhysicsHead(nn.Module):
         hidden: int = 48,
         use_pick_times: bool = True,
         mode: str = "residual",
+        geo_dim: int = 0,
     ):
         super().__init__()
         if mode not in {"residual", "macro"}:
@@ -134,7 +135,8 @@ class ZhiziPhysicsHead(nn.Module):
         self.n_layers = n_layers
         self.use_pick_times = use_pick_times
         self.mode = mode
-        in_dim = 2 * embed_dim + n_layers + 2 + (2 if use_pick_times else 0)
+        self.geo_dim = int(geo_dim)
+        in_dim = 2 * embed_dim + n_layers + 2 + (2 if use_pick_times else 0) + self.geo_dim
         self.base_shift_max = 0.75
         self.inc_shift_max = 0.40
         self.ratio_shift_max = 0.10
@@ -163,12 +165,17 @@ class ZhiziPhysicsHead(nn.Module):
         rho_layers: torch.Tensor,
         v_latent: torch.Tensor,
         pick_times: torch.Tensor | None = None,
+        geo: torch.Tensor | None = None,
     ) -> PhysicsHeadOutput:
         parts = [wave_stats, rho_layers, v_latent]
         if self.use_pick_times:
             if pick_times is None:
                 pick_times = torch.zeros(wave_stats.shape[0], 2, device=wave_stats.device)
             parts.append(pick_times)
+        if self.geo_dim > 0:
+            if geo is None:
+                geo = torch.zeros(wave_stats.shape[0], self.geo_dim, device=wave_stats.device)
+            parts.append(geo)
         h = self.trunk(torch.cat(parts, dim=-1))
         raw = self.out(h)
 

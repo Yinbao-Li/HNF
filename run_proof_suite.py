@@ -32,7 +32,13 @@ from hnf.picking_metrics import idx_to_sec
 from hnf.picking_prior import run_picking_on_batch
 from hnf.ray_paths import direct_ray_path
 from hnf.stead_picking_dataset import STEADPickingDataset
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge
+from hnf.dual_path_inversion import DualPathInversionBridge, load_dual_path_bridge
+from hnf.stead_zhizi_inversion_dataset import encode_geometry_tensor
+from hnf.zhizi_inversion_bridge import (
+    ZhiziInversionBridge,
+    load_inversion_bridge_from_checkpoint,
+    load_physics_head_state,
+)
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
 
 
@@ -40,6 +46,21 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Proof suite for Zhizi inversion claims")
     p.add_argument("--checkpoint", default="outputs/run20/20_wrongpeak_sharp/best.pt")
     p.add_argument("--physics-head", default="outputs/zhizi_inversion_bridge_macro/best_physics_head.pt")
+    p.add_argument(
+        "--physics-head-stead",
+        default="",
+        help="Geo head for STEAD (dual-path); defaults to --physics-head when set alone",
+    )
+    p.add_argument(
+        "--physics-head-synth",
+        default="",
+        help="Macro head for synthetic Route A2 (dual-path)",
+    )
+    p.add_argument(
+        "--dual-path",
+        action="store_true",
+        help="STEAD=physics-head-stead or mixed_geo; synth=macro baseline",
+    )
     p.add_argument("--head-mode", choices=["residual", "macro"], default="macro")
     p.add_argument("--output-dir", default="outputs/proof_suite")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -285,8 +306,13 @@ def run_stead_geom(args, bridge, backbone, device, out_dir: Path) -> dict:
         distances = torch.tensor([dist], device=device, dtype=torch.float32)
         obs_tp = torch.tensor([tp], device=device)
         obs_ts = torch.tensor([ts], device=device)
+        geo = (
+            encode_geometry_tensor(dist, depth, device=device)
+            if getattr(bridge, "geo_condition", False)
+            else None
+        )
         with torch.no_grad():
-            out, _ = bridge.forward_event(x, t, include_picks=True)
+            out, _ = bridge.forward_event(x, t, include_picks=True, geo=geo)
         zh = bridge.physics_head.earth(out, base.depths, base.q)
         zh_init_tt = time_misfit(zh, depth, distances, obs_tp, obs_ts)
         pe_earth = LayeredEarth1D(base.depths, vp_pert, vs_pert, q_init)
@@ -452,20 +478,39 @@ def main() -> None:
     backbone, ckpt_args = load_model(Path(args.checkpoint), device, bypass_noise_cancel=True)
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
-    bridge = ZhiziInversionBridge(
-        backbone=backbone,
-        n_layers=n_layers,
-        embed_dim=embed_dim,
-        hidden=48,
-        freeze_backbone=True,
-        infer_seq_len=600,
-        head_mode=args.head_mode,
-    ).to(device)
-    state = torch.load(args.physics_head, map_location=device, weights_only=False)
-    bridge.physics_head.load_state_dict(state["physics_head"])
-    bridge.eval()
 
-    report: dict = {"checkpoint": args.checkpoint, "physics_head": args.physics_head, "head_mode": args.head_mode}
+    dual: DualPathInversionBridge | None = None
+    bridge: ZhiziInversionBridge
+    if args.dual_path or args.physics_head_stead or args.physics_head_synth:
+        stead_head = args.physics_head_stead or args.physics_head
+        synth_head = args.physics_head_synth or "outputs/zhizi_inversion_bridge_macro/best_physics_head.pt"
+        dual = load_dual_path_bridge(
+            backbone, device,
+            stead_head=stead_head,
+            synth_head=synth_head,
+            embed_dim=embed_dim,
+            n_layers=n_layers,
+        )
+        bridge = dual.stead
+        report_heads = {
+            "dual_path": True,
+            "physics_head_stead": dual.stead_head,
+            "physics_head_synth": dual.synth_head,
+        }
+    else:
+        bridge = load_inversion_bridge_from_checkpoint(
+            backbone, args.physics_head, device,
+            head_mode=args.head_mode,
+            embed_dim=embed_dim,
+            n_layers=n_layers,
+        )
+        report_heads = {"physics_head": args.physics_head}
+
+    report: dict = {
+        "checkpoint": args.checkpoint,
+        "head_mode": args.head_mode,
+        **report_heads,
+    }
 
     hist = Path("outputs/zhizi_inversion_bridge_macro/history.json")
     if hist.exists():
@@ -483,7 +528,8 @@ def main() -> None:
         report["stead_summary"] = stead_slim
     if not args.skip_synth:
         print("[proof] synthetic full compare...", flush=True)
-        report["synth"] = run_synth_full_compare(args, bridge, device, out_dir)
+        synth_bridge = dual.synth if dual is not None else bridge
+        report["synth"] = run_synth_full_compare(args, synth_bridge, device, out_dir)
         report["synth_summary"] = {k: v for k, v in report["synth"].items() if k != "per_event"}
 
     slim = {k: v for k, v in report.items() if k not in ("stead", "synth", "latent")}
@@ -501,6 +547,7 @@ def main() -> None:
             if (synth_s.get("zhizi_wave_better_than_perturb_frac") or 0) >= 0.8
             else "FAIL"
         ),
+        "dual_path": bool(dual is not None),
         "absolute_tt_oracle": (
             "GN/LBFGS still lower VpRMSE on synth travel-time oracle; "
             "Zhizi claim is FWI-lite init (Route A2), not TT-oracle solve."

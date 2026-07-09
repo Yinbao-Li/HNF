@@ -32,7 +32,7 @@ from eval_stead_picking import evaluate_checkpoint
 from hnf.kernel import HuygensKernel
 from hnf.picking_metrics import idx_to_sec
 from hnf.stead_picking_dataset import STEADPickingDataset
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge
+from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, load_physics_head_state
 from hnf.inversion_1d import default_synth_model
 
 
@@ -292,6 +292,10 @@ def run_bridge_latent_panels(
     backbone, ckpt_args = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     base = default_synth_model(device)
+    state = torch.load(args.physics_head, map_location=device, weights_only=False)
+    geo_condition = bool(state.get("geo_condition", False)) or bool(
+        (state.get("args") or {}).get("geo_condition", False)
+    )
     bridge = ZhiziInversionBridge(
         backbone=backbone,
         n_layers=base.n_layers,
@@ -300,9 +304,9 @@ def run_bridge_latent_panels(
         freeze_backbone=True,
         infer_seq_len=600,
         head_mode="macro",
+        geo_condition=geo_condition,
     ).to(device)
-    state = torch.load(args.physics_head, map_location=device, weights_only=False)
-    bridge.physics_head.load_state_dict(state["physics_head"])
+    load_physics_head_state(bridge.physics_head, state["physics_head"])
     bridge.eval()
 
     ds = STEADPickingDataset("test", seq_len=args.seq_len, max_event_traces=200)
