@@ -288,7 +288,84 @@ Reproduce helper: `bash scripts/reproduce_macro_route.sh`.
 
 ---
 
-## 7. Interpretability suite
+## 7. Imaging output: synthetic closed loop -> real-data profile
+
+The bridge is no longer only a picking / inversion metric story. It now
+produces image-style structural outputs in two stages:
+
+1. `Phase E`: recover a known quasi-2D synthetic model and verify that the
+   assembled section matches truth with explicit coverage / uncertainty maps.
+2. `Phase F`: transfer the same local-1D-to-section idea to real STEAD events,
+   aggregate along epicentral distance, and expose trusted vs fragile regions.
+
+```bash
+# Synthetic image closed loop
+python run_phase_e_synth_imaging.py --device cuda --output-dir outputs/phase_e_formal
+
+# Real-data pseudo-2D profile with QC/trust mask
+python run_phase_f_stead_profile.py --device cuda --output-dir outputs/phase_f_qc
+
+# README/report-ready combined panel
+python run_phase_ef_overview.py \
+  --phase-e-report outputs/phase_e_formal/report.json \
+  --phase-f-report outputs/phase_f_qc/report.json \
+  --output-dir outputs/phase_ef_overview
+```
+
+### Phase E: synthetic closed loop
+
+`outputs/phase_e_formal/report.json` summarizes the formal synthetic imaging
+run:
+
+| Metric | Value |
+|--------|-------|
+| Model type | `marmousi_style` |
+| Mean Vp RMSE | **0.851** |
+| Mean Vs RMSE | **0.418** |
+| Max Vp uncertainty | **0.047** |
+| Coverage nonzero fraction | **0.130** |
+
+This is the key proof that the framework can go from sparse observations to a
+readable 2D geologic image while still exposing where it is illuminated and
+where it is uncertain.
+
+### Phase F: QC-filtered real-data pseudo-2D
+
+`outputs/phase_f_qc/report.json` summarizes the first trusted real-data profile:
+
+| Metric | Value |
+|--------|-------|
+| Events used | **72** |
+| QC-kept events | **57** |
+| QC keep fraction | **79.2%** |
+| Mean refined TT misfit | **2.708** |
+| Mean events per bin | **5.7** |
+| Trusted-bin fraction | **59.1%** |
+| P pick MAE | **0.689 s** |
+| S pick MAE | **0.149 s** |
+
+Default QC thresholds:
+
+- `pick_err_p <= 0.35 s`
+- `pick_err_s <= 0.25 s`
+- `refined_tt <= 6.0`
+- `event_count >= 3`
+- `vp_std <= 2.0`
+- `vs_std <= 1.5`
+
+These rules generate `trust_mask` and masked `Vp / Vs / VpVs` panels so the
+real-data image can be presented with an explicit confidence boundary rather
+than a full unqualified interpolation.
+
+![Phase E/F overview](docs/figures/phase_ef_overview.png)
+
+*Figure: synthetic closed-loop evidence (top/left) and QC-filtered real-data
+profile with trust mask and support maps (right/bottom) assembled into one
+overview panel (`phase_ef_overview.png`).*
+
+---
+
+## 8. Interpretability suite
 
 Quantitative + visual evidence that internal variables align with physical phase structure (not post-hoc labels).
 
@@ -357,7 +434,7 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 ---
 
-## 8. Repository layout
+## 9. Repository layout
 
 ```
 HNF/
@@ -383,7 +460,7 @@ HNF/
 
 ---
 
-## 9. Short reproduce path
+## 10. Short reproduce path
 
 ```bash
 # Picking (skip if run20 checkpoint exists)
