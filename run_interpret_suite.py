@@ -18,22 +18,25 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
 from pathlib import Path
 
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from analyze_stead_picking import load_model as load_picking_ckpt
 from eval_stead_picking import evaluate_checkpoint
+from hnf.inversion_1d import LayeredEarth1D, default_synth_model, travel_time_phase
 from hnf.kernel import HuygensKernel
 from hnf.picking_metrics import idx_to_sec
 from hnf.stead_picking_dataset import STEADPickingDataset
 from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, load_physics_head_state
-from hnf.inversion_1d import default_synth_model
 
 
 RUN20_REF = {
@@ -53,6 +56,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seq-len", type=int, default=800)
     p.add_argument("--n-latent", type=int, default=6)
     p.add_argument("--n-kernel-rows", type=int, default=4)
+    p.add_argument("--n-joint-summary", type=int, default=24)
+    p.add_argument("--n-lag-cases", type=int, default=24)
+    p.add_argument("--n-ablation-scans", type=int, default=7)
     p.add_argument("--copy-to-docs", action="store_true")
     return p.parse_args()
 
@@ -184,6 +190,79 @@ def plot_picking_principle_compare(out_dir: Path, run20_ckpt: Path, fresnel_ckpt
         for k in labels:
             delta[k] = float(rows[1][1].get(k, 0)) - float(rows[0][1].get(k, 0))
     return {"metrics": {n: m for n, m in rows}, "delta_fresnel_minus_run20": delta, "figure": str(p)}
+
+
+def plot_kernel_parameter_semantics(model, out_dir: Path, device: torch.device) -> dict:
+    params = model.collect_kernel_params()
+    names = list(params.keys())
+    gammas = np.array([params[k]["gamma"] for k in names], dtype=np.float32)
+    omegas = np.array([params[k]["omega"] for k in names], dtype=np.float32)
+    speeds = np.array([params[k]["wave_speed"] for k in names], dtype=np.float32)
+
+    lags = torch.linspace(0.0, 15.0, 240, device=device).view(1, -1, 1)
+    x = torch.zeros(1, lags.shape[1], 4, device=device)
+    gamma_scan = np.linspace(max(0.08, float(gammas.min()) * 0.6), float(gammas.max()) * 1.4, 8)
+    omega_scan = np.linspace(max(0.08, float(omegas.min()) * 0.6), float(omegas.max()) * 1.4, 8)
+    gamma_rows = []
+    omega_rows = []
+    widths = []
+    cycles = []
+    with torch.no_grad():
+        for g in gamma_scan:
+            k = HuygensKernel(gamma=float(g), omega=float(np.median(omegas)), causal=True, wave_speed=6.0, distance_mode="time").to(device)
+            row = torch.abs(k(x, t=lags, return_complex=True))[0, lags.shape[1] // 2].detach().cpu().numpy()
+            gamma_rows.append(row)
+            thresh = 0.5 * max(row.max(), 1e-8)
+            widths.append(float(np.sum(row >= thresh) * (15.0 / max(len(row) - 1, 1))))
+        for w in omega_scan:
+            k = HuygensKernel(gamma=float(np.median(gammas)), omega=float(w), causal=True, wave_speed=6.0, distance_mode="time").to(device)
+            row = torch.real(k(x, t=lags, return_complex=True))[0, lags.shape[1] // 2].detach().cpu().numpy()
+            omega_rows.append(row)
+            signs = np.sign(row)
+            cycles.append(float(np.sum(signs[:-1] * signs[1:] < 0)))
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.2), constrained_layout=True)
+    sc = axes[0, 0].scatter(gammas, omegas, c=speeds, cmap="viridis", s=55)
+    axes[0, 0].set_xlabel("gamma")
+    axes[0, 0].set_ylabel("omega")
+    axes[0, 0].set_title("Learned kernel parameters by branch/layer")
+    axes[0, 0].grid(True, alpha=0.3)
+    for i, name in enumerate(names):
+        if i < 6:
+            axes[0, 0].annotate(name, (gammas[i], omegas[i]), fontsize=7, alpha=0.8)
+    fig.colorbar(sc, ax=axes[0, 0], fraction=0.046, label="wave_speed")
+
+    im1 = axes[0, 1].imshow(np.stack(gamma_rows, axis=0), aspect="auto", cmap="magma", extent=[0, 15, len(gamma_scan) - 0.5, -0.5])
+    axes[0, 1].set_yticks(np.arange(len(gamma_scan)))
+    axes[0, 1].set_yticklabels([f"{g:.2f}" for g in gamma_scan])
+    axes[0, 1].set_xlabel("lag (s)")
+    axes[0, 1].set_ylabel("gamma scan")
+    axes[0, 1].set_title("Kernel magnitude row vs gamma")
+    fig.colorbar(im1, ax=axes[0, 1], fraction=0.046)
+
+    im2 = axes[1, 0].imshow(np.stack(omega_rows, axis=0), aspect="auto", cmap="RdBu_r", extent=[0, 15, len(omega_scan) - 0.5, -0.5])
+    axes[1, 0].set_yticks(np.arange(len(omega_scan)))
+    axes[1, 0].set_yticklabels([f"{w:.2f}" for w in omega_scan])
+    axes[1, 0].set_xlabel("lag (s)")
+    axes[1, 0].set_ylabel("omega scan")
+    axes[1, 0].set_title("Real kernel row vs omega")
+    fig.colorbar(im2, ax=axes[1, 0], fraction=0.046)
+
+    axes[1, 1].plot(gamma_scan, widths, marker="o", label="effective width @ 0.5 max")
+    axes[1, 1].plot(omega_scan, np.array(cycles) * (15.0 / max(lags.shape[1] - 1, 1)), marker="s", label="zero-crossing density")
+    axes[1, 1].set_xlabel("parameter value")
+    axes[1, 1].set_title("Parameter semantics summary")
+    axes[1, 1].legend(fontsize=8)
+    axes[1, 1].grid(True, alpha=0.3)
+    p = out_dir / "kernel_gamma_omega_semantics.png"
+    fig.savefig(p, dpi=150)
+    plt.close(fig)
+    return {
+        "figure": str(p),
+        "gamma_range": [float(gammas.min()), float(gammas.max())],
+        "omega_range": [float(omegas.min()), float(omegas.max())],
+        "wave_speed_range": [float(speeds.min()), float(speeds.max())],
+    }
 
 
 def run_kernel_contrib_panels(
@@ -372,6 +451,498 @@ def run_bridge_latent_panels(
     return {"n": len(rows), "cases": rows}
 
 
+def run_joint_latent_summary(args, device: torch.device, out_dir: Path) -> dict:
+    backbone, ckpt_args = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
+    embed_dim = int(ckpt_args.get("embed_dim", 64))
+    base = default_synth_model(device)
+    state = torch.load(args.physics_head, map_location=device, weights_only=False)
+    geo_condition = bool(state.get("geo_condition", False)) or bool((state.get("args") or {}).get("geo_condition", False))
+    bridge = ZhiziInversionBridge(
+        backbone=backbone,
+        n_layers=base.n_layers,
+        embed_dim=embed_dim,
+        hidden=48,
+        freeze_backbone=True,
+        infer_seq_len=600,
+        head_mode="macro",
+        geo_condition=geo_condition,
+    ).to(device)
+    load_physics_head_state(bridge.physics_head, state["physics_head"])
+    bridge.eval()
+    ds = STEADPickingDataset("test", seq_len=args.seq_len, max_event_traces=240)
+    loader = DataLoader(ds, batch_size=1, shuffle=False)
+    rows = []
+    for batch in loader:
+        if len(rows) >= args.n_joint_summary:
+            break
+        if float(batch["det"][0]) <= 0.5 or float(batch["p_valid"][0]) <= 0 or float(batch["s_valid"][0]) <= 0:
+            continue
+        x = batch["x"].to(device)
+        t = batch["t"].to(device)
+        dist = float(batch["source_distance_km"][0])
+        depth = float(batch["source_depth_km"][0])
+        with torch.no_grad():
+            feat = bridge.extract_station_features(x, t, include_picks=True)
+            out, _ = bridge.forward_event(x, t, include_picks=True)
+        params = bridge.backbone.collect_kernel_params()
+        rho = feat["rho"][0].detach().cpu().numpy()
+        vp = out.vp[0].detach().cpu().numpy()
+        vs = out.vs[0].detach().cpu().numpy()
+        rows.append({
+            "distance_km": dist,
+            "depth_km": depth,
+            "rho_mean": float(np.mean(rho)),
+            "rho_peak": float(np.max(rho)),
+            "gamma_p0": float(params["p_branch_0"]["gamma"]),
+            "omega_p0": float(params["p_branch_0"]["omega"]),
+            "gamma_s0": float(params["s_branch_0"]["gamma"]),
+            "omega_s0": float(params["s_branch_0"]["omega"]),
+            "kernel_vp": float(feat["kernel_vp"][0]),
+            "kernel_vs": float(feat["kernel_vs"][0]),
+            "vp_mean": float(np.mean(vp)),
+            "vs_mean": float(np.mean(vs)),
+            "vpvs_mean": float(np.mean(vp / np.clip(vs, 1e-6, None))),
+        })
+
+    if not rows:
+        return {"n": 0}
+    mat_keys = ["distance_km", "depth_km", "rho_mean", "rho_peak", "gamma_p0", "omega_p0", "kernel_vp", "kernel_vs", "vp_mean", "vs_mean", "vpvs_mean"]
+    mat = np.array([[r[k] for k in mat_keys] for r in rows], dtype=np.float32)
+    corr = np.corrcoef(mat, rowvar=False)
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.8, 8.2), constrained_layout=True)
+    axes[0, 0].scatter([r["distance_km"] for r in rows], [r["rho_mean"] for r in rows], c=[r["gamma_p0"] for r in rows], cmap="magma", s=55)
+    axes[0, 0].set_xlabel("distance_km")
+    axes[0, 0].set_ylabel("rho_mean")
+    axes[0, 0].set_title("rho(t) vs geometry (color=gamma_p0)")
+    axes[0, 0].grid(True, alpha=0.3)
+
+    axes[0, 1].scatter([r["kernel_vp"] for r in rows], [r["vp_mean"] for r in rows], c=[r["omega_p0"] for r in rows], cmap="viridis", s=55)
+    axes[0, 1].set_xlabel("kernel_vp")
+    axes[0, 1].set_ylabel("vp_mean")
+    axes[0, 1].set_title("kernel_vp -> recovered vp")
+    axes[0, 1].grid(True, alpha=0.3)
+
+    axes[1, 0].scatter([r["kernel_vs"] for r in rows], [r["vpvs_mean"] for r in rows], c=[r["rho_peak"] for r in rows], cmap="plasma", s=55)
+    axes[1, 0].set_xlabel("kernel_vs")
+    axes[1, 0].set_ylabel("vp/vs mean")
+    axes[1, 0].set_title("kernel_vs / rho_peak -> vp/vs")
+    axes[1, 0].grid(True, alpha=0.3)
+
+    im = axes[1, 1].imshow(corr, cmap="coolwarm", vmin=-1.0, vmax=1.0)
+    axes[1, 1].set_xticks(np.arange(len(mat_keys)))
+    axes[1, 1].set_yticks(np.arange(len(mat_keys)))
+    axes[1, 1].set_xticklabels(mat_keys, rotation=55, ha="right", fontsize=7)
+    axes[1, 1].set_yticklabels(mat_keys, fontsize=7)
+    axes[1, 1].set_title("Joint latent / physical correlation")
+    fig.colorbar(im, ax=axes[1, 1], fraction=0.046)
+    p = out_dir / "joint_latent_physics_summary.png"
+    fig.savefig(p, dpi=150)
+    plt.close(fig)
+    return {"n": len(rows), "figure": str(p), "keys": mat_keys, "corr": corr.tolist(), "rows": rows}
+
+
+def plot_vp_vs_sensitivity(out_dir: Path, device: torch.device) -> dict:
+    base = default_synth_model(device)
+    source_depth = torch.tensor(10.0, device=device)
+    distances = torch.tensor([5.0, 20.0, 50.0, 100.0, 160.0], device=device)
+    eps = 0.05
+    mats = {
+        "dTp_dVp": np.zeros((base.n_layers, len(distances)), dtype=np.float32),
+        "dTs_dVp": np.zeros((base.n_layers, len(distances)), dtype=np.float32),
+        "dTp_dVs": np.zeros((base.n_layers, len(distances)), dtype=np.float32),
+        "dTs_dVs": np.zeros((base.n_layers, len(distances)), dtype=np.float32),
+    }
+    for i in range(base.n_layers):
+        dv = torch.zeros_like(base.vp)
+        ds = torch.zeros_like(base.vs)
+        dv[i] = eps
+        ds[i] = eps
+        e_vp_p = LayeredEarth1D(base.depths, base.vp + dv, base.vs, base.q)
+        e_vp_m = LayeredEarth1D(base.depths, (base.vp - dv).clamp(min=1.5), base.vs, base.q)
+        e_vs_p = LayeredEarth1D(base.depths, base.vp, torch.minimum(base.vs + ds, base.vp * 0.75), base.q)
+        e_vs_m = LayeredEarth1D(base.depths, base.vp, (base.vs - ds).clamp(min=1.0), base.q)
+        tp_vp = (travel_time_phase(e_vp_p, "P", source_depth, distances) - travel_time_phase(e_vp_m, "P", source_depth, distances)) / (2 * eps)
+        ts_vp = (travel_time_phase(e_vp_p, "S", source_depth, distances) - travel_time_phase(e_vp_m, "S", source_depth, distances)) / (2 * eps)
+        tp_vs = (travel_time_phase(e_vs_p, "P", source_depth, distances) - travel_time_phase(e_vs_m, "P", source_depth, distances)) / (2 * eps)
+        ts_vs = (travel_time_phase(e_vs_p, "S", source_depth, distances) - travel_time_phase(e_vs_m, "S", source_depth, distances)) / (2 * eps)
+        mats["dTp_dVp"][i] = tp_vp.detach().cpu().numpy()
+        mats["dTs_dVp"][i] = ts_vp.detach().cpu().numpy()
+        mats["dTp_dVs"][i] = tp_vs.detach().cpu().numpy()
+        mats["dTs_dVs"][i] = ts_vs.detach().cpu().numpy()
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.2, 7.8), constrained_layout=True)
+    titles = [
+        ("dTp_dVp", "dTp / dVp"),
+        ("dTs_dVp", "dTs / dVp"),
+        ("dTp_dVs", "dTp / dVs"),
+        ("dTs_dVs", "dTs / dVs"),
+    ]
+    for ax, (k, title) in zip(axes.flat, titles):
+        arr = mats[k]
+        im = ax.imshow(arr, aspect="auto", cmap="coolwarm")
+        ax.set_xticks(np.arange(len(distances)))
+        ax.set_xticklabels([f"{float(d):.0f}" for d in distances.detach().cpu().tolist()])
+        ax.set_yticks(np.arange(base.n_layers))
+        ax.set_yticklabels([f"L{i}" for i in range(base.n_layers)])
+        ax.set_xlabel("receiver distance (km)")
+        ax.set_ylabel("layer")
+        ax.set_title(title)
+        fig.colorbar(im, ax=ax, fraction=0.046)
+    p = out_dir / "vp_vs_tt_sensitivity.png"
+    fig.savefig(p, dpi=150)
+    plt.close(fig)
+    return {"figure": str(p), "distances_km": distances.detach().cpu().tolist(), "matrices": {k: v.tolist() for k, v in mats.items()}}
+
+
+def _shift_trace(x: torch.Tensor, n_shift: int) -> torch.Tensor:
+    y = torch.roll(x, shifts=n_shift, dims=1)
+    if n_shift > 0:
+        y[:, :n_shift] = 0.0
+    elif n_shift < 0:
+        y[:, n_shift:] = 0.0
+    return y
+
+
+def _smooth_trace(x: torch.Tensor, k: int = 9) -> torch.Tensor:
+    y = F.avg_pool1d(x.transpose(1, 2), kernel_size=k, stride=1, padding=k // 2)
+    return y.transpose(1, 2)
+
+
+def run_counterfactual_panels(model, device: torch.device, out_dir: Path, seq_len: int) -> dict:
+    ds = STEADPickingDataset("test", seq_len=seq_len, max_event_traces=200)
+    loader = DataLoader(ds, batch_size=1, shuffle=False)
+    picked = None
+    for batch in loader:
+        if float(batch["det"][0]) > 0.5 and float(batch["p_valid"][0]) > 0 and float(batch["s_valid"][0]) > 0:
+            picked = batch
+            break
+    if picked is None:
+        return {"figure": None}
+    x = picked["x"].to(device)
+    t = picked["t"].to(device)
+    p_idx = int(picked["p_idx"][0])
+    s_idx = int(picked["s_idx"][0])
+    gt_p = idx_to_sec(p_idx, x.shape[1])
+    gt_s = idx_to_sec(s_idx, x.shape[1])
+    variants = {
+        "original": x,
+        "amplitude_x0.5": x * 0.5,
+        "time_shift_0.6s": _shift_trace(x, max(1, x.shape[1] // 100)),
+        "smoothed": _smooth_trace(x, k=11),
+    }
+    rows = []
+    t_sec = t[0, :, 0].detach().cpu().numpy()
+    fig, axes = plt.subplots(len(variants), 4, figsize=(14, 2.9 * len(variants)), sharex=True)
+    if len(variants) == 1:
+        axes = np.expand_dims(axes, 0)
+    for ridx, (name, xv) in enumerate(variants.items()):
+        with torch.no_grad():
+            out = model.forward_explain(xv, t, include_kernel_row=True, kernel_row_idx=p_idx, kernel_branch="p")
+        rho = out["rho"][0].detach().cpu().numpy()
+        p_env = out["p_envelope"][0].detach().cpu().numpy()
+        s_env = out["s_envelope"][0].detach().cpu().numpy()
+        p_prob = torch.sigmoid(out["p"][0]).detach().cpu().numpy()
+        s_prob = torch.sigmoid(out["s"][0]).detach().cpu().numpy()
+        k_row = out["kernel_contrib"][0].detach().cpu().numpy()
+        rows.append({
+            "name": name,
+            "rho_peak_sec": float(t_sec[int(np.argmax(rho))]),
+            "p_peak_sec": float(t_sec[int(np.argmax(p_prob))]),
+            "s_peak_sec": float(t_sec[int(np.argmax(s_prob))]),
+            "rho_mean": float(np.mean(rho)),
+        })
+        axes[ridx, 0].plot(t_sec, xv[0, :, 2].detach().cpu().numpy(), color="0.2", lw=0.8)
+        axes[ridx, 0].set_ylabel(name)
+        axes[ridx, 1].plot(t_sec, rho, color="C3")
+        axes[ridx, 2].plot(t_sec, p_env, color="C0", label="P env")
+        axes[ridx, 2].plot(t_sec, s_env, color="C1", alpha=0.8, label="S env")
+        axes[ridx, 3].plot(t_sec, p_prob, color="C2", label="P")
+        axes[ridx, 3].plot(t_sec, s_prob, color="C1", label="S")
+        axes[ridx, 3].plot(t_sec, k_row / max(np.max(k_row), 1e-6), color="C4", alpha=0.7, label="|K| row (norm)")
+        for c in [1, 2, 3]:
+            axes[ridx, c].axvline(gt_p, color="C2", ls="--", alpha=0.5)
+            axes[ridx, c].axvline(gt_s, color="C1", ls="--", alpha=0.5)
+        axes[ridx, 0].grid(True, alpha=0.25)
+        axes[ridx, 1].grid(True, alpha=0.25)
+        axes[ridx, 2].grid(True, alpha=0.25)
+        axes[ridx, 3].grid(True, alpha=0.25)
+    axes[0, 0].set_title("Z trace")
+    axes[0, 1].set_title("rho(t)")
+    axes[0, 2].set_title("P/S envelope")
+    axes[0, 3].set_title("P/S prob + kernel row")
+    axes[-1, 0].set_xlabel("time (s)")
+    axes[-1, 1].set_xlabel("time (s)")
+    axes[-1, 2].set_xlabel("time (s)")
+    axes[-1, 3].set_xlabel("time (s)")
+    axes[0, 2].legend(fontsize=8)
+    axes[0, 3].legend(fontsize=8)
+    fig.tight_layout()
+    p = out_dir / "counterfactual_response_panel.png"
+    fig.savefig(p, dpi=145)
+    plt.close(fig)
+    return {"figure": str(p), "trace": str(picked["trace_name"][0]), "variants": rows}
+
+
+def run_temporal_lag_stats(model, device: torch.device, out_dir: Path, seq_len: int, n_cases: int) -> dict:
+    ds = STEADPickingDataset("test", seq_len=seq_len, max_event_traces=300)
+    loader = DataLoader(ds, batch_size=1, shuffle=False)
+    rows = []
+    for batch in loader:
+        if len(rows) >= n_cases:
+            break
+        if float(batch["det"][0]) <= 0.5 or float(batch["p_valid"][0]) <= 0 or float(batch["s_valid"][0]) <= 0:
+            continue
+        x = batch["x"].to(device)
+        t = batch["t"].to(device)
+        with torch.no_grad():
+            out = model.forward_explain(x, t)
+        rho = out["rho"][0].detach().cpu().numpy()
+        p_env = out["p_envelope"][0].detach().cpu().numpy()
+        s_env = out["s_envelope"][0].detach().cpu().numpy()
+        p_prob = torch.sigmoid(out["p"][0]).detach().cpu().numpy()
+        s_prob = torch.sigmoid(out["s"][0]).detach().cpu().numpy()
+        t_sec = t[0, :, 0].detach().cpu().numpy()
+        p_idx = int(batch["p_idx"][0])
+        s_idx = int(batch["s_idx"][0])
+        gt_p = idx_to_sec(p_idx, seq_len)
+        gt_s = idx_to_sec(s_idx, seq_len)
+
+        def _peak_in_window(arr: np.ndarray, center_idx: int, left: int = 30, right: int = 50) -> float:
+            i0 = max(0, center_idx - left)
+            i1 = min(len(arr), center_idx + right)
+            loc = int(np.argmax(arr[i0:i1])) + i0
+            return float(t_sec[loc])
+
+        rho_p = _peak_in_window(rho, p_idx)
+        rho_s = _peak_in_window(rho, s_idx)
+        p_env_p = _peak_in_window(p_env, p_idx)
+        s_env_s = _peak_in_window(s_env, s_idx)
+        p_prob_p = _peak_in_window(p_prob, p_idx)
+        s_prob_s = _peak_in_window(s_prob, s_idx)
+        rows.append({
+            "rho_p_lag": rho_p - gt_p,
+            "rho_s_lag": rho_s - gt_s,
+            "p_env_lag": p_env_p - gt_p,
+            "s_env_lag": s_env_s - gt_s,
+            "p_prob_lag": p_prob_p - gt_p,
+            "s_prob_lag": s_prob_s - gt_s,
+        })
+
+    if not rows:
+        return {"n": 0}
+    keys = ["rho_p_lag", "rho_s_lag", "p_env_lag", "s_env_lag", "p_prob_lag", "s_prob_lag"]
+    fig, axes = plt.subplots(2, 3, figsize=(12.5, 6.8), constrained_layout=True)
+    for ax, key in zip(axes.flat, keys):
+        vals = [r[key] for r in rows]
+        ax.hist(vals, bins=min(10, len(vals)), color="C0" if "prob" in key else ("C3" if "rho" in key else "C1"), alpha=0.85)
+        ax.axvline(0.0, color="k", ls="--", lw=1)
+        ax.set_title(key.replace("_", " "))
+        ax.set_xlabel("peak lag vs GT (s)")
+        ax.set_ylabel("count")
+        ax.grid(True, alpha=0.3)
+    p = out_dir / "temporal_lag_statistics.png"
+    fig.savefig(p, dpi=145)
+    plt.close(fig)
+    summary = {k: {"mean": float(np.mean([r[k] for r in rows])), "std": float(np.std([r[k] for r in rows]))} for k in keys}
+    return {"n": len(rows), "figure": str(p), "summary": summary, "rows": rows}
+
+
+def run_branch_parameter_ablation(
+    args,
+    device: torch.device,
+    out_dir: Path,
+) -> dict:
+    model, _ = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
+    backbone, ckpt_args = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
+    embed_dim = int(ckpt_args.get("embed_dim", 64))
+    base = default_synth_model(device)
+    state = torch.load(args.physics_head, map_location=device, weights_only=False)
+    geo_condition = bool(state.get("geo_condition", False)) or bool((state.get("args") or {}).get("geo_condition", False))
+    bridge = ZhiziInversionBridge(
+        backbone=backbone,
+        n_layers=base.n_layers,
+        embed_dim=embed_dim,
+        hidden=48,
+        freeze_backbone=True,
+        infer_seq_len=600,
+        head_mode="macro",
+        geo_condition=geo_condition,
+    ).to(device)
+    load_physics_head_state(bridge.physics_head, state["physics_head"])
+    bridge.eval()
+
+    ds = STEADPickingDataset("test", seq_len=args.seq_len, max_event_traces=200)
+    loader = DataLoader(ds, batch_size=1, shuffle=False)
+    batch = None
+    for item in loader:
+        if float(item["det"][0]) > 0.5 and float(item["p_valid"][0]) > 0 and float(item["s_valid"][0]) > 0:
+            batch = item
+            break
+    if batch is None:
+        return {"figure": None}
+    x = batch["x"].to(device)
+    t = batch["t"].to(device)
+    dist = float(batch["source_distance_km"][0])
+    depth = max(float(batch["source_depth_km"][0]), 1.0)
+    gt_p = idx_to_sec(int(batch["p_idx"][0]), x.shape[1])
+    gt_s = idx_to_sec(int(batch["s_idx"][0]), x.shape[1])
+    geo = None
+    if geo_condition:
+        from hnf.stead_zhizi_inversion_dataset import encode_geometry_tensor
+        geo = encode_geometry_tensor(dist, depth, device=device)
+
+    params = model.collect_kernel_params()
+    p_gamma0 = float(params["p_branch_0"]["gamma"])
+    p_omega0 = float(params["p_branch_0"]["omega"])
+    s_gamma0 = float(params["s_branch_0"]["gamma"])
+    s_omega0 = float(params["s_branch_0"]["omega"])
+    scans = {
+        "p_gamma0": np.linspace(max(0.05, p_gamma0 * 0.6), p_gamma0 * 1.4, args.n_ablation_scans),
+        "p_omega0": np.linspace(max(0.05, p_omega0 * 0.6), p_omega0 * 1.4, args.n_ablation_scans),
+        "s_gamma0": np.linspace(max(0.05, s_gamma0 * 0.6), s_gamma0 * 1.4, args.n_ablation_scans),
+        "s_omega0": np.linspace(max(0.05, s_omega0 * 0.6), s_omega0 * 1.4, args.n_ablation_scans),
+    }
+    results = {}
+    kernel_rows = {}
+    t_sec = t[0, :, 0].detach().cpu().numpy()
+    p_idx = int(batch["p_idx"][0])
+
+    for key, vals in scans.items():
+        rows = []
+        krows = []
+        for val in vals:
+            m = copy.deepcopy(model).to(device)
+            if key == "p_gamma0":
+                m.p_layers[0].kernel.gamma.data.fill_(float(val))
+            elif key == "p_omega0":
+                m.p_layers[0].kernel.omega.data.fill_(float(val))
+            elif key == "s_gamma0":
+                m.s_layers[0].kernel.gamma.data.fill_(float(val))
+            elif key == "s_omega0":
+                m.s_layers[0].kernel.omega.data.fill_(float(val))
+            with torch.no_grad():
+                out = m.forward_explain(x, t, include_kernel_row=True, kernel_row_idx=p_idx, kernel_branch="p")
+                t_event = t[0] if t.dim() == 3 else t
+                bout, _ = bridge.forward_event(x, t_event, include_picks=True, geo=geo)
+            p_prob = torch.sigmoid(out["p"][0]).detach().cpu().numpy()
+            s_prob = torch.sigmoid(out["s"][0]).detach().cpu().numpy()
+            rho = out["rho"][0].detach().cpu().numpy()
+            krow = out["kernel_contrib"][0].detach().cpu().numpy()
+            vp = bout.vp[0].detach().cpu().numpy()
+            vs = bout.vs[0].detach().cpu().numpy()
+            rows.append({
+                "value": float(val),
+                "p_lag": float(t_sec[int(np.argmax(p_prob))] - gt_p),
+                "s_lag": float(t_sec[int(np.argmax(s_prob))] - gt_s),
+                "rho_mean": float(np.mean(rho)),
+                "vp_mean": float(np.mean(vp)),
+                "vs_mean": float(np.mean(vs)),
+            })
+            krows.append(krow / max(np.max(krow), 1e-6))
+        results[key] = rows
+        kernel_rows[key] = (vals, np.stack(krows, axis=0))
+
+    fig, axes = plt.subplots(4, 3, figsize=(13.5, 12.5), constrained_layout=True)
+    plot_specs = [
+        ("p_gamma0", "P branch gamma"),
+        ("p_omega0", "P branch omega"),
+        ("s_gamma0", "S branch gamma"),
+        ("s_omega0", "S branch omega"),
+    ]
+    for ridx, (key, title) in enumerate(plot_specs):
+        vals = np.array([r["value"] for r in results[key]])
+        p_lag = np.array([r["p_lag"] for r in results[key]])
+        s_lag = np.array([r["s_lag"] for r in results[key]])
+        vp_mean = np.array([r["vp_mean"] for r in results[key]])
+        vs_mean = np.array([r["vs_mean"] for r in results[key]])
+        axes[ridx, 0].plot(vals, p_lag, marker="o", label="P lag")
+        axes[ridx, 0].plot(vals, s_lag, marker="s", label="S lag")
+        axes[ridx, 0].axhline(0.0, color="k", ls="--", lw=1)
+        axes[ridx, 0].set_title(f"{title}: lag response")
+        axes[ridx, 0].grid(True, alpha=0.3)
+        if ridx == 0:
+            axes[ridx, 0].legend(fontsize=8)
+
+        axes[ridx, 1].plot(vals, vp_mean, marker="o", label="vp mean")
+        axes[ridx, 1].plot(vals, vs_mean, marker="s", label="vs mean")
+        axes[ridx, 1].set_title(f"{title}: bridge output")
+        axes[ridx, 1].grid(True, alpha=0.3)
+        if ridx == 0:
+            axes[ridx, 1].legend(fontsize=8)
+
+        scan_vals, karr = kernel_rows[key]
+        im = axes[ridx, 2].imshow(karr, aspect="auto", cmap="magma", extent=[0, 60, len(scan_vals) - 0.5, -0.5])
+        axes[ridx, 2].set_yticks(np.arange(len(scan_vals)))
+        axes[ridx, 2].set_yticklabels([f"{v:.2f}" for v in scan_vals], fontsize=7)
+        axes[ridx, 2].set_title(f"{title}: kernel row")
+        axes[ridx, 2].set_xlabel("time (s)")
+        fig.colorbar(im, ax=axes[ridx, 2], fraction=0.046)
+
+    for ax in axes[:, 0]:
+        ax.set_xlabel("parameter value")
+        ax.set_ylabel("lag vs GT (s)")
+    for ax in axes[:, 1]:
+        ax.set_xlabel("parameter value")
+        ax.set_ylabel("mean velocity")
+    p = out_dir / "branch_parameter_ablation.png"
+    fig.savefig(p, dpi=145)
+    plt.close(fig)
+    return {"figure": str(p), "trace": str(batch["trace_name"][0]), "results": results}
+
+
+def plot_interpretability_summary_panel(out_dir: Path, report: dict) -> dict:
+    fig, axes = plt.subplots(2, 3, figsize=(15.2, 9.0), constrained_layout=True)
+    items = [
+        (report.get("kernel_semantics", {}).get("figure"), "Kernel semantics"),
+        (report.get("counterfactual", {}).get("figure"), "Counterfactual response"),
+        (report.get("joint_summary", {}).get("figure"), "Latent -> physical mapping"),
+        (report.get("temporal_lag", {}).get("figure"), "Temporal lag statistics"),
+        (report.get("branch_ablation", {}).get("figure"), "Branch parameter ablation"),
+        (report.get("vp_vs_sensitivity", {}).get("figure"), "Vp/Vs sensitivity"),
+    ]
+    for ax, (path, title) in zip(axes.flat, items):
+        if path:
+            ax.imshow(mpimg.imread(path))
+        ax.set_title(title, fontsize=11)
+        ax.axis("off")
+
+    # Overlay compact summary box on last panel.
+    lag = report.get("temporal_lag", {}).get("summary", {})
+    rho_ratio_cases = report.get("kernel_contrib", {}).get("cases", [])
+    rho_ratio_mean = float(np.mean([c["rho_ratio_s_over_noise"] for c in rho_ratio_cases])) if rho_ratio_cases else float("nan")
+    axes[1, 2].text(
+        0.03,
+        0.97,
+        "\n".join(
+            [
+                "Interpretability summary",
+                f"- gamma range: {report.get('kernel_semantics', {}).get('gamma_range', [float('nan'), float('nan')])[0]:.2f} .. {report.get('kernel_semantics', {}).get('gamma_range', [float('nan'), float('nan')])[1]:.2f}",
+                f"- omega range: {report.get('kernel_semantics', {}).get('omega_range', [float('nan'), float('nan')])[0]:.2f} .. {report.get('kernel_semantics', {}).get('omega_range', [float('nan'), float('nan')])[1]:.2f}",
+                f"- mean rho(S)/rho(noise): {rho_ratio_mean:.2f}",
+                f"- p_prob lag mean: {lag.get('p_prob_lag', {}).get('mean', float('nan')):+.2f}s",
+                f"- s_prob lag mean: {lag.get('s_prob_lag', {}).get('mean', float('nan')):+.2f}s",
+                "",
+                "Mechanism chain",
+                "gamma / omega",
+                " -> kernel support / oscillation",
+                " -> rho / envelope / pick timing",
+                " -> macro head conditioning",
+                " -> vp / vs sensitivity",
+            ]
+        ),
+        transform=axes[1, 2].transAxes,
+        va="top",
+        fontsize=9.2,
+        family="monospace",
+        bbox={"facecolor": "white", "alpha": 0.82, "edgecolor": "0.75"},
+    )
+    p = out_dir / "interpretability_summary_panel.png"
+    fig.savefig(p, dpi=150)
+    plt.close(fig)
+    return {"figure": str(p)}
+
+
 def plot_inversion_init_refine(out_dir: Path) -> dict:
     """Copy/summarize init vs wave scatter from proof outputs if present."""
     proof = Path("outputs/proof_suite/synth_full_compare.json")
@@ -451,6 +1022,10 @@ def main() -> None:
     print("[interpret] kernel obliquity + diff...", flush=True)
     report["kernel_physics"] = plot_obliquity_and_kernel_diff(out_dir, device)
 
+    print("[interpret] kernel gamma/omega semantics...", flush=True)
+    model_for_semantics, _ = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
+    report["kernel_semantics"] = plot_kernel_parameter_semantics(model_for_semantics, out_dir, device)
+
     print("[interpret] picking principle compare...", flush=True)
     report["picking_ablation"] = plot_picking_principle_compare(
         out_dir, Path(args.checkpoint), Path(args.fresnel_checkpoint), args.device
@@ -462,11 +1037,29 @@ def main() -> None:
         model, device, kdir, args.seq_len, args.n_kernel_rows
     )
 
+    print("[interpret] counterfactual response panels...", flush=True)
+    report["counterfactual"] = run_counterfactual_panels(model, device, out_dir, args.seq_len)
+
+    print("[interpret] temporal lag statistics...", flush=True)
+    report["temporal_lag"] = run_temporal_lag_stats(model, device, out_dir, args.seq_len, args.n_lag_cases)
+
+    print("[interpret] branch parameter ablation...", flush=True)
+    report["branch_ablation"] = run_branch_parameter_ablation(args, device, out_dir)
+
     print("[interpret] bridge latent panels...", flush=True)
     report["bridge_latent"] = run_bridge_latent_panels(args, device, bdir)
 
+    print("[interpret] joint latent/physics summary...", flush=True)
+    report["joint_summary"] = run_joint_latent_summary(args, device, out_dir)
+
     print("[interpret] inversion init→refine...", flush=True)
     report["inversion"] = plot_inversion_init_refine(out_dir)
+
+    print("[interpret] vp/vs sensitivity...", flush=True)
+    report["vp_vs_sensitivity"] = plot_vp_vs_sensitivity(out_dir, device)
+
+    print("[interpret] summary panel...", flush=True)
+    report["summary_panel"] = plot_interpretability_summary_panel(out_dir, report)
 
     # Merge fresnel invert compare if present
     inv_cmp = Path("outputs/huygens_fresnel/invert_compare.json")
@@ -475,6 +1068,12 @@ def main() -> None:
 
     report["interpretation_notes"] = {
         "rho": "Soft latent weight; higher in energetic / S intervals — not crustal density.",
+        "gamma": "Controls kernel locality: larger gamma narrows effective support and enforces more local causal influence.",
+        "omega": "Controls oscillatory phase structure: larger omega increases sign changes / phase sensitivity along causal rows.",
+        "vp_vs": "Recovered Vp/Vs are downstream physical outputs; sensitivity heatmaps show which layers and offsets constrain P and S travel times.",
+        "counterfactual": "Amplitude scaling, time shifting, and smoothing reveal whether rho and pick curves follow energy, timing, or band-limited structure.",
+        "temporal_lag": "Lag histograms quantify whether rho, envelopes, and pick probabilities peak before, on, or after GT P/S arrivals.",
+        "branch_ablation": "Local scans of p/s branch gamma and omega show which parameter moves pick lag, kernel concentration, and downstream vp/vs most strongly.",
         "obliquity": "Fresnel χ suppresses off-axis secondary sources; changes |K| mainly at longer lags.",
         "kernel_row": "Causal light-cone row at GT P shows which past samples contribute to pick.",
         "fresnel_verdict": "Fresnel picking: det +0.002, P/S −0.034/−0.022 vs run20; inversion still PASS but marginal.",
@@ -491,8 +1090,29 @@ def main() -> None:
         "## Picking (run20 vs Fresnel)",
         f"- Delta: {report['picking_ablation'].get('delta_fresnel_minus_run20')}",
         "",
+        "## Kernel gamma / omega semantics",
+        f"- See `{Path(report['kernel_semantics'].get('figure', '')).name}`",
+        "",
         "## Latent rho",
         f"- S-window / noise rho ratio cases: {report['kernel_contrib'].get('n_cases')}",
+        "",
+        "## Counterfactual response",
+        f"- See `{Path(report['counterfactual'].get('figure', '')).name}`",
+        "",
+        "## Temporal lag statistics",
+        f"- n cases: {report['temporal_lag'].get('n')}",
+        "",
+        "## Branch parameter ablation",
+        f"- See `{Path(report['branch_ablation'].get('figure', '')).name}`",
+        "",
+        "## Summary panel",
+        f"- See `{Path(report['summary_panel'].get('figure', '')).name}`",
+        "",
+        "## Joint latent / physical summary",
+        f"- n cases: {report['joint_summary'].get('n')}",
+        "",
+        "## Vp/Vs sensitivity",
+        f"- See `{Path(report['vp_vs_sensitivity'].get('figure', '')).name}`",
         "",
         "## Inversion",
         f"- {report['inversion'].get('summary')}",

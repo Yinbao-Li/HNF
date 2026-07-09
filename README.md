@@ -375,6 +375,10 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 # → docs/figures/interpret/
 ```
 
+![Interpretability summary panel](docs/figures/interpret/interpretability_summary_panel.png)
+
+*Figure: one-page summary of the current interpretability chain: kernel parameter semantics (`gamma`, `omega`), counterfactual waveform response, temporal lag statistics, branch-level parameter ablation, latent-to-physical mapping, and `vp/vs` travel-time sensitivity (`interpretability_summary_panel.png`).*
+
 ### A. Kernel physics (Huygens vs Fresnel)
 
 ![Fresnel obliquity and kernel difference](docs/figures/interpret/kernel_obliquity_diff.png)
@@ -384,6 +388,10 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 ![Kernel row slice](docs/figures/interpret/kernel_row_slice.png)
 
 *Figure: χ and |K| along one causal receiver row — forward cone structure.*
+
+![Kernel gamma omega semantics](docs/figures/interpret/kernel_gamma_omega_semantics.png)
+
+*Figure: learned branch/layer kernel parameters (`gamma`, `omega`, `wave_speed`), plus explicit row scans showing that larger `gamma` narrows effective support while larger `omega` increases oscillatory phase structure (`kernel_gamma_omega_semantics.png`).*
 
 ### B. Picking explainability (run20)
 
@@ -395,6 +403,18 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 *Figure: ratio of mean ρ in S window vs pre-event noise; values > 1 indicate ρ tracks energetic phases.*
 
+![Counterfactual response panel](docs/figures/interpret/counterfactual_response_panel.png)
+
+*Figure: counterfactual perturbations on the same event. Pure amplitude scaling mostly lowers mean `rho` without moving the peak times, while time shifting carries `rho(t)` and pick peaks together; heavy smoothing can distort S behavior much more strongly than P (`counterfactual_response_panel.png`).*
+
+![Temporal lag statistics](docs/figures/interpret/temporal_lag_statistics.png)
+
+*Figure: peak-lag histograms relative to GT arrivals. `p_prob` and `s_prob` stay closest to the catalog onsets, while `rho(t)` and branch envelopes peak in broader windows around them; in this run `p_prob` mean lag is about `+0.11s`, `s_prob` about `-0.03s` (`temporal_lag_statistics.png`).*
+
+![Branch parameter ablation](docs/figures/interpret/branch_parameter_ablation.png)
+
+*Figure: local scans of `p_branch_0` / `s_branch_0` kernel parameters. Each row perturbs one `gamma` or `omega` while tracking pick lag, bridge `vp/vs` mean response, and the normalized kernel row. This turns the earlier correlation story into a local response analysis: which branch parameter mainly moves pick timing, which mainly reshapes the kernel support, and which barely propagates into downstream `vp/vs` (`branch_parameter_ablation.png`).*
+
 ### C. Bridge latents (macro head)
 
 ![Bridge latent panel](docs/figures/interpret/bridge_latent/bridge_latent_00.png)
@@ -403,18 +423,32 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 ![Bridge ρ vs distance](docs/figures/interpret/bridge_latent/bridge_rho_vs_distance.png)
 
+![Joint latent physics summary](docs/figures/interpret/joint_latent_physics_summary.png)
+
+*Figure: joint view from geometry and latent variables to recovered physical outputs. The scatter panels connect `rho(t)`, kernel soft scales, and recovered `vp/vs`, while the correlation panel summarizes which quantities move together across STEAD cases (`joint_latent_physics_summary.png`).*
+
 ### D. Init → wave refine (Route A2)
 
 ![Inversion init vs refine](docs/figures/interpret/inversion_init_refine.png)
 
 *Left: one-shot init VpRMSE vs after waveform refine (points below diagonal = refine helps). Right: paired zhizi−perturb wave delta (negative = Zhizi better).*
 
+![Vp Vs TT sensitivity](docs/figures/interpret/vp_vs_tt_sensitivity.png)
+
+*Figure: finite-difference travel-time sensitivity heatmaps. `dTp/dVp` and `dTs/dVs` dominate as expected, while cross-sensitivities remain weaker; this helps explain which layers and offsets mainly constrain `vp` versus `vs` (`vp_vs_tt_sensitivity.png`).*
+
 | Quantity | How to read it |
 |----------|----------------|
 | `rho(t)` | Soft latent weight; rises with S / high-energy intervals — **not** crustal density |
+| `gamma` | Kernel locality control; larger values shrink the effective causal support |
+| `omega` | Kernel oscillation / phase sensitivity; larger values increase sign changes along causal rows |
 | χ obliquity | Fresnel aperture; forward lags weighted more than grazing paths |
 | Kernel row | Which past samples causally contribute to a pick index |
+| Counterfactual response | Distinguishes amplitude sensitivity from timing sensitivity |
+| Temporal lag stats | Quantifies whether latent peaks lead, align with, or lag GT arrivals |
+| Branch parameter ablation | Local parameter scan linking one kernel knob to lag, kernel shape, and bridge output |
 | macro (scale, contrast, ratio) | Low-dim deformation of the reference layered model |
+| `vp` / `vs` sensitivity | Which layer-distance pairs mainly constrain P and S travel times |
 
 ### E. Principle ablation: Huygens–Fresnel (completed)
 

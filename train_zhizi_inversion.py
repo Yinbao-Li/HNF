@@ -20,6 +20,7 @@ from analyze_stead_picking import load_model
 from hnf.acoustic_fwi_1d import DirectWaveForward, unrolled_waveform_refine
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model
 from hnf.inv_plot import perturb_initial
+from hnf.picking_prior import run_picking_on_batch
 from hnf.stead_zhizi_inversion_dataset import SteadZhiziInversionDataset
 from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, load_physics_head_state
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
@@ -43,6 +44,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--stead-waveform-weight", type=float, default=None)
     p.add_argument("--stead-unrolled-weight", type=float, default=None)
     p.add_argument("--synth-unrolled-weight", type=float, default=None)
+    p.add_argument("--stead-quality-weighted", action="store_true", help="Downweight noisy STEAD samples using frozen picking errors")
+    p.add_argument("--stead-quality-p-scale", type=float, default=0.35, help="P-pick error scale (sec) for STEAD quality weight")
+    p.add_argument("--stead-quality-s-scale", type=float, default=0.25, help="S-pick error scale (sec) for STEAD quality weight")
+    p.add_argument("--stead-quality-floor", type=float, default=0.15, help="Minimum STEAD quality weight")
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--lr", type=float, default=3e-3)
     p.add_argument("--seq-len", type=int, default=600)
@@ -83,6 +88,39 @@ def _normalize_wf(wf: torch.Tensor) -> torch.Tensor:
     return wf / scale
 
 
+def _stead_quality_weight(
+    backbone,
+    x_event: torch.Tensor,
+    t: torch.Tensor,
+    obs_tp: torch.Tensor,
+    obs_ts: torch.Tensor,
+    *,
+    p_scale: float,
+    s_scale: float,
+    floor: float,
+) -> tuple[torch.Tensor, dict[str, float]]:
+    picks = run_picking_on_batch(
+        backbone,
+        x_event,
+        t,
+        pick_threshold=0.3,
+        det_threshold=0.5,
+        infer_seq_len=None,
+    )
+    tp = picks["tp_sec"][0]
+    ts = picks["ts_sec"][0]
+    p_err = abs(tp - float(obs_tp[0].item())) if tp is not None else 2.0 * p_scale
+    s_err = abs(ts - float(obs_ts[0].item())) if ts is not None else 2.0 * s_scale
+    p_term = torch.exp(torch.tensor(-p_err / max(p_scale, 1e-6), device=x_event.device))
+    s_term = torch.exp(torch.tensor(-s_err / max(s_scale, 1e-6), device=x_event.device))
+    weight = ((p_term + s_term) * 0.5).clamp(min=floor, max=1.0).detach()
+    return weight, {
+        "stead_pick_err_p": float(p_err),
+        "stead_pick_err_s": float(s_err),
+        "stead_quality_weight": float(weight.item()),
+    }
+
+
 def _val_score(va: dict[str, float], dataset: str) -> float:
     if dataset == "mixed":
         synth = va.get("synth_rmse_vp_rmse", va.get("rmse_vp_rmse", float("inf")))
@@ -115,6 +153,10 @@ def run_epoch(
     stead_waveform_weight: float | None,
     stead_unrolled_weight: float | None,
     synth_unrolled_weight: float | None,
+    stead_quality_weighted: bool,
+    stead_quality_p_scale: float,
+    stead_quality_s_scale: float,
+    stead_quality_floor: float,
     unrolled_steps: int,
     unrolled_step_size: float,
     pairwise_weight: float,
@@ -175,6 +217,19 @@ def run_epoch(
         use_real_obs = true_vp is None
         wf_w = swf if use_real_obs else 0.0
         unr_w = sur if use_real_obs else synr
+        sample_weight = torch.tensor(1.0, device=device)
+        if use_real_obs and stead_quality_weighted:
+            sample_weight, q_metrics = _stead_quality_weight(
+                bridge.backbone,
+                x_event,
+                t,
+                obs_tp,
+                obs_ts,
+                p_scale=stead_quality_p_scale,
+                s_scale=stead_quality_s_scale,
+                floor=stead_quality_floor,
+            )
+            metrics.update(q_metrics)
 
         if wf_w > 0:
             pred_earth = bridge.physics_head.earth(output, depths, true_q)
@@ -186,7 +241,7 @@ def run_epoch(
                 pred_wf = engine.simulate(pred_earth, source_depth, distances)
                 obs_wf = engine.simulate(true_earth, source_depth, distances)
             loss_wf = torch.mean((pred_wf - obs_wf) ** 2)
-            loss = loss + wf_w * loss_wf
+            loss = loss + wf_w * sample_weight * loss_wf
             metrics["loss_waveform"] = float(loss_wf.detach())
 
         if unr_w > 0:
@@ -214,7 +269,7 @@ def run_epoch(
                 loss_unrolled = torch.mean((refined_earth.vp - true_vp) ** 2)
                 metrics["loss_unrolled_vp"] = float(loss_unrolled.detach())
                 metrics["loss_unrolled_waveform"] = float(refined_metrics["waveform"].detach())
-            loss = loss + unr_w * loss_unrolled
+            loss = loss + unr_w * sample_weight * loss_unrolled
 
         if pairwise_weight > 0 and true_vp is not None:
             zh_refined, _ = unrolled_waveform_refine(
@@ -393,6 +448,7 @@ def main() -> None:
     epoch_args = (
         args.vp_sup_weight, args.anchor_weight, args.waveform_weight, args.unrolled_weight,
         args.stead_waveform_weight, args.stead_unrolled_weight, args.synth_unrolled_weight,
+        args.stead_quality_weighted, args.stead_quality_p_scale, args.stead_quality_s_scale, args.stead_quality_floor,
         args.unrolled_steps, args.unrolled_step_size,
         args.pairwise_weight, args.pairwise_margin,
         pairwise_vp_init, pairwise_vs_init, pairwise_q_init,
@@ -431,6 +487,7 @@ def main() -> None:
         "checkpoint": str(ckpt),
         "dataset": args.dataset,
         "geo_condition": args.geo_condition,
+        "stead_quality_weighted": args.stead_quality_weighted,
         "trainable_params": bridge.trainable_parameter_count(),
         "total_params": bridge.total_parameter_count(),
         "best_val_score": best_score,

@@ -65,6 +65,23 @@ The resulting mask is rendered as `stead_profile_trust_mask.png`, and the
 masked Vp / Vs / VpVs panels only show the trusted region for README-quality
 visual interpretation.
 
+## Feeding QC Back Into Training
+
+The same idea can now be used during STEAD fine-tuning instead of only in
+post-hoc masking. `train_zhizi_inversion.py` supports quality-weighted real-data
+losses via:
+
+- `--stead-quality-weighted`
+- `--stead-quality-p-scale`
+- `--stead-quality-s-scale`
+- `--stead-quality-floor`
+
+When enabled, the frozen picking backbone first estimates per-event P/S pick
+errors on each STEAD sample. Those errors are converted into a detached
+`quality_weight in [floor, 1]`, which downweights the STEAD waveform and
+unrolled losses for noisy or outlier events while leaving synthetic supervision
+unchanged.
+
 ## Shared Profile Sample Format
 
 Each distance bin is exported as:
