@@ -1,0 +1,14 @@
+{
+  "loss": 5.480737812787803,
+  "det_precision": 0.9635038658648577,
+  "det_recall": 0.9469623447204969,
+  "det_f1": 0.955161493996897,
+  "p_precision": 0.0,
+  "p_recall": 0.0,
+  "p_f1": 0.0,
+  "s_precision": 0.0,
+  "s_recall": 0.0,
+  "s_f1": 0.0,
+  "best_epoch": 2,
+  "val_score_at_best": 0.3077139183333874
+}

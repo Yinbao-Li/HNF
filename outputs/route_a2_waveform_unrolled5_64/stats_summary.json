@@ -1,0 +1,27 @@
+{
+  "n": 64,
+  "init": {
+    "zhizi_mean": 0.6105266297236085,
+    "zhizi_median": 0.5820881724357605,
+    "perturb_mean": 0.15056913009902928,
+    "perturb_median": 0.14149947464466095
+  },
+  "refined": {
+    "zhizi_mean": 0.998010765761137,
+    "zhizi_median": 0.979827493429184,
+    "perturb_mean": 0.9772066697478294,
+    "perturb_median": 0.9660046994686127,
+    "zhizi_p25": 0.9044008255004883,
+    "zhizi_p75": 1.077796220779419,
+    "perturb_p25": 0.9453311562538147,
+    "perturb_p75": 0.9910409450531006
+  },
+  "comparison": {
+    "better_frac": 0.453125,
+    "near_tie_frac_2pct": 0.203125,
+    "delta_mean_zh_minus_pe": 0.02080409601330757,
+    "delta_median": 0.011174589395523071,
+    "tail_bad_delta_gt_0p05_frac": 0.34375,
+    "severe_zhizi_gt_1p2_frac": 0.125
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "true_vp": [
+    3.5,
+    4.5,
+    5.5,
+    6.199999809265137,
+    6.800000190734863
+  ],
+  "init_vp": [
+    3.753908634185791,
+    4.865304470062256,
+    5.96809196472168,
+    6.7106757164001465,
+    7.365437030792236
+  ],
+  "init_vp_rmse": 0.44666221737861633,
+  "methods": [
+    {
+      "group": "travel_time",
+      "method": "HNF-Adam",
+      "vp_rmse": 0.7480237483978271,
+      "vs_rmse": 0.45791250467300415,
+      "extra": 0.025326337665319443,
+      "wall_sec": 3.00700063444674
+    },
+    {
+      "group": "travel_time",
+      "method": "L-BFGS (PyTorch)",
+      "vp_rmse": 0.8829440474510193,
+      "vs_rmse": 0.15551559627056122,
+      "extra": 0.2913040518760681,
+      "wall_sec": 0.19446896575391293
+    },
+    {
+      "group": "travel_time",
+      "method": "Gauss-Newton (damped)",
+      "vp_rmse": 0.3410443663597107,
+      "vs_rmse": 0.2329137623310089,
+      "extra": 0.0006325390422716737,
+      "wall_sec": 0.7490640813484788
+    },
+    {
+      "group": "travel_time",
+      "method": "Homogeneous grid",
+      "vp_rmse": 1.3555208444595337,
+      "vs_rmse": 0.7544170618057251,
+      "extra": 0.03033086098730564,
+      "wall_sec": 6.924716362729669
+    },
+    {
+      "group": "fwi",
+      "method": "FWI-lite (direct-wave)",
+      "vp_rmse": 0.9426840543746948,
+      "vs_rmse": 0.34154221415519714,
+      "extra": 0.03264211490750313,
+      "wall_sec": 1.0468692760914564
+    },
+    {
+      "group": "picking_prior",
+      "method": "prior_only (run20)",
+      "vp_rmse": 1.8289839029312134,
+      "vs_rmse": 2.5925185680389404,
+      "extra": 2.0083235422770183,
+      "wall_sec": 2.4849190581589937
+    },
+    {
+      "group": "picking_prior",
+      "method": "prior+picks (run20)",
+      "vp_rmse": 1.8350512981414795,
+      "vs_rmse": 2.5977118015289307,
+      "extra": 2.0083235422770183,
+      "wall_sec": 2.5019244207069278
+    }
+  ],
+  "legend": {
+    "travel_time": "\u8d70\u65f6\u53cd\u6f14\u57fa\u7ebf",
+    "fwi": "FWI-lite \u6ce2\u5f62\u53cd\u6f14",
+    "picking_prior": "run20 \u62fe\u53d6\u5148\u9a8c"
+  }
+}

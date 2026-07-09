@@ -1,0 +1,174 @@
+{
+  "checkpoint": "outputs/stead_hnf_picking_run7/best.pt",
+  "split": "test",
+  "kernel_params": {
+    "shared_0": {
+      "gamma": 1.2312021255493164,
+      "omega": 1.3393628597259521,
+      "wave_speed": 6.003475666046143
+    },
+    "shared_1": {
+      "gamma": 1.1679049730300903,
+      "omega": 0.7462929487228394,
+      "wave_speed": 6.003475666046143
+    },
+    "p_branch_0": {
+      "gamma": 2.3272006511688232,
+      "omega": 1.7337994575500488,
+      "wave_speed": 8.001336097717285
+    },
+    "p_branch_1": {
+      "gamma": 1.7452285289764404,
+      "omega": 3.3774402141571045,
+      "wave_speed": 8.001336097717285
+    },
+    "s_branch_0": {
+      "gamma": 0.3195244371891022,
+      "omega": 1.0027605295181274,
+      "wave_speed": 4.51204776763916
+    },
+    "s_branch_1": {
+      "gamma": 0.71966552734375,
+      "omega": 1.2198463678359985,
+      "wave_speed": 4.51204776763916
+    }
+  },
+  "examples": [
+    {
+      "p_true_idx": 33,
+      "s_true_idx": 138,
+      "p_pred_idx": 34,
+      "s_pred_idx": 139,
+      "p_true_sec": 4.962405681610107,
+      "s_true_sec": 20.75187873840332,
+      "p_pred_sec": 5.112781524658203,
+      "s_pred_sec": 20.902254104614258,
+      "kernel_params": {
+        "shared_0": {
+          "gamma": 1.2312021255493164,
+          "omega": 1.3393628597259521,
+          "wave_speed": 6.003475666046143
+        },
+        "shared_1": {
+          "gamma": 1.1679049730300903,
+          "omega": 0.7462929487228394,
+          "wave_speed": 6.003475666046143
+        },
+        "p_branch_0": {
+          "gamma": 2.3272006511688232,
+          "omega": 1.7337994575500488,
+          "wave_speed": 8.001336097717285
+        },
+        "p_branch_1": {
+          "gamma": 1.7452285289764404,
+          "omega": 3.3774402141571045,
+          "wave_speed": 8.001336097717285
+        },
+        "s_branch_0": {
+          "gamma": 0.3195244371891022,
+          "omega": 1.0027605295181274,
+          "wave_speed": 4.51204776763916
+        },
+        "s_branch_1": {
+          "gamma": 0.71966552734375,
+          "omega": 1.2198463678359985,
+          "wave_speed": 4.51204776763916
+        }
+      },
+      "dataset_idx": 82846
+    },
+    {
+      "p_true_idx": 47,
+      "s_true_idx": 99,
+      "p_pred_idx": 47,
+      "s_pred_idx": 99,
+      "p_true_sec": 7.067668914794922,
+      "s_true_sec": 14.88721752166748,
+      "p_pred_sec": 7.067668914794922,
+      "s_pred_sec": 14.88721752166748,
+      "kernel_params": {
+        "shared_0": {
+          "gamma": 1.2312021255493164,
+          "omega": 1.3393628597259521,
+          "wave_speed": 6.003475666046143
+        },
+        "shared_1": {
+          "gamma": 1.1679049730300903,
+          "omega": 0.7462929487228394,
+          "wave_speed": 6.003475666046143
+        },
+        "p_branch_0": {
+          "gamma": 2.3272006511688232,
+          "omega": 1.7337994575500488,
+          "wave_speed": 8.001336097717285
+        },
+        "p_branch_1": {
+          "gamma": 1.7452285289764404,
+          "omega": 3.3774402141571045,
+          "wave_speed": 8.001336097717285
+        },
+        "s_branch_0": {
+          "gamma": 0.3195244371891022,
+          "omega": 1.0027605295181274,
+          "wave_speed": 4.51204776763916
+        },
+        "s_branch_1": {
+          "gamma": 0.71966552734375,
+          "omega": 1.2198463678359985,
+          "wave_speed": 4.51204776763916
+        }
+      },
+      "dataset_idx": 11295
+    },
+    {
+      "p_true_idx": 47,
+      "s_true_idx": 95,
+      "p_pred_idx": 46,
+      "s_pred_idx": 97,
+      "p_true_sec": 7.067668914794922,
+      "s_true_sec": 14.285713195800781,
+      "p_pred_sec": 6.917293071746826,
+      "s_pred_sec": 14.586465835571289,
+      "kernel_params": {
+        "shared_0": {
+          "gamma": 1.2312021255493164,
+          "omega": 1.3393628597259521,
+          "wave_speed": 6.003475666046143
+        },
+        "shared_1": {
+          "gamma": 1.1679049730300903,
+          "omega": 0.7462929487228394,
+          "wave_speed": 6.003475666046143
+        },
+        "p_branch_0": {
+          "gamma": 2.3272006511688232,
+          "omega": 1.7337994575500488,
+          "wave_speed": 8.001336097717285
+        },
+        "p_branch_1": {
+          "gamma": 1.7452285289764404,
+          "omega": 3.3774402141571045,
+          "wave_speed": 8.001336097717285
+        },
+        "s_branch_0": {
+          "gamma": 0.3195244371891022,
+          "omega": 1.0027605295181274,
+          "wave_speed": 4.51204776763916
+        },
+        "s_branch_1": {
+          "gamma": 0.71966552734375,
+          "omega": 1.2198463678359985,
+          "wave_speed": 4.51204776763916
+        }
+      },
+      "dataset_idx": 97955
+    }
+  ],
+  "interpretation_notes": {
+    "rho(t)": "Learned medium density; higher values increase attenuation in the kernel.",
+    "wave_energy": "Shared-layer propagation energy used for event detection.",
+    "p/s_envelope": "P/S branch wave-field envelope before the picking head.",
+    "kernel_contrib": "Absolute row of the last P-branch Huygens kernel at pick time (causal past sources).",
+    "learned_params": "gamma (envelope width), omega (phase frequency), wave_speed (light-cone slope)."
+  }
+}

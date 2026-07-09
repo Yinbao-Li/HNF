@@ -1,0 +1,69 @@
+{
+  "checkpoint": "/media/bob/Work/TRELLIS/HNF/outputs/huygens_fresnel/picking_sharp/best.pt",
+  "physics_head": "/media/bob/Work/TRELLIS/HNF/outputs/huygens_fresnel/zhizi_macro/best_physics_head.pt",
+  "head_mode": "macro",
+  "training_curves": "/media/bob/Work/TRELLIS/HNF/outputs/huygens_fresnel/proof_suite/training_curves.png",
+  "stead_summary": {
+    "n": 48,
+    "pick_mae_p": 1.934375,
+    "pick_mae_s": 0.4320652173913041,
+    "zhizi_refined_tt_mean": 4.332459221930762,
+    "perturb_refined_tt_mean": 14.207155829185908,
+    "zhizi_refine_win_frac": 0.7708333333333334,
+    "wilcoxon_zhizi_vs_perturb_refined_tt": {
+      "n": 48,
+      "w_min": 280.0,
+      "w_pos": 280.0,
+      "w_neg": 896.0,
+      "z_approx": -3.1590158979180476,
+      "p_approx_two_sided": 0.0007915142736477294,
+      "mean_delta_a_minus_b": -9.874696607255146
+    }
+  },
+  "synth_summary": {
+    "n": 32,
+    "means": {
+      "zhizi_wave": 0.9368581119924784,
+      "perturb_wave": 0.982438649982214,
+      "zhizi_init": 0.28833545884117484,
+      "perturb_init": 0.17637092771474272,
+      "gn_tt": 0.13579009441309609,
+      "lbfgs_tt": 0.20057974464725703,
+      "adam_tt": 1.5969993639737368
+    },
+    "medians": {
+      "zhizi_wave": 0.9185894727706909,
+      "perturb_wave": 0.9725323617458344,
+      "zhizi_init": 0.2632434368133545,
+      "perturb_init": 0.14029037207365036,
+      "gn_tt": 0.10302283987402916,
+      "lbfgs_tt": 0.18527187407016754,
+      "adam_tt": 1.7069845795631409
+    },
+    "zhizi_wave_better_than_perturb_frac": 0.90625,
+    "wilcoxon_zhizi_wave_vs_perturb_wave": {
+      "n": 32,
+      "w_min": 35.0,
+      "w_pos": 35.0,
+      "w_neg": 493.0,
+      "z_approx": -4.282057214238733,
+      "p_approx_two_sided": 9.258667598915394e-06,
+      "mean_delta_a_minus_b": -0.0455805379897356
+    },
+    "wilcoxon_zhizi_wave_vs_gn": {
+      "n": 32,
+      "w_min": 0.0,
+      "w_pos": 528.0,
+      "w_neg": 0.0,
+      "z_approx": -4.936520107244654,
+      "p_approx_two_sided": 3.9764420713463787e-07,
+      "mean_delta_a_minus_b": 0.8010680175793823
+    }
+  },
+  "latent_n": 8,
+  "verdict": {
+    "stead_geom_gate": "PASS",
+    "route_a2_wave_init": "PASS",
+    "absolute_tt_oracle": "GN/LBFGS still lower VpRMSE on synth travel-time oracle; Zhizi claim is FWI-lite init (Route A2), not TT-oracle solve."
+  }
+}

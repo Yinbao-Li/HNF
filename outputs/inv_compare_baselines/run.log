@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "run_inv_compare_baselines.py", line 116, in <module>
+    main()
+  File "run_inv_compare_baselines.py", line 83, in main
+    results = run_all_baselines(
+  File "/media/bob/Work/TRELLIS/HNF/hnf/inversion_baselines.py", line 279, in run_all_baselines
+    res = fn()
+  File "/media/bob/Work/TRELLIS/HNF/hnf/inversion_baselines.py", line 268, in <lambda>
+    lambda: invert_gauss_newton(
+  File "/media/bob/Work/TRELLIS/HNF/hnf/inversion_baselines.py", line 181, in invert_gauss_newton
+    JTJ = J.T @ J + damping * torch.eye(2 * n, dtype=J.dtype)
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!

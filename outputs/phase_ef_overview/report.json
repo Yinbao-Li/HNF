@@ -1,0 +1,5 @@
+{
+  "phase_e_report": "outputs/phase_e_formal/report.json",
+  "phase_f_report": "outputs/phase_f_qc/report.json",
+  "output": "outputs/phase_ef_overview/phase_ef_overview.png"
+}

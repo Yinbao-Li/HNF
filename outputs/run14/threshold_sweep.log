@@ -1,0 +1,13 @@
+[sweep] 01_seq800 threshold=0.1
+  det=0.9889 P=0.7207 S=0.0723
+[sweep] 01_seq800 threshold=0.3
+  det=0.9889 P=0.7207 S=0.0723
+[sweep] 14_main threshold=0.1
+  det=0.9907 P=0.8655 S=0.8930
+[sweep] 14_main threshold=0.3
+  det=0.9907 P=0.9290 S=0.9198
+[sweep] 14_sharp threshold=0.1
+  det=0.9908 P=0.8655 S=0.8953
+[sweep] 14_sharp threshold=0.3
+  det=0.9908 P=0.9278 S=0.9200
+[sweep] saved /media/bob/Work/TRELLIS/HNF/outputs/run14/threshold_results.json

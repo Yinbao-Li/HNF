@@ -1,0 +1,34 @@
+{
+  "checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+  "n_test": 126566,
+  "modes": {
+    "default_denoise_split": {
+      "bypass_noise_cancel": false,
+      "det_precision": 0.9938621525470113,
+      "det_recall": 0.9868788819875777,
+      "det_f1": 0.9903582072108923,
+      "p_precision": 0.9369688316006689,
+      "p_recall": 0.929794254658385,
+      "p_f1": 0.933367756014633,
+      "p_mae_sec": 0.06122920276388089,
+      "s_precision": 0.9341634890371783,
+      "s_recall": 0.912985248447205,
+      "s_f1": 0.9234529605779803,
+      "s_mae_sec": 0.09261352764840945
+    },
+    "bypass_no_denoise": {
+      "bypass_noise_cancel": true,
+      "det_precision": 0.9926793984290805,
+      "det_recall": 0.9922651397515528,
+      "det_f1": 0.9924722258623451,
+      "p_precision": 0.9393507305258223,
+      "p_recall": 0.9334433229813665,
+      "p_f1": 0.9363877098017835,
+      "p_mae_sec": 0.06148265787773564,
+      "s_precision": 0.9355996391359089,
+      "s_recall": 0.9158870341614906,
+      "s_f1": 0.9256383975204625,
+      "s_mae_sec": 0.09251957657377094
+    }
+  }
+}

@@ -1,0 +1,10 @@
+[STEAD-HNF-PHYS] device=cuda params=65631 train=360000 val=25638 test=126566 seq_len=400 bs=16 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0
+ep 001  train_loss=2.5517  val_loss=2.2781  det_f1=0.9464  p_f1=0.7083  s_f1=0.7973  p_mae=0.096s  s_mae=0.124s  score=0.8173
+ep 002  train_loss=2.2373  val_loss=2.2082  det_f1=0.9481  p_f1=0.7838  s_f1=0.7484  p_mae=0.082s  s_mae=0.112s  score=0.8268
+ep 003  train_loss=2.1662  val_loss=2.3015  det_f1=0.9183  p_f1=0.7471  s_f1=0.7292  p_mae=0.076s  s_mae=0.113s  score=0.7982
+ep 004  train_loss=2.1105  val_loss=3.2162  det_f1=0.5265  p_f1=0.4288  s_f1=0.3851  p_mae=0.094s  s_mae=0.121s  score=0.4468
+ep 005  train_loss=2.0739  val_loss=2.7966  det_f1=0.7464  p_f1=0.5956  s_f1=0.6073  p_mae=0.086s  s_mae=0.116s  score=0.6498
+ep 006  train_loss=2.0534  val_loss=2.4259  det_f1=0.8656  p_f1=0.6984  s_f1=0.7020  p_mae=0.083s  s_mae=0.117s  score=0.7553
+ep 007  train_loss=2.0412  val_loss=2.6064  det_f1=0.8283  p_f1=0.6807  s_f1=0.6648  p_mae=0.087s  s_mae=0.118s  score=0.7246
+ep 008  train_loss=2.0331  val_loss=2.4386  det_f1=0.8858  p_f1=0.7223  s_f1=0.7293  p_mae=0.079s  s_mae=0.114s  score=0.7791
+ep 009  train_loss=2.0265  val_loss=2.2955  det_f1=0.9388  p_f1=0.7782  s_f1=0.7921  p_mae=0.074s  s_mae=0.110s  score=0.8363

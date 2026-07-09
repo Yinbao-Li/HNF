@@ -1,0 +1,78 @@
+{
+  "phase": "E_synth_imaging",
+  "model_type": "marmousi_style",
+  "n_columns": 9,
+  "n_boot": 3,
+  "steps": 140,
+  "noise_std": 0.015,
+  "mean_vp_rmse": 0.8511661556031969,
+  "mean_vs_rmse": 0.41770819160673356,
+  "max_vp_uncertainty": 0.0474817156791687,
+  "max_vs_uncertainty": 0.15150798857212067,
+  "coverage_nonzero_frac": 0.13047300279140472,
+  "figures": {
+    "geometry": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/acquisition_geometry.png",
+    "true_vp": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/true_vp_2d.png",
+    "recovered_vp": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/recovered_vp_2d.png",
+    "vp_error": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/vp_error_2d.png",
+    "coverage": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/ray_coverage_2d.png",
+    "vp_uncertainty": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/vp_uncertainty_2d.png",
+    "summary_panel": "/media/bob/Work/TRELLIS/HNF/outputs/phase_e_formal/figures/phase_e_summary_panel.png"
+  },
+  "per_column": [
+    {
+      "x_km": 0.0,
+      "vp_rmse": 0.7574610710144043,
+      "vs_rmse": 0.40734997391700745,
+      "final_loss": 0.013521067798137665
+    },
+    {
+      "x_km": 6.25,
+      "vp_rmse": 0.8670379519462585,
+      "vs_rmse": 0.3461790680885315,
+      "final_loss": 0.014511782675981522
+    },
+    {
+      "x_km": 12.5,
+      "vp_rmse": 0.9225668907165527,
+      "vs_rmse": 0.39924541115760803,
+      "final_loss": 0.01585053652524948
+    },
+    {
+      "x_km": 18.75,
+      "vp_rmse": 0.9074767827987671,
+      "vs_rmse": 0.45715999603271484,
+      "final_loss": 0.01636347733438015
+    },
+    {
+      "x_km": 25.0,
+      "vp_rmse": 0.9411087036132812,
+      "vs_rmse": 0.4661980867385864,
+      "final_loss": 0.016757337376475334
+    },
+    {
+      "x_km": 31.25,
+      "vp_rmse": 0.8557214736938477,
+      "vs_rmse": 0.4127112329006195,
+      "final_loss": 0.01496763713657856
+    },
+    {
+      "x_km": 37.5,
+      "vp_rmse": 0.8531495332717896,
+      "vs_rmse": 0.43679654598236084,
+      "final_loss": 0.016272306442260742
+    },
+    {
+      "x_km": 43.75,
+      "vp_rmse": 0.804436206817627,
+      "vs_rmse": 0.4190410375595093,
+      "final_loss": 0.012745450250804424
+    },
+    {
+      "x_km": 50.0,
+      "vp_rmse": 0.7515367865562439,
+      "vs_rmse": 0.41469237208366394,
+      "final_loss": 0.014137504622340202
+    }
+  ]
+}

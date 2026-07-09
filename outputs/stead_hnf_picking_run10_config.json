@@ -1,0 +1,16 @@
+{
+  "strategies": {
+    "A": "seq_len=2400",
+    "B": "per_time_det=true",
+    "C": "local_window_sec=20",
+    "D": "s_pick_loss_weight=2.5",
+    "E": "pick_head_hidden=48, pick_head_kernel=11",
+    "G": "ps_order_loss_weight=0.5, ps_min_gap_sec=0.1 (in loss, not post-process)",
+    "H": "embed_dim=88, shared=3, branch=3 (96+48/11 exceeds 200K; 88+48/11=199224)",
+    "I": "epochs=18"
+  },
+  "batch_size": 4,
+  "grad_accum_steps": 8,
+  "lr": 0.0005,
+  "seed": 42
+}

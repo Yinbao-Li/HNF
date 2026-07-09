@@ -1,0 +1,21 @@
+{
+  "checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+  "trainable_params": 9123,
+  "total_params": 148525,
+  "best_val_vp_rmse": 0.27711819391697645,
+  "final_val": {
+    "loss_tt": 0.1676803259178996,
+    "loss_tp": 0.022243265899305698,
+    "loss_ts": 0.145437057770323,
+    "loss_anchor": 0.0032352869457099587,
+    "loss_anchor_vp": 0.26354170590639114,
+    "loss_anchor_vs": 0.05998699809424579,
+    "loss_rho_smooth": 0.06258662603795528,
+    "rmse_vp_rmse": 0.3287036884576082,
+    "rmse_vs_rmse": 0.17534508649259806,
+    "rmse_q_rmse": 0.0,
+    "loss": 0.23350223898887634,
+    "loss_unrolled_vp": 0.10740211326628923,
+    "loss_unrolled_waveform": 0.0
+  }
+}

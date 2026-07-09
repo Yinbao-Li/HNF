@@ -1,0 +1,72 @@
+{
+  "active_config": {
+    "seq_len": 800,
+    "batch_size": 12,
+    "grad_accum_steps": 4,
+    "epochs": 8,
+    "num_workers": 0,
+    "embed_dim": 64,
+    "num_shared_layers": 2,
+    "num_branch_layers": 2,
+    "lr": 0.0005,
+    "pick_pos_weight": 25,
+    "label_sigma_sec": 0.4,
+    "local_window_sec": 15.0,
+    "seed": 42,
+    "focal_gamma": 0.0,
+    "s_pick_loss_weight": 1.0,
+    "pick_head_hidden": 24,
+    "pick_head_kernel": 7,
+    "per_time_det": true,
+    "post_process_p_before_s": false
+  },
+  "best_ps_sum": 1.8117222071992014,
+  "active_checkpoint": "/media/bob/Work/TRELLIS/HNF/outputs/ablation/02_per_time_det/best.pt",
+  "history": [
+    {
+      "name": "01_seq800",
+      "status": "kept",
+      "delta": {
+        "seq_len": 800,
+        "batch_size": 12,
+        "grad_accum_steps": 4
+      },
+      "p_f1": 0.904525849450614,
+      "s_f1": 0.9042715072500761,
+      "ps_sum": 1.80879735670069,
+      "det_f1": 0.9889249729369639
+    },
+    {
+      "name": "02_per_time_det",
+      "status": "kept",
+      "delta": {
+        "per_time_det": true
+      },
+      "p_f1": 0.9112105695188212,
+      "s_f1": 0.9005116376803803,
+      "ps_sum": 1.8117222071992014,
+      "det_f1": 0.897580522223916
+    },
+    {
+      "name": "03_focal_sharp",
+      "status": "failed",
+      "delta": {
+        "focal_gamma": 2.0,
+        "label_sigma_sec": 0.28
+      }
+    },
+    {
+      "name": "04_deep96",
+      "status": "dropped",
+      "delta": {
+        "embed_dim": 96,
+        "num_shared_layers": 3,
+        "num_branch_layers": 3
+      },
+      "p_f1": 0.9017150075304863,
+      "s_f1": 0.9047783694073716,
+      "ps_sum": 1.806493376937858,
+      "det_f1": 0.8975414298469109
+    }
+  ]
+}

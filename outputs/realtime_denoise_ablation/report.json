@@ -1,0 +1,38 @@
+{
+  "checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+  "seq_len": 800,
+  "batch_size": 16,
+  "device": "cuda",
+  "modes": {
+    "default_denoise_split": {
+      "bypass_noise_cancel": false,
+      "latency": {
+        "batches": 200,
+        "samples": 3200,
+        "ms_per_batch": 40.82872946280986,
+        "ms_per_trace": 2.5517955914256163
+      },
+      "accuracy": {
+        "det_f1": 0.9902177343010414,
+        "p_f1": 0.9508196721311475,
+        "s_f1": 0.9178221170104837,
+        "n_test_partial": 3200
+      }
+    },
+    "bypass_no_denoise": {
+      "bypass_noise_cancel": true,
+      "latency": {
+        "batches": 200,
+        "samples": 3200,
+        "ms_per_batch": 37.88718772586435,
+        "ms_per_trace": 2.367949232866522
+      },
+      "accuracy": {
+        "det_f1": 0.9965506428347445,
+        "p_f1": 0.9566351483534398,
+        "s_f1": 0.921105866486851,
+        "n_test_partial": 3200
+      }
+    }
+  }
+}

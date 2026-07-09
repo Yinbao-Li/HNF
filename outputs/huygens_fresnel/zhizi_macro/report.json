@@ -1,0 +1,21 @@
+{
+  "checkpoint": "/media/bob/Work/TRELLIS/HNF/outputs/huygens_fresnel/picking_sharp/best.pt",
+  "trainable_params": 9123,
+  "total_params": 148532,
+  "best_val_vp_rmse": 0.2639644043520093,
+  "final_val": {
+    "loss_tt": 0.1450092023005709,
+    "loss_tp": 0.01744433181011118,
+    "loss_ts": 0.12756487127626315,
+    "loss_anchor": 0.0035779511381406337,
+    "loss_anchor_vp": 0.30275422893464565,
+    "loss_anchor_vs": 0.05504089035093784,
+    "loss_rho_smooth": 0.06410041404888034,
+    "rmse_vp_rmse": 0.341110048815608,
+    "rmse_vs_rmse": 0.18146389443427324,
+    "rmse_q_rmse": 0.0,
+    "loss": 0.21268756734207273,
+    "loss_unrolled_vp": 0.11570715066045523,
+    "loss_unrolled_waveform": 0.0
+  }
+}

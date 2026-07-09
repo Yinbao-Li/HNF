@@ -1,0 +1,331 @@
+[phase-c] /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/train_zhizi_inversion.py --checkpoint outputs/run20/20_wrongpeak_sharp/best.pt --output-dir outputs/zhizi_inversion_mixed_geo --dataset mixed --geo-condition --train-geo-only --head-mode macro --epochs 16 --n-train 96 --n-val 24 --stead-max-train 200 --stead-max-val 40 --lr 5e-4 --anchor-weight 0.05 --vp-sup-weight 0.12 --stead-waveform-weight 0.2 --stead-unrolled-weight 0.12 --synth-unrolled-weight 0.35 --unrolled-steps 3 --resume-physics-head outputs/zhizi_inversion_bridge_macro/best_physics_head.pt --device cuda
+[zhizi-inv] loading backbone outputs/run20/20_wrongpeak_sharp/best.pt
+[zhizi-inv] resumed physics head from outputs/zhizi_inversion_bridge_macro/best_physics_head.pt loaded=5 missing=1 unexpected=0
+[zhizi-inv] train_geo_only: 6720 params unfrozen
+[zhizi-inv] dataset=mixed geo=True trainable params=6720 total=148621
+[epoch 1/16] train_loss=26.1541 val_loss=27.6811 val_score=0.3800 synth_vp_rmse=0.6593 stead_unrolled=0.0386
+[epoch 2/16] train_loss=23.4713 val_loss=27.7779 val_score=0.5773 synth_vp_rmse=1.0184 stead_unrolled=0.0383
+[epoch 3/16] train_loss=22.7411 val_loss=29.8250 val_score=0.6087 synth_vp_rmse=1.0762 stead_unrolled=0.0373
+[epoch 4/16] train_loss=22.4036 val_loss=29.9433 val_score=0.6580 synth_vp_rmse=1.1661 stead_unrolled=0.0371
+[epoch 5/16] train_loss=22.1003 val_loss=26.6588 val_score=0.6870 synth_vp_rmse=1.2177 stead_unrolled=0.0385
+[epoch 6/16] train_loss=21.5783 val_loss=28.2961 val_score=0.6887 synth_vp_rmse=1.2221 stead_unrolled=0.0367
+[epoch 7/16] train_loss=22.0436 val_loss=26.6660 val_score=0.7338 synth_vp_rmse=1.3039 stead_unrolled=0.0371
+[epoch 8/16] train_loss=22.3853 val_loss=27.8880 val_score=0.7297 synth_vp_rmse=1.2973 stead_unrolled=0.0360
+[epoch 9/16] train_loss=21.5951 val_loss=29.1820 val_score=0.7429 synth_vp_rmse=1.3218 stead_unrolled=0.0353
+[epoch 10/16] train_loss=20.3729 val_loss=31.0454 val_score=0.7398 synth_vp_rmse=1.3164 stead_unrolled=0.0351
+[epoch 11/16] train_loss=21.4054 val_loss=28.6448 val_score=0.7582 synth_vp_rmse=1.3497 stead_unrolled=0.0353
+[epoch 12/16] train_loss=20.3454 val_loss=29.6821 val_score=0.7608 synth_vp_rmse=1.3544 stead_unrolled=0.0353
+[epoch 13/16] train_loss=24.8751 val_loss=27.7206 val_score=0.7717 synth_vp_rmse=1.3738 stead_unrolled=0.0357
+[epoch 14/16] train_loss=20.7325 val_loss=27.1427 val_score=0.7619 synth_vp_rmse=1.3553 stead_unrolled=0.0366
+[epoch 15/16] train_loss=21.4208 val_loss=27.5688 val_score=0.7789 synth_vp_rmse=1.3865 stead_unrolled=0.0362
+[epoch 16/16] train_loss=20.0785 val_loss=27.7384 val_score=0.7776 synth_vp_rmse=1.3841 stead_unrolled=0.0363
+{
+  "checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+  "dataset": "mixed",
+  "geo_condition": true,
+  "trainable_params": 6720,
+  "total_params": 148621,
+  "best_val_score": 0.3799567552088272,
+  "best_val_vp_rmse": 0.5630100702835341,
+  "final_val": {
+    "loss_tt": 27.631763961355563,
+    "loss_tp": 10.910711963045395,
+    "loss_ts": 16.72105195891049,
+    "loss_anchor": 0.06027845425878541,
+    "loss_anchor_vp": 0.9684822902841083,
+    "loss_anchor_vs": 0.23708678163209204,
+    "loss_rho_smooth": 0.04637853599200815,
+    "rmse_vp_rmse": 0.5630100702835341,
+    "rmse_vs_rmse": 0.06476682273008055,
+    "rmse_q_rmse": 0.0,
+    "loss": 27.73842097541033,
+    "loss_unrolled_vp": 0.7924169584856195,
+    "loss_unrolled_waveform": 0.021520818978295487,
+    "loss_waveform": 0.010961495008382756,
+    "synth_loss_tt": 1.5080601076285045,
+    "synth_loss_tp": 1.2827101945877075,
+    "synth_loss_ts": 0.22534992856283984,
+    "synth_loss_anchor": 0.05276223116864761,
+    "synth_loss_anchor_vp": 0.9742035840948423,
+    "synth_loss_anchor_vs": 0.08104102437694867,
+    "synth_loss_rho_smooth": 0.034814970567822456,
+    "synth_rmse_vp_rmse": 1.3840664227803547,
+    "synth_rmse_vs_rmse": 0.15921843921144804,
+    "synth_rmse_q_rmse": 0.0,
+    "synth_loss": 1.595637321472168,
+    "synth_loss_unrolled_vp": 1.9480250229438145,
+    "synth_loss_unrolled_waveform": 0.0,
+    "stead_loss_tt": 45.54516088962555,
+    "stead_loss_tp": 17.512770318559237,
+    "stead_loss_ts": 28.03239049400602,
+    "stead_loss_anchor": 0.06543243580630848,
+    "stead_loss_anchor_vp": 0.9645591173853193,
+    "stead_loss_anchor_vs": 0.34408958660704747,
+    "stead_loss_rho_smooth": 0.054307837997164043,
+    "stead_loss": 45.66490119525364,
+    "stead_loss_waveform": 0.018477948728416647,
+    "stead_loss_unrolled_waveform": 0.036277951991983824
+  }
+}
+[zhizi-inv] -> outputs/zhizi_inversion_mixed_geo
+[phase-c] /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/run_proof_suite.py --checkpoint outputs/run20/20_wrongpeak_sharp/best.pt --physics-head outputs/zhizi_inversion_mixed_geo/best_physics_head.pt --head-mode macro --output-dir outputs/proof_suite_phase_c --device cuda
+[proof] latent visualization...
+[proof] STEAD geometry-aware evaluation...
+[stead 1/48] d=102.1km z=1.0km ref z=0.0000 p=0.0000
+[stead 2/48] d=100.9km z=8.4km ref z=5.9114 p=9.0420
+[stead 3/48] d=101.2km z=11.3km ref z=0.3183 p=0.9130
+[stead 4/48] d=60.2km z=6.4km ref z=14.6773 p=18.7703
+[stead 5/48] d=102.7km z=7.6km ref z=0.2826 p=0.9251
+[stead 6/48] d=92.9km z=4.7km ref z=45.6055 p=0.1980
+[stead 7/48] d=26.0km z=9.7km ref z=13.2424 p=17.6525
+[stead 8/48] d=107.5km z=5.8km ref z=27.2990 p=382.5190
+[stead 9/48] d=106.2km z=5.5km ref z=0.0000 p=0.9795
+[stead 10/48] d=84.6km z=14.3km ref z=0.0065 p=0.0084
+[stead 11/48] d=100.5km z=16.2km ref z=0.0021 p=0.0038
+[stead 12/48] d=76.8km z=14.3km ref z=0.1722 p=0.0066
+[stead 13/48] d=124.4km z=16.0km ref z=0.7108 p=1.4244
+[stead 14/48] d=142.7km z=13.7km ref z=4.0099 p=5.4832
+[stead 15/48] d=60.7km z=6.3km ref z=0.0039 p=1.5941
+[stead 16/48] d=111.6km z=9.0km ref z=0.5714 p=2.5798
+[stead 17/48] d=180.2km z=16.8km ref z=0.1989 p=0.6100
+[stead 18/48] d=142.7km z=10.7km ref z=1.6880 p=3.3479
+[stead 19/48] d=136.8km z=15.6km ref z=0.1996 p=0.6019
+[stead 20/48] d=155.1km z=14.8km ref z=9.2253 p=11.9939
+[stead 21/48] d=111.8km z=15.4km ref z=0.0067 p=0.0034
+[stead 22/48] d=162.1km z=11.2km ref z=5.2849 p=3.4868
+[stead 23/48] d=64.0km z=17.9km ref z=0.3779 p=0.0771
+[stead 24/48] d=89.1km z=18.8km ref z=2.1054 p=1.0334
+[stead 25/48] d=68.5km z=13.3km ref z=0.0618 p=0.0110
+[stead 26/48] d=107.8km z=10.8km ref z=4.2182 p=7.1409
+[stead 27/48] d=101.4km z=10.0km ref z=1.7548 p=3.3055
+[stead 28/48] d=67.2km z=12.3km ref z=0.5695 p=0.0525
+[stead 29/48] d=22.9km z=1.0km ref z=0.0000 p=0.0000
+[stead 30/48] d=29.8km z=12.8km ref z=11.0185 p=14.8322
+[stead 31/48] d=27.2km z=14.0km ref z=3.7145 p=5.3736
+[stead 32/48] d=86.5km z=15.0km ref z=0.0053 p=0.0045
+[stead 33/48] d=25.3km z=17.1km ref z=0.0069 p=0.0015
+[stead 34/48] d=46.8km z=11.7km ref z=2.4787 p=2.9170
+[stead 35/48] d=63.6km z=1.0km ref z=0.0000 p=0.0000
+[stead 36/48] d=51.0km z=11.0km ref z=0.0010 p=20.2034
+[stead 37/48] d=42.3km z=21.1km ref z=0.0013 p=0.1756
+[stead 38/48] d=15.4km z=17.2km ref z=0.0000 p=0.0000
+[stead 39/48] d=32.4km z=11.8km ref z=8.0301 p=11.3679
+[stead 40/48] d=39.7km z=50.7km ref z=0.0013 p=0.0013
+[stead 41/48] d=49.4km z=12.8km ref z=0.0006 p=0.3372
+[stead 42/48] d=31.9km z=10.3km ref z=0.4902 p=0.9378
+[stead 43/48] d=14.1km z=13.3km ref z=0.0000 p=0.0000
+[stead 44/48] d=28.6km z=59.4km ref z=0.0001 p=0.0002
+[stead 45/48] d=37.8km z=17.5km ref z=4.1363 p=6.4512
+[stead 46/48] d=24.0km z=53.1km ref z=0.0001 p=0.0000
+[stead 47/48] d=56.2km z=47.7km ref z=0.0029 p=0.0030
+[stead 48/48] d=95.6km z=9.8km ref z=1.0308 p=2.1753
+[proof] synthetic full compare...
+[synth 1/32] zh_wave=0.977 pe_wave=0.937 gn=0.155
+[synth 2/32] zh_wave=0.966 pe_wave=0.941 gn=0.143
+[synth 3/32] zh_wave=1.363 pe_wave=1.041 gn=0.141
+[synth 4/32] zh_wave=1.080 pe_wave=0.968 gn=0.101
+[synth 5/32] zh_wave=1.119 pe_wave=1.023 gn=0.236
+[synth 6/32] zh_wave=0.933 pe_wave=0.916 gn=0.121
+[synth 7/32] zh_wave=1.039 pe_wave=0.927 gn=0.027
+[synth 8/32] zh_wave=1.215 pe_wave=0.992 gn=0.024
+[synth 9/32] zh_wave=0.897 pe_wave=1.031 gn=0.418
+[synth 10/32] zh_wave=1.009 pe_wave=0.949 gn=0.208
+[synth 11/32] zh_wave=0.933 pe_wave=0.940 gn=0.150
+[synth 12/32] zh_wave=1.016 pe_wave=0.941 gn=0.105
+[synth 13/32] zh_wave=0.880 pe_wave=0.977 gn=0.321
+[synth 14/32] zh_wave=1.156 pe_wave=0.986 gn=0.076
+[synth 15/32] zh_wave=1.356 pe_wave=1.126 gn=0.358
+[synth 16/32] zh_wave=1.265 pe_wave=1.045 gn=0.237
+[synth 17/32] zh_wave=1.261 pe_wave=1.026 gn=0.200
+[synth 18/32] zh_wave=1.082 pe_wave=0.944 gn=0.037
+[synth 19/32] zh_wave=1.084 pe_wave=0.959 gn=0.020
+[synth 20/32] zh_wave=1.045 pe_wave=0.971 gn=0.045
+[synth 21/32] zh_wave=0.942 pe_wave=0.907 gn=0.057
+[synth 22/32] zh_wave=0.946 pe_wave=0.938 gn=0.165
+[synth 23/32] zh_wave=1.111 pe_wave=0.993 gn=0.078
+[synth 24/32] zh_wave=1.182 pe_wave=0.974 gn=0.020
+[synth 25/32] zh_wave=1.549 pe_wave=1.178 gn=0.350
+[synth 26/32] zh_wave=1.280 pe_wave=1.006 gn=0.094
+[synth 27/32] zh_wave=1.102 pe_wave=0.978 gn=0.023
+[synth 28/32] zh_wave=1.184 pe_wave=0.976 gn=0.015
+[synth 29/32] zh_wave=1.106 pe_wave=0.961 gn=0.007
+[synth 30/32] zh_wave=1.034 pe_wave=1.004 gn=0.347
+[synth 31/32] zh_wave=0.936 pe_wave=0.917 gn=0.022
+[synth 32/32] zh_wave=1.116 pe_wave=0.967 gn=0.043
+{
+  "stead_summary": {
+    "n": 48,
+    "pick_mae_p": 0.9421874999999998,
+    "pick_mae_s": 0.156382978723404,
+    "zhizi_refined_tt_mean": 3.5296413205911015,
+    "perturb_refined_tt_mean": 11.219710501969706,
+    "zhizi_refine_win_frac": 0.7708333333333334,
+    "wilcoxon_zhizi_vs_perturb_refined_tt": {
+      "n": 48,
+      "w_min": 229.0,
+      "w_pos": 229.0,
+      "w_neg": 947.0,
+      "z_approx": -3.682099699196685,
+      "p_approx_two_sided": 0.00011566045420489036,
+      "mean_delta_a_minus_b": -7.690069181378604
+    }
+  },
+  "synth_summary": {
+    "n": 32,
+    "means": {
+      "zhizi_wave": 1.098849793896079,
+      "perturb_wave": 0.982438649982214,
+      "zhizi_init": 0.6611104169860482,
+      "perturb_init": 0.17637092771474272,
+      "gn_tt": 0.13579009441309609,
+      "lbfgs_tt": 0.20057974464725703,
+      "adam_tt": 1.5969993639737368
+    },
+    "medians": {
+      "zhizi_wave": 1.0831574201583862,
+      "perturb_wave": 0.9725323617458344,
+      "zhizi_init": 0.6414373517036438,
+      "perturb_init": 0.14029037207365036,
+      "gn_tt": 0.10302283987402916,
+      "lbfgs_tt": 0.18527187407016754,
+      "adam_tt": 1.7069845795631409
+    },
+    "zhizi_wave_better_than_perturb_frac": 0.09375,
+    "wilcoxon_zhizi_wave_vs_perturb_wave": {
+      "n": 32,
+      "w_min": 33.0,
+      "w_pos": 495.0,
+      "w_neg": 33.0,
+      "z_approx": -4.319455093839072,
+      "p_approx_two_sided": 7.820746579629412e-06,
+      "mean_delta_a_minus_b": 0.11641114391386509
+    },
+    "wilcoxon_zhizi_wave_vs_gn": {
+      "n": 32,
+      "w_min": 0.0,
+      "w_pos": 528.0,
+      "w_neg": 0.0,
+      "z_approx": -4.936520107244654,
+      "p_approx_two_sided": 3.9764420713463787e-07,
+      "mean_delta_a_minus_b": 0.963059699482983
+    }
+  },
+  "latent_n": 8,
+  "verdict": {
+    "stead_geom_gate": "PASS",
+    "route_a2_wave_init": "FAIL",
+    "absolute_tt_oracle": "GN/LBFGS still lower VpRMSE on synth travel-time oracle; Zhizi claim is FWI-lite init (Route A2), not TT-oracle solve."
+  }
+}
+[proof] -> outputs/proof_suite_phase_c
+[phase-c] /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/run_interpret_suite.py --checkpoint outputs/run20/20_wrongpeak_sharp/best.pt --physics-head outputs/zhizi_inversion_mixed_geo/best_physics_head.pt --output-dir outputs/interpret_suite_phase_c --device cuda
+[interpret] kernel obliquity + diff...
+inotify_add_watch(/home/bob/.config/ibus/bus/e2ad256fc2f545e38fe973bd621ce78e-unix-0) failed: (No space left on device)
+[interpret] picking principle compare...
+[interpret] kernel contribution panels (run20)...
+[interpret] bridge latent panels...
+[interpret] inversion init→refine...
+{
+  "kernel": {
+    "chi_mean_causal": 0.7460175156593323,
+    "mean_abs_kernel_diff": 0.7620272040367126,
+    "figures": [
+      "outputs/interpret_suite_phase_c/kernel_obliquity_diff.png",
+      "outputs/interpret_suite_phase_c/kernel_row_slice.png"
+    ]
+  },
+  "picking_delta": {
+    "det_f1": 0.0020927960090827424,
+    "p_f1": -0.033952444950457905,
+    "s_f1": -0.021503411065077693
+  },
+  "rho_cases": 4,
+  "inversion": {
+    "run20": {
+      "mean_zhizi_wave": 0.9244259316474199,
+      "mean_perturb_wave": 0.982438649982214,
+      "win_frac": 0.9375
+    },
+    "fresnel": {
+      "mean_zhizi_wave": 0.9368581119924784,
+      "win_frac": 0.90625
+    }
+  },
+  "out": "outputs/interpret_suite_phase_c"
+}
+[interpret] -> outputs/interpret_suite_phase_c
+{
+  "pick_checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+  "phase": "C_mixed_geo_only",
+  "macro_head": "outputs/zhizi_inversion_mixed_geo/best_physics_head.pt",
+  "proof": {
+    "checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+    "physics_head": "outputs/zhizi_inversion_mixed_geo/best_physics_head.pt",
+    "head_mode": "macro",
+    "training_curves": "outputs/proof_suite_phase_c/training_curves.png",
+    "stead_summary": {
+      "n": 48,
+      "pick_mae_p": 0.9421874999999998,
+      "pick_mae_s": 0.156382978723404,
+      "zhizi_refined_tt_mean": 3.5296413205911015,
+      "perturb_refined_tt_mean": 11.219710501969706,
+      "zhizi_refine_win_frac": 0.7708333333333334,
+      "wilcoxon_zhizi_vs_perturb_refined_tt": {
+        "n": 48,
+        "w_min": 229.0,
+        "w_pos": 229.0,
+        "w_neg": 947.0,
+        "z_approx": -3.682099699196685,
+        "p_approx_two_sided": 0.00011566045420489036,
+        "mean_delta_a_minus_b": -7.690069181378604
+      }
+    },
+    "synth_summary": {
+      "n": 32,
+      "means": {
+        "zhizi_wave": 1.098849793896079,
+        "perturb_wave": 0.982438649982214,
+        "zhizi_init": 0.6611104169860482,
+        "perturb_init": 0.17637092771474272,
+        "gn_tt": 0.13579009441309609,
+        "lbfgs_tt": 0.20057974464725703,
+        "adam_tt": 1.5969993639737368
+      },
+      "medians": {
+        "zhizi_wave": 1.0831574201583862,
+        "perturb_wave": 0.9725323617458344,
+        "zhizi_init": 0.6414373517036438,
+        "perturb_init": 0.14029037207365036,
+        "gn_tt": 0.10302283987402916,
+        "lbfgs_tt": 0.18527187407016754,
+        "adam_tt": 1.7069845795631409
+      },
+      "zhizi_wave_better_than_perturb_frac": 0.09375,
+      "wilcoxon_zhizi_wave_vs_perturb_wave": {
+        "n": 32,
+        "w_min": 33.0,
+        "w_pos": 495.0,
+        "w_neg": 33.0,
+        "z_approx": -4.319455093839072,
+        "p_approx_two_sided": 7.820746579629412e-06,
+        "mean_delta_a_minus_b": 0.11641114391386509
+      },
+      "wilcoxon_zhizi_wave_vs_gn": {
+        "n": 32,
+        "w_min": 0.0,
+        "w_pos": 528.0,
+        "w_neg": 0.0,
+        "z_approx": -4.936520107244654,
+        "p_approx_two_sided": 3.9764420713463787e-07,
+        "mean_delta_a_minus_b": 0.963059699482983
+      }
+    },
+    "latent_n": 8,
+    "verdict": {
+      "stead_geom_gate": "PASS",
+      "route_a2_wave_init": "FAIL",
+      "absolute_tt_oracle": "GN/LBFGS still lower VpRMSE on synth travel-time oracle; Zhizi claim is FWI-lite init (Route A2), not TT-oracle solve."
+    }
+  }
+}
+[phase-c] -> /media/bob/Work/TRELLIS/HNF/outputs/phase_c_report.json

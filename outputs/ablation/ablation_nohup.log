@@ -1,0 +1,72 @@
+[ablation] baseline run7 test P+S = 1.7752
+[ablation] START 01_seq800  resume=outputs/stead_hnf_picking_run7/best.pt
+  /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/train_stead_picking.py --seq-len 800 --batch-size 12 --grad-accum-steps 4 --epochs 8 --num-workers 0 --embed-dim 64 --num-shared-layers 2 --num-branch-layers 2 --lr 0.0005 --pick-pos-weight 25 --label-sigma-sec 0.4 --local-window-sec 15.0 --seed 42 --pick-head-hidden 24 --pick-head-kernel 7 --s-pick-loss-weight 1.0 --focal-gamma 0.0 --output-dir /media/bob/Work/TRELLIS/HNF/outputs/ablation/01_seq800 --resume outputs/stead_hnf_picking_run7/best.pt
+[STEAD-HNF-PHYS] resumed from outputs/stead_hnf_picking_run7/best.pt  src_epoch=7  src_score=0.8795
+[STEAD-HNF-PHYS] device=cuda params=65631 train=360000 val=25638 test=126566 seq_len=800 bs=12 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0 seed=42 lr=0.0005 per_time_det=False focal=0.0
+ep 001  train_loss=2.1722  val_loss=2.0969  det_f1=0.9839  p_f1=0.7834  s_f1=0.8338  p_mae=0.068s  s_mae=0.099s  score=0.8670
+ep 002  train_loss=2.0887  val_loss=2.0730  det_f1=0.9901  p_f1=0.7595  s_f1=0.8153  p_mae=0.071s  s_mae=0.098s  score=0.8549
+ep 003  train_loss=2.0686  val_loss=2.0604  det_f1=0.9905  p_f1=0.7827  s_f1=0.7995  p_mae=0.076s  s_mae=0.101s  score=0.8576
+ep 004  train_loss=2.0537  val_loss=2.0610  det_f1=0.9888  p_f1=0.8082  s_f1=0.8191  p_mae=0.070s  s_mae=0.098s  score=0.8720
+ep 005  train_loss=2.0434  val_loss=2.0470  det_f1=0.9892  p_f1=0.8250  s_f1=0.8336  p_mae=0.070s  s_mae=0.101s  score=0.8826
+ep 006  train_loss=2.0348  val_loss=2.0574  det_f1=0.9918  p_f1=0.7902  s_f1=0.7791  p_mae=0.071s  s_mae=0.099s  score=0.8537
+ep 007  train_loss=2.0282  val_loss=2.0468  det_f1=0.9910  p_f1=0.8227  s_f1=0.8039  p_mae=0.071s  s_mae=0.098s  score=0.8725
+ep 008  train_loss=2.0240  val_loss=2.0426  det_f1=0.9907  p_f1=0.8012  s_f1=0.8087  p_mae=0.070s  s_mae=0.099s  score=0.8669
+[STEAD-HNF-PHYS] done  det_f1=0.9889  p_f1=0.9045  s_f1=0.9043  p_mae=0.070s  s_mae=0.101s
+[ablation] KEPT 01_seq800  P=0.9045  S=0.9043  sum=1.8088
+[ablation] START 02_per_time_det  resume=scratch
+  /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/train_stead_picking.py --seq-len 800 --batch-size 12 --grad-accum-steps 4 --epochs 8 --num-workers 0 --embed-dim 64 --num-shared-layers 2 --num-branch-layers 2 --lr 0.0005 --pick-pos-weight 25 --label-sigma-sec 0.4 --local-window-sec 15.0 --seed 42 --pick-head-hidden 24 --pick-head-kernel 7 --s-pick-loss-weight 1.0 --focal-gamma 0.0 --output-dir /media/bob/Work/TRELLIS/HNF/outputs/ablation/02_per_time_det --per-time-det
+[STEAD-HNF-PHYS] device=cuda params=61647 train=360000 val=25638 test=126566 seq_len=800 bs=12 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0 seed=42 lr=0.0005 per_time_det=True focal=0.0
+ep 001  train_loss=2.8922  val_loss=2.6146  det_f1=0.7385  p_f1=0.7425  s_f1=0.8214  p_mae=0.092s  s_mae=0.122s  score=0.7675
+ep 002  train_loss=2.5589  val_loss=2.5607  det_f1=0.7383  p_f1=0.7704  s_f1=0.8276  p_mae=0.085s  s_mae=0.110s  score=0.7788
+ep 003  train_loss=2.5104  val_loss=2.5043  det_f1=0.7391  p_f1=0.8166  s_f1=0.8219  p_mae=0.084s  s_mae=0.107s  score=0.7925
+ep 004  train_loss=2.4778  val_loss=2.5050  det_f1=0.7384  p_f1=0.8321  s_f1=0.8218  p_mae=0.084s  s_mae=0.107s  score=0.7974
+ep 005  train_loss=2.4587  val_loss=2.4888  det_f1=0.7383  p_f1=0.8026  s_f1=0.8228  p_mae=0.077s  s_mae=0.104s  score=0.7879
+ep 006  train_loss=2.4456  val_loss=2.4832  det_f1=0.7383  p_f1=0.8370  s_f1=0.8207  p_mae=0.077s  s_mae=0.104s  score=0.7987
+ep 007  train_loss=2.4368  val_loss=2.4809  det_f1=0.7383  p_f1=0.8217  s_f1=0.8341  p_mae=0.076s  s_mae=0.103s  score=0.7980
+ep 008  train_loss=2.4315  val_loss=2.4919  det_f1=0.7382  p_f1=0.8155  s_f1=0.8215  p_mae=0.075s  s_mae=0.104s  score=0.7918
+[STEAD-HNF-PHYS] done  det_f1=0.8976  p_f1=0.9112  s_f1=0.9005  p_mae=0.077s  s_mae=0.105s
+[ablation] KEPT 02_per_time_det  P=0.9112  S=0.9005  sum=1.8117
+[ablation] START 03_focal_sharp  resume=/media/bob/Work/TRELLIS/HNF/outputs/ablation/02_per_time_det/best.pt
+  /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/train_stead_picking.py --seq-len 800 --batch-size 12 --grad-accum-steps 4 --epochs 8 --num-workers 0 --embed-dim 64 --num-shared-layers 2 --num-branch-layers 2 --lr 0.0005 --pick-pos-weight 25 --label-sigma-sec 0.28 --local-window-sec 15.0 --seed 42 --pick-head-hidden 24 --pick-head-kernel 7 --s-pick-loss-weight 1.0 --focal-gamma 2.0 --output-dir /media/bob/Work/TRELLIS/HNF/outputs/ablation/03_focal_sharp --per-time-det --resume /media/bob/Work/TRELLIS/HNF/outputs/ablation/02_per_time_det/best.pt
+[STEAD-HNF-PHYS] resumed from /media/bob/Work/TRELLIS/HNF/outputs/ablation/02_per_time_det/best.pt  src_epoch=6  src_score=0.7987
+[STEAD-HNF-PHYS] device=cuda params=61647 train=360000 val=25638 test=126566 seq_len=800 bs=12 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0 seed=42 lr=0.0005 per_time_det=True focal=2.0
+ep 001  train_loss=0.7192  val_loss=0.7504  det_f1=0.7383  p_f1=0.7519  s_f1=0.7668  p_mae=0.307s  s_mae=0.311s  score=0.7523
+ep 002  train_loss=0.7019  val_loss=0.7485  det_f1=0.7385  p_f1=0.7758  s_f1=0.7397  p_mae=0.315s  s_mae=0.336s  score=0.7513
+ep 003  train_loss=0.6859  val_loss=0.7214  det_f1=0.7390  p_f1=0.8052  s_f1=0.7298  p_mae=0.314s  s_mae=0.303s  score=0.7580
+ep 004  train_loss=0.6728  val_loss=0.7171  det_f1=0.7398  p_f1=0.8082  s_f1=0.7687  p_mae=0.332s  s_mae=0.340s  score=0.7722
+ep 005  train_loss=0.6646  val_loss=0.7217  det_f1=0.7402  p_f1=0.8126  s_f1=0.7340  p_mae=0.353s  s_mae=0.326s  score=0.7623
+ep 006  train_loss=0.6583  val_loss=0.7074  det_f1=0.7409  p_f1=0.8106  s_f1=0.7396  p_mae=0.365s  s_mae=0.348s  score=0.7637
+ep 007  train_loss=0.6539  val_loss=0.7123  det_f1=0.7416  p_f1=0.7946  s_f1=0.7441  p_mae=0.372s  s_mae=0.335s  score=0.7601
+ep 008  train_loss=0.6512  val_loss=0.7266  det_f1=0.7415  p_f1=0.7853  s_f1=0.7255  p_mae=0.372s  s_mae=0.343s  score=0.7508
+Traceback (most recent call last):
+  File "/media/bob/Work/TRELLIS/HNF/train_stead_picking.py", line 470, in <module>
+    train()
+  File "/media/bob/Work/TRELLIS/HNF/train_stead_picking.py", line 441, in train
+    ckpt = torch.load(out_dir / "best.pt", map_location=device, weights_only=False)
+  File "/home/bob/anaconda3/lib/python3.8/site-packages/torch/serialization.py", line 1065, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/bob/anaconda3/lib/python3.8/site-packages/torch/serialization.py", line 468, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/bob/anaconda3/lib/python3.8/site-packages/torch/serialization.py", line 449, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: '/media/bob/Work/TRELLIS/HNF/outputs/ablation/03_focal_sharp/best.pt'
+[ablation] FAILED 03_focal_sharp: Command '['/home/bob/anaconda3/bin/python', '/media/bob/Work/TRELLIS/HNF/train_stead_picking.py', '--seq-len', '800', '--batch-size', '12', '--grad-accum-steps', '4', '--epochs', '8', '--num-workers', '0', '--embed-dim', '64', '--num-shared-layers', '2', '--num-branch-layers', '2', '--lr', '0.0005', '--pick-pos-weight', '25', '--label-sigma-sec', '0.28', '--local-window-sec', '15.0', '--seed', '42', '--pick-head-hidden', '24', '--pick-head-kernel', '7', '--s-pick-loss-weight', '1.0', '--focal-gamma', '2.0', '--output-dir', '/media/bob/Work/TRELLIS/HNF/outputs/ablation/03_focal_sharp', '--per-time-det', '--resume', '/media/bob/Work/TRELLIS/HNF/outputs/ablation/02_per_time_det/best.pt']' returned non-zero exit status 1.
+[ablation] START 04_deep96  resume=scratch
+  /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/train_stead_picking.py --seq-len 800 --batch-size 12 --grad-accum-steps 4 --epochs 8 --num-workers 0 --embed-dim 96 --num-shared-layers 3 --num-branch-layers 3 --lr 0.0005 --pick-pos-weight 25 --label-sigma-sec 0.4 --local-window-sec 15.0 --seed 42 --pick-head-hidden 24 --pick-head-kernel 7 --s-pick-loss-weight 1.0 --focal-gamma 0.0 --output-dir /media/bob/Work/TRELLIS/HNF/outputs/ablation/04_deep96 --per-time-det
+[STEAD-HNF-PHYS] device=cuda params=180440 train=360000 val=25638 test=126566 seq_len=800 bs=12 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0 seed=42 lr=0.0005 per_time_det=True focal=0.0
+ep 001  train_loss=2.9143  val_loss=2.6249  det_f1=0.7403  p_f1=0.7587  s_f1=0.8110  p_mae=0.095s  s_mae=0.109s  score=0.7700
+ep 002  train_loss=2.5413  val_loss=2.5603  det_f1=0.7382  p_f1=0.7892  s_f1=0.8203  p_mae=0.091s  s_mae=0.107s  score=0.7826
+ep 003  train_loss=2.4994  val_loss=2.5163  det_f1=0.7388  p_f1=0.8070  s_f1=0.8380  p_mae=0.085s  s_mae=0.106s  score=0.7946
+ep 004  train_loss=2.4738  val_loss=2.5448  det_f1=0.7382  p_f1=0.7707  s_f1=0.8063  p_mae=0.081s  s_mae=0.106s  score=0.7717
+ep 005  train_loss=2.4556  val_loss=2.5032  det_f1=0.7382  p_f1=0.8154  s_f1=0.8363  p_mae=0.081s  s_mae=0.104s  score=0.7966
+ep 006  train_loss=2.4422  val_loss=2.4936  det_f1=0.7382  p_f1=0.8161  s_f1=0.8264  p_mae=0.079s  s_mae=0.103s  score=0.7936
+ep 007  train_loss=2.4320  val_loss=2.4729  det_f1=0.7382  p_f1=0.8254  s_f1=0.8222  p_mae=0.078s  s_mae=0.103s  score=0.7953
+ep 008  train_loss=2.4256  val_loss=2.4842  det_f1=0.7382  p_f1=0.8133  s_f1=0.8255  p_mae=0.079s  s_mae=0.103s  score=0.7923
+[STEAD-HNF-PHYS] done  det_f1=0.8975  p_f1=0.9017  s_f1=0.9048  p_mae=0.081s  s_mae=0.105s
+[ablation] DROPPED 04_deep96  P=0.9017  S=0.9048  sum=1.8065  (best=1.8117)
+[ablation] START 05_pick_head48  resume=scratch
+  /home/bob/anaconda3/bin/python /media/bob/Work/TRELLIS/HNF/train_stead_picking.py --seq-len 800 --batch-size 12 --grad-accum-steps 4 --epochs 8 --num-workers 0 --embed-dim 64 --num-shared-layers 2 --num-branch-layers 2 --lr 0.0005 --pick-pos-weight 25 --label-sigma-sec 0.4 --local-window-sec 15.0 --seed 42 --pick-head-hidden 48 --pick-head-kernel 11 --s-pick-loss-weight 1.0 --focal-gamma 0.0 --output-dir /media/bob/Work/TRELLIS/HNF/outputs/ablation/05_pick_head48 --per-time-det
+[STEAD-HNF-PHYS] device=cuda params=107247 train=360000 val=25638 test=126566 seq_len=800 bs=12 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0 seed=42 lr=0.0005 per_time_det=True focal=0.0
+ep 001  train_loss=2.7596  val_loss=2.4838  det_f1=0.7383  p_f1=0.7768  s_f1=0.8589  p_mae=0.075s  s_mae=0.103s  score=0.7913
+ep 002  train_loss=2.4051  val_loss=2.4323  det_f1=0.7382  p_f1=0.7874  s_f1=0.8735  p_mae=0.069s  s_mae=0.102s  score=0.7997
+ep 003  train_loss=2.3659  val_loss=2.4099  det_f1=0.7382  p_f1=0.8380  s_f1=0.7929  p_mae=0.069s  s_mae=0.098s  score=0.7897
