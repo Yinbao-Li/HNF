@@ -753,7 +753,6 @@ def run_branch_parameter_ablation(
     device: torch.device,
     out_dir: Path,
 ) -> dict:
-    model, _ = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
     backbone, ckpt_args = load_picking_ckpt(Path(args.checkpoint), device, bypass_noise_cancel=True)
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     base = default_synth_model(device)
@@ -792,7 +791,7 @@ def run_branch_parameter_ablation(
         from hnf.stead_zhizi_inversion_dataset import encode_geometry_tensor
         geo = encode_geometry_tensor(dist, depth, device=device)
 
-    params = model.collect_kernel_params()
+    params = bridge.backbone.collect_kernel_params()
     p_gamma0 = float(params["p_branch_0"]["gamma"])
     p_omega0 = float(params["p_branch_0"]["omega"])
     s_gamma0 = float(params["s_branch_0"]["gamma"])
@@ -812,19 +811,21 @@ def run_branch_parameter_ablation(
         rows = []
         krows = []
         for val in vals:
-            m = copy.deepcopy(model).to(device)
+            pert_bridge = copy.deepcopy(bridge).to(device)
             if key == "p_gamma0":
-                m.p_layers[0].kernel.gamma.data.fill_(float(val))
+                pert_bridge.backbone.p_layers[0].kernel.gamma.data.fill_(float(val))
             elif key == "p_omega0":
-                m.p_layers[0].kernel.omega.data.fill_(float(val))
+                pert_bridge.backbone.p_layers[0].kernel.omega.data.fill_(float(val))
             elif key == "s_gamma0":
-                m.s_layers[0].kernel.gamma.data.fill_(float(val))
+                pert_bridge.backbone.s_layers[0].kernel.gamma.data.fill_(float(val))
             elif key == "s_omega0":
-                m.s_layers[0].kernel.omega.data.fill_(float(val))
+                pert_bridge.backbone.s_layers[0].kernel.omega.data.fill_(float(val))
             with torch.no_grad():
-                out = m.forward_explain(x, t, include_kernel_row=True, kernel_row_idx=p_idx, kernel_branch="p")
+                out = pert_bridge.backbone.forward_explain(
+                    x, t, include_kernel_row=True, kernel_row_idx=p_idx, kernel_branch="p"
+                )
                 t_event = t[0] if t.dim() == 3 else t
-                bout, _ = bridge.forward_event(x, t_event, include_picks=True, geo=geo)
+                bout, _ = pert_bridge.forward_event(x, t_event, include_picks=True, geo=geo)
             p_prob = torch.sigmoid(out["p"][0]).detach().cpu().numpy()
             s_prob = torch.sigmoid(out["s"][0]).detach().cpu().numpy()
             rho = out["rho"][0].detach().cpu().numpy()
@@ -838,6 +839,7 @@ def run_branch_parameter_ablation(
                 "rho_mean": float(np.mean(rho)),
                 "vp_mean": float(np.mean(vp)),
                 "vs_mean": float(np.mean(vs)),
+                "vpvs_mean": float(np.mean(vp / np.clip(vs, 1e-6, None))),
             })
             krows.append(krow / max(np.max(krow), 1e-6))
         results[key] = rows
@@ -888,7 +890,95 @@ def run_branch_parameter_ablation(
     p = out_dir / "branch_parameter_ablation.png"
     fig.savefig(p, dpi=145)
     plt.close(fig)
-    return {"figure": str(p), "trace": str(batch["trace_name"][0]), "results": results}
+    weak_bridge = True
+    max_vp_span = 0.0
+    max_vs_span = 0.0
+    for key_rows in results.values():
+        vp_vals = [r["vp_mean"] for r in key_rows]
+        vs_vals = [r["vs_mean"] for r in key_rows]
+        max_vp_span = max(max_vp_span, max(vp_vals) - min(vp_vals))
+        max_vs_span = max(max_vs_span, max(vs_vals) - min(vs_vals))
+    if max_vp_span > 0.05 or max_vs_span > 0.05:
+        weak_bridge = False
+    return {
+        "figure": str(p),
+        "trace": str(batch["trace_name"][0]),
+        "results": results,
+        "max_vp_span": float(max_vp_span),
+        "max_vs_span": float(max_vs_span),
+        "weak_bridge_propagation": weak_bridge,
+    }
+
+
+def plot_causal_chain_visuals(out_dir: Path, report: dict) -> dict:
+    cf = report.get("counterfactual", {})
+    lag = report.get("temporal_lag", {}).get("summary", {})
+    branch = report.get("branch_ablation", {})
+    ks = report.get("kernel_semantics", {})
+
+    fig, ax = plt.subplots(figsize=(10.5, 4.8))
+    ax.axis("off")
+    boxes = {
+        "kernel": (0.05, 0.68, 0.23, 0.18, "Kernel params\n"
+                   f"gamma {ks.get('gamma_range', [float('nan'), float('nan')])[0]:.2f}..{ks.get('gamma_range', [float('nan'), float('nan')])[1]:.2f}\n"
+                   f"omega {ks.get('omega_range', [float('nan'), float('nan')])[0]:.2f}..{ks.get('omega_range', [float('nan'), float('nan')])[1]:.2f}\n"
+                   f"c {ks.get('wave_speed_range', [float('nan'), float('nan')])[0]:.2f}..{ks.get('wave_speed_range', [float('nan'), float('nan')])[1]:.2f}"),
+        "wave": (0.37, 0.68, 0.24, 0.18, "Wave / latent response\n"
+                 f"rho(S)/noise ≈ {np.mean([c['rho_ratio_s_over_noise'] for c in report.get('kernel_contrib', {}).get('cases', [])]):.2f}\n"
+                 f"rho_p lag {lag.get('rho_p_lag', {}).get('mean', float('nan')):+.2f}s\n"
+                 f"rho_s lag {lag.get('rho_s_lag', {}).get('mean', float('nan')):+.2f}s"),
+        "pick": (0.69, 0.68, 0.24, 0.18, "Pick timing\n"
+                 f"P lag {lag.get('p_prob_lag', {}).get('mean', float('nan')):+.2f}s\n"
+                 f"S lag {lag.get('s_prob_lag', {}).get('mean', float('nan')):+.2f}s\n"
+                 "closest to GT among latent observables"),
+        "branch": (0.20, 0.28, 0.26, 0.20, "Branch ablation\n"
+                   f"max vp span {branch.get('max_vp_span', float('nan')):.4f}\n"
+                   f"max vs span {branch.get('max_vs_span', float('nan')):.4f}\n"
+                   + ("weak bridge propagation" if branch.get("weak_bridge_propagation", False) else "visible bridge propagation")),
+        "bridge": (0.56, 0.28, 0.30, 0.20, "Bridge / physical output\n"
+                   "kernel/pick perturbations\n"
+                   "affect timing and rows strongly,\n"
+                   "but propagate weakly to vp/vs in this local scan"),
+    }
+    for _, (x, y, w, h, text) in boxes.items():
+        ax.add_patch(plt.Rectangle((x, y), w, h, fc="white", ec="0.4", alpha=0.92))
+        ax.text(x + 0.015, y + h - 0.02, text, va="top", fontsize=9.5, family="monospace")
+    arrows = [
+        ((0.28, 0.77), (0.37, 0.77)),
+        ((0.61, 0.77), (0.69, 0.77)),
+        ((0.49, 0.68), (0.33, 0.48)),
+        ((0.79, 0.68), (0.71, 0.48)),
+        ((0.46, 0.38), (0.56, 0.38)),
+    ]
+    for (x0, y0), (x1, y1) in arrows:
+        ax.annotate("", xy=(x1, y1), xytext=(x0, y0), arrowprops=dict(arrowstyle="->", lw=1.6, color="0.25"))
+    ax.set_title("Interpretable causal chain summary", fontsize=13)
+    p_graph = out_dir / "causal_chain_graph.png"
+    fig.savefig(p_graph, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(9.5, 4.2))
+    ax.axis("off")
+    rows = cf.get("variants", [])
+    txt = ["Wave-level causal checks"]
+    for r in rows:
+        txt.append(
+            f"{r['name']}: rho_peak={r['rho_peak_sec']:.2f}s, "
+            f"P_peak={r['p_peak_sec']:.2f}s, S_peak={r['s_peak_sec']:.2f}s, "
+            f"rho_mean={r['rho_mean']:.2f}"
+        )
+    txt += [
+        "",
+        "Interpretation:",
+        "- amplitude scaling changes rho magnitude more than timing",
+        "- time shift moves rho and pick peaks together",
+        "- smoothing perturbs S much more strongly than P",
+    ]
+    ax.text(0.03, 0.96, "\n".join(txt), va="top", fontsize=10, family="monospace")
+    p_wave = out_dir / "causal_wave_summary.png"
+    fig.savefig(p_wave, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return {"graph": str(p_graph), "wave_summary": str(p_wave)}
 
 
 def plot_interpretability_summary_panel(out_dir: Path, report: dict) -> dict:
@@ -919,6 +1009,7 @@ def plot_interpretability_summary_panel(out_dir: Path, report: dict) -> dict:
                 "Interpretability summary",
                 f"- gamma range: {report.get('kernel_semantics', {}).get('gamma_range', [float('nan'), float('nan')])[0]:.2f} .. {report.get('kernel_semantics', {}).get('gamma_range', [float('nan'), float('nan')])[1]:.2f}",
                 f"- omega range: {report.get('kernel_semantics', {}).get('omega_range', [float('nan'), float('nan')])[0]:.2f} .. {report.get('kernel_semantics', {}).get('omega_range', [float('nan'), float('nan')])[1]:.2f}",
+                f"- wave_speed range: {report.get('kernel_semantics', {}).get('wave_speed_range', [float('nan'), float('nan')])[0]:.2f} .. {report.get('kernel_semantics', {}).get('wave_speed_range', [float('nan'), float('nan')])[1]:.2f}",
                 f"- mean rho(S)/rho(noise): {rho_ratio_mean:.2f}",
                 f"- p_prob lag mean: {lag.get('p_prob_lag', {}).get('mean', float('nan')):+.2f}s",
                 f"- s_prob lag mean: {lag.get('s_prob_lag', {}).get('mean', float('nan')):+.2f}s",
@@ -1061,6 +1152,9 @@ def main() -> None:
     print("[interpret] summary panel...", flush=True)
     report["summary_panel"] = plot_interpretability_summary_panel(out_dir, report)
 
+    print("[interpret] causal chain visuals...", flush=True)
+    report["causal_chain"] = plot_causal_chain_visuals(out_dir, report)
+
     # Merge fresnel invert compare if present
     inv_cmp = Path("outputs/huygens_fresnel/invert_compare.json")
     if inv_cmp.is_file():
@@ -1074,6 +1168,8 @@ def main() -> None:
         "counterfactual": "Amplitude scaling, time shifting, and smoothing reveal whether rho and pick curves follow energy, timing, or band-limited structure.",
         "temporal_lag": "Lag histograms quantify whether rho, envelopes, and pick probabilities peak before, on, or after GT P/S arrivals.",
         "branch_ablation": "Local scans of p/s branch gamma and omega show which parameter moves pick lag, kernel concentration, and downstream vp/vs most strongly.",
+        "branch_ablation_verdict": "After fixing the perturbed-bridge path, local p/s gamma/omega scans still change pick timing and kernel rows much more than downstream vp/vs; this suggests weak local propagation from branch-specific kernel knobs into the macro inversion head under the current architecture.",
+        "causal_chain": "Causal-chain visuals summarize how kernel parameters influence latent timing, pick timing, and only weakly propagate into vp/vs in local branch perturbations.",
         "obliquity": "Fresnel χ suppresses off-axis secondary sources; changes |K| mainly at longer lags.",
         "kernel_row": "Causal light-cone row at GT P shows which past samples contribute to pick.",
         "fresnel_verdict": "Fresnel picking: det +0.002, P/S −0.034/−0.022 vs run20; inversion still PASS but marginal.",
@@ -1092,6 +1188,9 @@ def main() -> None:
         "",
         "## Kernel gamma / omega semantics",
         f"- See `{Path(report['kernel_semantics'].get('figure', '')).name}`",
+        f"- gamma range: {report['kernel_semantics'].get('gamma_range')}",
+        f"- omega range: {report['kernel_semantics'].get('omega_range')}",
+        f"- wave_speed range: {report['kernel_semantics'].get('wave_speed_range')}",
         "",
         "## Latent rho",
         f"- S-window / noise rho ratio cases: {report['kernel_contrib'].get('n_cases')}",
@@ -1104,9 +1203,15 @@ def main() -> None:
         "",
         "## Branch parameter ablation",
         f"- See `{Path(report['branch_ablation'].get('figure', '')).name}`",
+        f"- weak bridge propagation: {report['branch_ablation'].get('weak_bridge_propagation')}",
+        f"- max vp span: {report['branch_ablation'].get('max_vp_span')}",
+        f"- max vs span: {report['branch_ablation'].get('max_vs_span')}",
         "",
         "## Summary panel",
         f"- See `{Path(report['summary_panel'].get('figure', '')).name}`",
+        "",
+        "## Causal chain",
+        f"- See `{Path(report['causal_chain'].get('graph', '')).name}`, `{Path(report['causal_chain'].get('wave_summary', '')).name}`",
         "",
         "## Joint latent / physical summary",
         f"- n cases: {report['joint_summary'].get('n')}",

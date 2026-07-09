@@ -379,6 +379,14 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 *Figure: one-page summary of the current interpretability chain: kernel parameter semantics (`gamma`, `omega`), counterfactual waveform response, temporal lag statistics, branch-level parameter ablation, latent-to-physical mapping, and `vp/vs` travel-time sensitivity (`interpretability_summary_panel.png`).*
 
+![Causal chain graph](docs/figures/interpret/causal_chain_graph.png)
+
+*Figure: structural causal-chain summary for the current HNF stack. The present evidence supports a strong path from `gamma/omega` to kernel support / oscillation, then to `rho(t)` and pick timing, but only a weak local propagation from branch-specific kernel perturbations into downstream `vp/vs` under the current macro-bridge design (`causal_chain_graph.png`).*
+
+![Causal wave summary](docs/figures/interpret/causal_wave_summary.png)
+
+*Figure: wave-level causal checks from counterfactual perturbations. Amplitude scaling mainly changes `rho` magnitude, time shifting moves `rho` and pick peaks together, and heavy smoothing disturbs S-related behavior more strongly than P (`causal_wave_summary.png`).*
+
 ### A. Kernel physics (Huygens vs Fresnel)
 
 ![Fresnel obliquity and kernel difference](docs/figures/interpret/kernel_obliquity_diff.png)
@@ -391,7 +399,7 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 ![Kernel gamma omega semantics](docs/figures/interpret/kernel_gamma_omega_semantics.png)
 
-*Figure: learned branch/layer kernel parameters (`gamma`, `omega`, `wave_speed`), plus explicit row scans showing that larger `gamma` narrows effective support while larger `omega` increases oscillatory phase structure (`kernel_gamma_omega_semantics.png`).*
+*Figure: learned branch/layer kernel parameters (`gamma`, `omega`, `wave_speed`), plus explicit row scans showing that larger `gamma` narrows effective support while larger `omega` increases oscillatory phase structure. In the current run the learned ranges are approximately `gamma ≈ 0.10..3.37`, `omega ≈ 0.93..5.03`, and `wave_speed ≈ 4.51..8.00` (`kernel_gamma_omega_semantics.png`).*
 
 ### B. Picking explainability (run20)
 
@@ -413,7 +421,7 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 ![Branch parameter ablation](docs/figures/interpret/branch_parameter_ablation.png)
 
-*Figure: local scans of `p_branch_0` / `s_branch_0` kernel parameters. Each row perturbs one `gamma` or `omega` while tracking pick lag, bridge `vp/vs` mean response, and the normalized kernel row. This turns the earlier correlation story into a local response analysis: which branch parameter mainly moves pick timing, which mainly reshapes the kernel support, and which barely propagates into downstream `vp/vs` (`branch_parameter_ablation.png`).*
+*Figure: local scans of `p_branch_0` / `s_branch_0` kernel parameters. Each row perturbs one `gamma` or `omega` while tracking pick lag, bridge `vp/vs` mean response, and the normalized kernel row. After fixing the perturbed-bridge path, the main conclusion still holds: these branch-local kernel knobs clearly move pick timing and kernel concentration, but only weakly propagate into downstream `vp/vs` in the current architecture (`branch_parameter_ablation.png`).*
 
 ### C. Bridge latents (macro head)
 
@@ -447,8 +455,50 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 | Counterfactual response | Distinguishes amplitude sensitivity from timing sensitivity |
 | Temporal lag stats | Quantifies whether latent peaks lead, align with, or lag GT arrivals |
 | Branch parameter ablation | Local parameter scan linking one kernel knob to lag, kernel shape, and bridge output |
+| Causal chain visuals | Summarize which links are strongly supported and which remain weak |
 | macro (scale, contrast, ratio) | Low-dim deformation of the reference layered model |
 | `vp` / `vs` sensitivity | Which layer-distance pairs mainly constrain P and S travel times |
+
+### F. Toward statistical knowledge mining
+
+The next step is no longer only visual interpretability, but **statistical
+knowledge mining** over:
+
+- latent quantities: `rho(t)`, `rho_mean`, `rho_peak`, lag statistics
+- kernel quantities: `gamma`, `omega`, `wave_speed`, branch-specific parameters
+- physical outputs: `vp`, `vs`, `vp/vs`
+- geometry / quality variables: distance, depth, support, uncertainty, TT misfit
+
+The new causal-chain views are intended to guide that mining stage: future
+statistical reports should test not only pairwise correlations, but also
+whether discovered regularities remain stable along the mechanism chain
+`gamma/omega -> kernel behavior -> rho/picks -> macro conditioning -> vp/vs`,
+with confidence intervals, p-values, and stability checks.
+
+The first pass of this pipeline is now implemented in
+`run_knowledge_mining.py`. It exports a unified sample-level table plus
+bootstrap/FDR-screened candidate relations. The current initial result is
+deliberately conservative: no stable event-level law has yet been confirmed in
+the screened set, and direct event-wise `gamma/omega -> vp/vs` correlation is
+not appropriate because those kernel parameters are global branch parameters in
+the current model. See `docs/KNOWLEDGE_MINING.md` for the current methodology
+and why future mining should emphasize local sensitivity, mediation, and
+cross-checkpoint comparisons.
+
+The second pass now adds partial correlation, distance/depth bucket summaries,
+and mediation-style chain screening. The current most interesting candidate is
+not a raw `rho_mean` relation, but a weak positive partial link from
+`rho_p_lag` to `refined_tt` after controlling for geometry and `pick_err_p`.
+It is still not FDR-significant, so it should be treated as a **candidate
+causal-chain signal**, not a confirmed law.
+
+The third pass adds robust trimming and a same-sample multi-head comparison.
+After trimming the strongest tail cases, the `rho_p_lag -> refined_tt`
+candidate becomes slightly stronger rather than disappearing, and
+`rho_mean -> vp_mean` also begins to show a weak edge signal. Neither is yet
+FDR-significant, but this shifts the most promising knowledge-mining direction
+from raw geometry or raw `rho_mean` trends toward **timing-aware latent
+features plus cross-head comparison**.
 
 ### E. Principle ablation: Huygens–Fresnel (completed)
 

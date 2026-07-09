@@ -1,0 +1,162 @@
+{
+  "checkpoint": "outputs/run20/20_wrongpeak_sharp/best.pt",
+  "physics_head": "outputs/zhizi_inversion_mixed_geo/best_physics_head.pt",
+  "n_rows": 72,
+  "relations": [
+    {
+      "x": "distance_km",
+      "y": "rho_mean",
+      "n": 72,
+      "spearman": 0.0027332947456428064,
+      "ci95": [
+        -0.25038637790186036,
+        0.23591081953774212
+      ],
+      "p_approx": 0.9818860250814159,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "source_depth_km",
+      "y": "rho_mean",
+      "n": 72,
+      "spearman": -0.017986425060690904,
+      "ci95": [
+        -0.2981156770278946,
+        0.22913864402958817
+      ],
+      "p_approx": 0.8812329085918212,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "rho_mean",
+      "y": "vp_mean",
+      "n": 72,
+      "spearman": 0.08521448324651103,
+      "ci95": [
+        -0.15806956866705013,
+        0.31923572729413136
+      ],
+      "p_approx": 0.4790417290046785,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "rho_mean",
+      "y": "vpvs_mean",
+      "n": 72,
+      "spearman": 0.08714386777284713,
+      "ci95": [
+        -0.15338005068497118,
+        0.30791455635648357
+      ],
+      "p_approx": 0.4691447317797627,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "kernel_vp",
+      "y": "vp_mean",
+      "n": 72,
+      "spearman": NaN,
+      "ci95": [
+        NaN,
+        NaN
+      ],
+      "p_approx": NaN,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "kernel_vs",
+      "y": "vs_mean",
+      "n": 72,
+      "spearman": NaN,
+      "ci95": [
+        NaN,
+        NaN
+      ],
+      "p_approx": NaN,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "p_prob_lag",
+      "y": "refined_tt",
+      "n": 72,
+      "spearman": 0.06755105353837723,
+      "ci95": [
+        -0.16672680456188355,
+        0.32590053664108243
+      ],
+      "p_approx": 0.5747149213934841,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "s_prob_lag",
+      "y": "refined_tt",
+      "n": 72,
+      "spearman": 0.12605413575344426,
+      "ci95": [
+        -0.11162623895979543,
+        0.37429914976165796
+      ],
+      "p_approx": 0.29506070332988654,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "pick_err_p",
+      "y": "refined_tt",
+      "n": 72,
+      "spearman": 0.03301284016996848,
+      "ci95": [
+        -0.22176786475080437,
+        0.2931489722217278
+      ],
+      "p_approx": 0.7839115280304191,
+      "fdr_q": 1.0
+    },
+    {
+      "x": "pick_err_s",
+      "y": "refined_tt",
+      "n": 72,
+      "spearman": 0.16242709622952065,
+      "ci95": [
+        -0.06700911733596425,
+        0.40168436656049855
+      ],
+      "p_approx": 0.17726605781136473,
+      "fdr_q": 1.0
+    }
+  ],
+  "overview": {
+    "figure": "outputs/knowledge_mining_v1/knowledge_overview.png"
+  },
+  "field_names": [
+    "trace_name",
+    "distance_km",
+    "source_depth_km",
+    "pick_err_p",
+    "pick_err_s",
+    "init_tt",
+    "refined_tt",
+    "rho_mean",
+    "rho_peak",
+    "rho_p_lag",
+    "rho_s_lag",
+    "env_p_lag",
+    "env_s_lag",
+    "p_prob_lag",
+    "s_prob_lag",
+    "gamma_p0",
+    "omega_p0",
+    "gamma_s0",
+    "omega_s0",
+    "kernel_vp",
+    "kernel_vs",
+    "vp_mean",
+    "vs_mean",
+    "vpvs_mean",
+    "vp_std_layers",
+    "vs_std_layers"
+  ],
+  "notes": {
+    "kernel_global": "Current gamma/omega/kernel_vp/kernel_vs are global learned branch parameters; event-level variation is expected mainly in rho/picks/bridge outputs.",
+    "causal_chain": "Subsequent mining should condition on the mechanism chain gamma/omega -> kernel behavior -> rho/picks -> macro conditioning -> vp/vs."
+  }
+}
