@@ -84,16 +84,19 @@ class ZhiziInversionBridge(nn.Module):
         infer_seq_len: int | None = 600,
         head_mode: str = "residual",
         geo_condition: bool = False,
+        predict_q: bool = False,
     ):
         super().__init__()
         self.backbone = backbone
         self.geo_condition = geo_condition
+        self.predict_q = bool(predict_q)
         self.physics_head = ZhiziPhysicsHead(
             embed_dim=embed_dim,
             n_layers=n_layers,
             hidden=hidden,
             mode=head_mode,
             geo_dim=2 if geo_condition else 0,
+            predict_q=self.predict_q,
         )
         self.n_layers = n_layers
         self.infer_seq_len = infer_seq_len
@@ -195,8 +198,10 @@ def load_inversion_bridge_from_checkpoint(
     if not geo_condition and isinstance(head_state.get("args"), dict):
         geo_condition = bool(head_state["args"].get("geo_condition", False))
     ckpt_mode = head_mode
+    predict_q = bool(head_state.get("predict_q", False))
     if isinstance(head_state.get("args"), dict):
         ckpt_mode = head_state["args"].get("head_mode", head_mode)
+        predict_q = bool(head_state["args"].get("predict_q", predict_q))
     bridge = ZhiziInversionBridge(
         backbone=backbone,
         n_layers=n_layers,
@@ -206,6 +211,7 @@ def load_inversion_bridge_from_checkpoint(
         infer_seq_len=infer_seq_len,
         head_mode=ckpt_mode,
         geo_condition=geo_condition,
+        predict_q=predict_q,
     ).to(device)
     load_physics_head_state(bridge.physics_head, head_state["physics_head"])
     bridge.eval()

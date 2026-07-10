@@ -791,16 +791,17 @@ def run_branch_parameter_ablation(
         from hnf.stead_zhizi_inversion_dataset import encode_geometry_tensor
         geo = encode_geometry_tensor(dist, depth, device=device)
 
-    params = bridge.backbone.collect_kernel_params()
-    p_gamma0 = float(params["p_branch_0"]["gamma"])
-    p_omega0 = float(params["p_branch_0"]["omega"])
-    s_gamma0 = float(params["s_branch_0"]["gamma"])
-    s_omega0 = float(params["s_branch_0"]["omega"])
+    # Scan raw Parameter values (gamma uses softplus; collect_kernel_params returns effective).
+    # Also perturb the last branch layer, which owns the kernel_contrib row used for visualization.
+    p_gamma_raw = float(bridge.backbone.p_layers[-1].kernel.gamma.detach().cpu())
+    p_omega_raw = float(bridge.backbone.p_layers[-1].kernel.omega.detach().cpu())
+    s_gamma_raw = float(bridge.backbone.s_layers[-1].kernel.gamma.detach().cpu())
+    s_omega_raw = float(bridge.backbone.s_layers[-1].kernel.omega.detach().cpu())
     scans = {
-        "p_gamma0": np.linspace(max(0.05, p_gamma0 * 0.6), p_gamma0 * 1.4, args.n_ablation_scans),
-        "p_omega0": np.linspace(max(0.05, p_omega0 * 0.6), p_omega0 * 1.4, args.n_ablation_scans),
-        "s_gamma0": np.linspace(max(0.05, s_gamma0 * 0.6), s_gamma0 * 1.4, args.n_ablation_scans),
-        "s_omega0": np.linspace(max(0.05, s_omega0 * 0.6), s_omega0 * 1.4, args.n_ablation_scans),
+        "p_gamma0": np.linspace(p_gamma_raw - 2.0, p_gamma_raw + 2.0, args.n_ablation_scans),
+        "p_omega0": np.linspace(max(0.05, p_omega_raw * 0.2), p_omega_raw * 2.0, args.n_ablation_scans),
+        "s_gamma0": np.linspace(s_gamma_raw - 2.0, s_gamma_raw + 2.0, args.n_ablation_scans),
+        "s_omega0": np.linspace(max(0.05, s_omega_raw * 0.2), s_omega_raw * 2.0, args.n_ablation_scans),
     }
     results = {}
     kernel_rows = {}
@@ -813,13 +814,17 @@ def run_branch_parameter_ablation(
         for val in vals:
             pert_bridge = copy.deepcopy(bridge).to(device)
             if key == "p_gamma0":
-                pert_bridge.backbone.p_layers[0].kernel.gamma.data.fill_(float(val))
+                for layer in pert_bridge.backbone.p_layers:
+                    layer.kernel.gamma.data.fill_(float(val))
             elif key == "p_omega0":
-                pert_bridge.backbone.p_layers[0].kernel.omega.data.fill_(float(val))
+                for layer in pert_bridge.backbone.p_layers:
+                    layer.kernel.omega.data.fill_(float(val))
             elif key == "s_gamma0":
-                pert_bridge.backbone.s_layers[0].kernel.gamma.data.fill_(float(val))
+                for layer in pert_bridge.backbone.s_layers:
+                    layer.kernel.gamma.data.fill_(float(val))
             elif key == "s_omega0":
-                pert_bridge.backbone.s_layers[0].kernel.omega.data.fill_(float(val))
+                for layer in pert_bridge.backbone.s_layers:
+                    layer.kernel.omega.data.fill_(float(val))
             with torch.no_grad():
                 out = pert_bridge.backbone.forward_explain(
                     x, t, include_kernel_row=True, kernel_row_idx=p_idx, kernel_branch="p"
@@ -832,8 +837,13 @@ def run_branch_parameter_ablation(
             krow = out["kernel_contrib"][0].detach().cpu().numpy()
             vp = bout.vp[0].detach().cpu().numpy()
             vs = bout.vs[0].detach().cpu().numpy()
+            if key.startswith("p_"):
+                eff = float(pert_bridge.backbone.p_layers[-1].kernel.effective_gamma().detach().cpu()) if "gamma" in key else float(val)
+            else:
+                eff = float(pert_bridge.backbone.s_layers[-1].kernel.effective_gamma().detach().cpu()) if "gamma" in key else float(val)
             rows.append({
                 "value": float(val),
+                "effective_value": eff,
                 "p_lag": float(t_sec[int(np.argmax(p_prob))] - gt_p),
                 "s_lag": float(t_sec[int(np.argmax(s_prob))] - gt_s),
                 "rho_mean": float(np.mean(rho)),

@@ -500,6 +500,95 @@ FDR-significant, but this shifts the most promising knowledge-mining direction
 from raw geometry or raw `rho_mean` trends toward **timing-aware latent
 features plus cross-head comparison**.
 
+The fourth pass (`run_knowledge_mining_cross.py`,
+`outputs/knowledge_mining_v4`) tests transfer across heads and checkpoints.
+Key result: `rho_p_lag -> refined_tt` is **not head-robust** (sign flips from
+`bridge_macro` to `stead_macro`), while `bridge_macro` and `mixed_geo` remain
+close in Vp/Vs. Branch-0 `gamma/omega` are nearly identical across
+`run19/20/21`, so those checkpoints alone cannot support kernel-parameter
+laws. Live ablation still shows only weak `omega -> pick lag` and near-zero
+local `gamma -> vp/vs` propagation. See `docs/KNOWLEDGE_MINING.md`.
+
+![Cross-head Vp/Vs heatmap](docs/figures/knowledge/cross_head_vpvs_heatmap.png)
+
+*Figure: same-event Vp/Vs across physics heads. `mixed_geo` tracks
+`bridge_macro` most closely; `stead_macro` is the clear outlier
+(`cross_head_vpvs_heatmap.png`).*
+
+![Live ablation sensitivity](docs/figures/knowledge/live_ablation_sensitivity.png)
+
+*Figure: live stronger branch ablation slopes. Only a weak
+`p_omega -> p_lag` effect appears; gamma-to-velocity local propagation remains
+near zero (`live_ablation_sensitivity.png`).*
+
+### G. Paper-scale follow-ups (clustering / SNR / attributes / Fig1)
+
+Paper-oriented runs are summarized in `docs/PAPER_ROADMAP.md`.
+
+![Fig1 HNF overview](docs/figures/fig1_hnf_overview.png)
+
+*Figure 1 concept board: Huygens secondary sources, HNF causal kernel formula,
+and end-to-end framework flowchart (`fig1_hnf_overview.png`).*
+
+![Fig5 SNR robustness](docs/figures/fig5_snr_robustness.png)
+
+*Figure 5 left: STEAD SNR sweep (n_pick=512, n_inv=128). P/S F1 degrade with
+noise; denoise-on helps most in the mid-SNR band (`fig5_snr_robustness.png`).*
+
+![Fig5 Ambon cross-region](docs/figures/fig5_ambon_cross_region.png)
+
+*Figure 5 middle: Ambon (Indonesia) catalog geometry + VELEST TT inversion
+(n=64). Gauss-Newton is most stable (100%); HNF-Adam succeeds on 50% but has
+the best median Vp RMSE when it converges (`fig5_ambon_cross_region.png`).*
+
+![Fig5 OBS picking compare](docs/figures/fig5_obs_picking_compare.png)
+
+*Figure 5 right: OBS picking compare (n=400, protocol v2). Fair zero-shot:
+EQT(STEAD) leads P-F1; PhaseNet(STEAD) matches on S; HNF trails both.
+OBS-pretrained EQT/PhaseNet (~0.66–0.68) are 4C domain references, not
+zero-shot (`fig5_obs_picking_compare.png`).*
+
+![Scene clustering](docs/figures/scene_clustering_robust.png)
+
+*Scene clustering after robust TT trim (n=380). Some relations are global
+(`noise_ratio -> pick_err_p`), others strengthen only inside specific clusters
+(`scene_clustering_robust.png`).*
+
+![Cluster rediscovery](docs/figures/cluster_rediscovery_summary.png)
+
+*Full cluster-conditioned rediscovery (35 candidates on n=380): 26 global /
+6 scene-specific / 3 rejected under CI+FDR (`cluster_rediscovery_summary.png`).*
+
+![Cross-head transfer](docs/figures/cross_head_transfer_summary.png)
+
+*Cross-head transfer (n=200 × 4 heads): `rho_p_lag→init_tt` is head-robust;
+`rho_mean→vp_mean` sign-flips across heads; `noise_ratio→pick_err_p` is
+head-independent (`cross_head_transfer_summary.png`).*
+
+![Fig4 method comparison](docs/figures/fig4_method_comparison.png)
+
+*Figure 4 board packaged from inv_full_compare + proof_suite assets
+(`fig4_method_comparison.png`).*
+
+![rho vs attributes](docs/figures/rho_vs_attributes_summary.png)
+
+*rho(t) vs classical attributes (n=300): strong window correlation with
+envelope / STA/LTA around P, and high peak-lag agreement with envelope
+(`rho_vs_attributes_summary.png`).*
+
+Key paper-scale findings:
+
+- `noise_ratio` from the Huygens noise-cancel branch is a useful QC latent
+  (global partial ≈ +0.17 to P pick error; CI excludes 0; head-independent)
+- `rho_p_lag -> init_tt` is supported after robust trim **and** transfers
+  across 4 physics heads (partial ≈ −0.42 to −0.47)
+- `rho_mean -> vp_mean` does **not** transfer (sign flips across heads)
+- full rediscovery on clusters was required (35-edge screen vs earlier 4)
+- Fig4 method board packaged; Q head train flag `--predict-q` wired
+- Ambon Indonesia catalog used for Fig5 cross-region TT (no waveforms)
+- OBS SeisBench chunk used for picking zero-shot vs EQT/PhaseNet; physical
+  density remains deferred
+
 ### E. Principle ablation: Huygens–Fresnel (completed)
 
 `python run_huygens_fresnel_iterate.py` replayed picking + macro inversion with `--principle huygens_fresnel`.

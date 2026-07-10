@@ -24,6 +24,7 @@ class PhysicsHeadOutput:
     vp_prior: torch.Tensor
     vs_prior: torch.Tensor
     logit_vs_ratio: torch.Tensor
+    q: torch.Tensor | None = None
 
 
 def bucket_rho_to_layers(
@@ -128,6 +129,7 @@ class ZhiziPhysicsHead(nn.Module):
         use_pick_times: bool = True,
         mode: str = "residual",
         geo_dim: int = 0,
+        predict_q: bool = False,
     ):
         super().__init__()
         if mode not in {"residual", "macro"}:
@@ -136,6 +138,7 @@ class ZhiziPhysicsHead(nn.Module):
         self.use_pick_times = use_pick_times
         self.mode = mode
         self.geo_dim = int(geo_dim)
+        self.predict_q = bool(predict_q)
         in_dim = 2 * embed_dim + n_layers + 2 + (2 if use_pick_times else 0) + self.geo_dim
         self.base_shift_max = 0.75
         self.inc_shift_max = 0.40
@@ -143,6 +146,7 @@ class ZhiziPhysicsHead(nn.Module):
         self.macro_scale_max = 0.20
         self.macro_contrast_max = 0.35
         self.macro_ratio_max = 0.08
+        self.macro_q_max = 0.35
 
         self.trunk = nn.Sequential(
             nn.Linear(in_dim, hidden),
@@ -151,10 +155,10 @@ class ZhiziPhysicsHead(nn.Module):
             nn.GELU(),
         )
         if mode == "macro":
-            out_dim = 3  # scale, contrast, ratio
+            out_dim = 3 + (1 if self.predict_q else 0)  # scale, contrast, ratio [, q_scale]
         else:
             n_inc = max(1, n_layers - 1)
-            out_dim = 1 + n_inc + n_layers  # base + vp increments + per-layer vs ratio logits
+            out_dim = 1 + n_inc + n_layers + (1 if self.predict_q else 0)
         self.out = nn.Linear(hidden, out_dim)
         nn.init.zeros_(self.out.weight)
         nn.init.zeros_(self.out.bias)
@@ -189,6 +193,7 @@ class ZhiziPhysicsHead(nn.Module):
         scaled_vp_base = vp_base * kernel_scale.unsqueeze(1)
         scaled_vs_base = vs_base * kernel_scale.unsqueeze(1)
 
+        q_out = None
         if self.mode == "macro":
             scale = 1.0 + self.macro_scale_max * torch.tanh(raw[:, 0:1])
             contrast = 1.0 + self.macro_contrast_max * torch.tanh(raw[:, 1:2])
@@ -201,18 +206,23 @@ class ZhiziPhysicsHead(nn.Module):
             ratio_logits = raw[:, 2:3].expand(b, self.n_layers)
             ratio = (ref_ratio + self.macro_ratio_max * torch.tanh(ratio_logits)).clamp(0.35, 0.75)
             vs = vp * ratio
+            if self.predict_q:
+                # global Q scale around a canonical crustal Q (~120)
+                q_scale = 1.0 + self.macro_q_max * torch.tanh(raw[:, 3:4])
+                q_out = (120.0 * q_scale).expand(b, self.n_layers).clamp(40.0, 400.0)
             return PhysicsHeadOutput(
                 vp=vp,
                 vs=vs,
                 vp_prior=scaled_vp_base,
                 vs_prior=scaled_vs_base,
                 logit_vs_ratio=ratio_logits,
+                q=q_out,
             )
 
         n_inc = max(1, self.n_layers - 1)
         raw_base = raw[:, 0]
         raw_inc = raw[:, 1 : 1 + n_inc]
-        ratio_logits = raw[:, 1 + n_inc :]
+        ratio_logits = raw[:, 1 + n_inc : 1 + n_inc + self.n_layers]
         ref_inc = (ref_vp[1:] - ref_vp[:-1]).unsqueeze(0).expand(b, -1)
         scaled_ref_inc = ref_inc * kernel_scale.unsqueeze(1)
 
@@ -222,12 +232,17 @@ class ZhiziPhysicsHead(nn.Module):
 
         ratio = (ref_ratio + self.ratio_shift_max * torch.tanh(ratio_logits)).clamp(0.35, 0.75)
         vs = vp * ratio
+        if self.predict_q:
+            q_logit = raw[:, -1:]
+            q_scale = 1.0 + self.macro_q_max * torch.tanh(q_logit)
+            q_out = (120.0 * q_scale).expand(b, self.n_layers).clamp(40.0, 400.0)
         return PhysicsHeadOutput(
             vp=vp,
             vs=vs,
             vp_prior=scaled_vp_base,
             vs_prior=scaled_vs_base,
             logit_vs_ratio=ratio_logits,
+            q=q_out,
         )
 
     def earth(
@@ -236,11 +251,14 @@ class ZhiziPhysicsHead(nn.Module):
         depths: torch.Tensor,
         q: torch.Tensor,
     ) -> LayeredEarth1D:
+        q_use = output.q if output.q is not None else q
+        if output.q is not None and output.q.dim() > 1:
+            q_use = output.q[0]
         return LayeredEarth1D(
             depths=depths,
             vp=output.vp[0] if output.vp.dim() > 1 else output.vp,
             vs=output.vs[0] if output.vs.dim() > 1 else output.vs,
-            q=q,
+            q=q_use,
         )
 
 

@@ -228,3 +228,166 @@ heads induce noticeably different physical-output styles:
 
 This is exactly why `gamma/omega` or macro-head knowledge should eventually be
 mined **across models / checkpoints**, not only across events.
+
+## Fourth-pass update (cross-model)
+
+Pass 4 is implemented in `run_knowledge_mining_cross.py` and exported to
+`outputs/knowledge_mining_v4`. It adds:
+
+- ablation-derived sensitivity ranking from interpret-suite scans
+- live stronger ablation re-check on the same event
+- per-event multi-head Vp/Vs matrix + agreement
+- `rho_p_lag -> refined_tt` stability across heads
+- branch-0 kernel comparison across picking checkpoints (`run19/20/21`)
+
+Figures:
+
+- `docs/figures/knowledge/cross_head_vpvs_heatmap.png`
+- `docs/figures/knowledge/live_ablation_sensitivity.png`
+- `docs/figures/knowledge/ablation_sensitivity_ranking.png`
+
+### Main conclusions
+
+1. **Checkpoint kernels are nearly frozen across run19/20/21.**
+   Branch-0 `gamma/omega/wave_speed` for P and S differ only at the 1e-4 level.
+   Therefore S-only refine (`run21`) did **not** retune the branch-0 kernel
+   knobs in a statistically meaningful way. Cross-checkpoint mining of
+   `gamma/omega` cannot rely on these three picking checkpoints alone.
+
+2. **Head agreement is structured, not random.**
+   On the same 24-event slice:
+   - `bridge_macro` ↔ `mixed_geo`: Spearman ≈ `0.82`, MAE ≈ `0.17`
+   - `bridge_macro` ↔ `residual`: Spearman ≈ `0.68`, MAE ≈ `0.46`
+   - `stead_macro` is the outlier vs all others (MAE ≳ `1.0`)
+
+   This supports treating `mixed_geo` as a geo-conditioned refinement of the
+   macro family, while `stead_macro` occupies a different output regime.
+
+3. **`rho_p_lag -> refined_tt` is not head-robust.**
+   Partial correlations after controlling geometry and `pick_err_p`:
+   - `bridge_macro`: ≈ `+0.19`
+   - `residual`: ≈ `+0.14`
+   - `mixed_geo`: ≈ `-0.02`
+   - `stead_macro`: ≈ `-0.27`
+
+   Sign flips across heads. Therefore the Pass-2/3 candidate should be
+   downgraded from “promising general causal-chain signal” to
+   **head-specific / non-transferable candidate**.
+
+4. **Local `gamma/omega` ablation remains weak for physical outputs.**
+   Saved interpret-suite branch scans on the representative event were flat,
+   partly because earlier scans wrote *effective* gamma into the *raw*
+   Parameter (softplus mismatch) and only touched layer 0. That bug is now
+   fixed in `run_interpret_suite.py` (raw-parameter scans over all branch
+   layers). A live stronger scan still recovers only a weak
+   `p_omega -> p_lag` effect (lag span ≈ `0.075 s`) and near-zero
+   gamma → `vp/vs` propagation. This reinforces the architectural reading:
+   branch kernel knobs mainly reshape local timing/kernel rows, not the
+   macro inversion head’s velocity outputs.
+
+### Updated knowledge status
+
+| Claim | Status | Evidence |
+|------|--------|----------|
+| `rho_mean` is a geometric proxy | rejected | near-zero distance/depth correlations |
+| `rho_p_lag` predicts fit quality generally | rejected as general law | fails cross-head stability |
+| `mixed_geo` stays close to macro Vp/Vs | supported (descriptive) | high Spearman / low MAE |
+| `stead_macro` is an outlier head | supported (descriptive) | large Vp/Vs MAE vs others |
+| run21 retuned branch-0 gamma/omega | rejected | near-identical kernel params |
+| local gamma/omega → vp/vs | weak / unsupported | live ablation slopes near zero |
+
+### Next mining directions
+
+1. Mine **head-family differences** (macro vs residual vs geo vs STEAD-only)
+   with paired event deltas and bootstrap CIs, not only absolute means.
+2. For `gamma/omega`, use **controlled synthetic ablations** or intentionally
+   diversified checkpoints; current run19/20/21 are too close.
+3. Keep event-level STEAD mining focused on timing latents and QC variables,
+   but require **cross-head transfer** before claiming a new regularity.
+
+## Paper-scale update (clustering / noise / attributes)
+
+See `docs/PAPER_ROADMAP.md` for the full checklist. The important mining shift
+after larger-N runs is:
+
+1. **Scene clustering matters.** After robust trim (n=380), several relations
+   become CI-supported globally, and some strengthen only in specific clusters.
+2. **Noise-branch features help.** `noise_ratio` predicts P pick error and, in
+   some clusters, init TT misfit. Mining should keep noise-cancel enabled.
+3. **`rho(t)` is classically grounded.** On n=300 it correlates strongly with
+   envelope / STA/LTA around P, while remaining a Huygens-conditioned latent.
+
+## Cluster-conditioned full rediscovery
+
+Earlier paper clustering only re-tested **4** hand-picked relations. That is
+not a full rediscovery. `run_paper_cluster_rediscovery.py` re-screens a
+**35-edge** candidate graph on the same robust sample:
+
+- trim: `init_tt <= q95` → n=380
+- recluster after trim with `seed=11` (matches `cluster_report_robust.*`)
+- skip clusters with n<30 (C2 n=4)
+- support = bootstrap CI excludes 0 **and** FDR q≤0.10
+
+Outputs: `outputs/paper_cluster_rediscovery/` and
+`docs/figures/cluster_rediscovery_summary.png`.
+
+### Why re-run on clusters (not optional)
+
+Whole-sample mining mixes heterogeneous STEAD scenes. A law can be:
+
+- **global** (survives all-sample FDR+CI),
+- **scene-specific** (fails globally under controls, but supported inside
+  one or more eligible clusters),
+- or **rejected**.
+
+Without the cluster pass, scene-specific laws are invisible or washed out.
+The previous 4-relation cluster screen was only a pilot.
+
+### Label counts (current run)
+
+| Label | Count |
+|------|------:|
+| global | 26 |
+| scene-specific | 6 |
+| rejected | 3 |
+
+### Priority claims (for paper narrative)
+
+Keep these as the main mining claims (latent / QC / causal-chain):
+
+| Relation | Label | Notes |
+|----------|-------|-------|
+| `rho_p_lag -> init_tt` (partial) | global | ≈ −0.41; also in C1 |
+| `rho_mean -> vp_mean` (partial) | global | ≈ −0.29; stronger in C0/C3 |
+| `noise_ratio -> pick_err_p` (partial) | global | ≈ +0.17 |
+| `noise_ratio -> init_tt` (partial) | scene-specific | C1/C3 positive; pairwise global sign flips |
+| `rho_p_lag -> vp_mean` (partial) | scene-specific | C3 only |
+
+Downgrade / interpret cautiously:
+
+- very strong `rho_mean -> vpvs_mean` (≈ 0.73): likely **head-induced coupling**
+  until cross-head transfer is shown
+- geometry → `vp_mean` / `rho_mean` edges: expected geo conditioning, not new
+  Huygens physics
+
+### Cross-head transfer (priority table)
+
+Script: `run_paper_cross_head_transfer.py` → `outputs/paper_cross_head_transfer/`
+(n=200 head-forward events × 4 heads; QC law on full n=380).
+
+| Relation | Transfer label |
+|----------|----------------|
+| `rho_p_lag -> init_tt` | **head_robust** (all 4 heads, negative) |
+| `rho_mean -> vp_mean` | **sign_unstable** (macro + vs mixed/stead −) |
+| `rho_mean -> vpvs_mean` | head_robust* (3/4; residual Vp/Vs constant) |
+| `noise_ratio -> pick_err_p` | **head_independent_supported** |
+| `noise_ratio -> init_tt` | head_specific_or_weak on all-sample slice |
+
+Paper-facing keepers: `rho_p_lag→init_tt`, `noise_ratio→pick_err_p`.
+Downgrade `rho_mean→vp/vpvs` to head-family descriptive couplings.
+
+### Updated next steps
+
+1. Keep scene labels in any future STEAD mining export
+2. Do not claim scene-specific laws from C2-sized clusters
+3. External-dataset Fig5 still blocked (no Instance/DiTing loader/data)

@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-dir", default="outputs/zhizi_inversion_bridge")
     p.add_argument("--dataset", choices=["synthetic", "stead", "mixed"], default="synthetic")
     p.add_argument("--geo-condition", action="store_true", help="Condition macro head on distance/depth")
+    p.add_argument("--predict-q", action="store_true", help="Enable macro/residual Q scale output (~120)")
     p.add_argument("--resume-physics-head", default="", help="Optional prior physics head (strict=False)")
     p.add_argument("--n-train", type=int, default=120)
     p.add_argument("--n-val", type=int, default=24)
@@ -361,6 +362,7 @@ def main() -> None:
         infer_seq_len=args.infer_seq_len,
         head_mode=args.head_mode,
         geo_condition=args.geo_condition,
+        predict_q=args.predict_q,
     ).to(device)
 
     if args.resume_physics_head:
@@ -380,6 +382,7 @@ def main() -> None:
 
     print(
         f"[zhizi-inv] dataset={args.dataset} geo={args.geo_condition} "
+        f"predict_q={args.predict_q} "
         f"trainable params={bridge.trainable_parameter_count()} "
         f"total={bridge.total_parameter_count()}",
         flush=True,
@@ -477,6 +480,7 @@ def main() -> None:
                     "ckpt_args": ckpt_args,
                     "trainable_params": bridge.trainable_parameter_count(),
                     "geo_condition": args.geo_condition,
+                    "predict_q": args.predict_q,
                     "train_geo_only": args.train_geo_only,
                 },
                 out_dir / "best_physics_head.pt",
@@ -487,6 +491,7 @@ def main() -> None:
         "checkpoint": str(ckpt),
         "dataset": args.dataset,
         "geo_condition": args.geo_condition,
+        "predict_q": args.predict_q,
         "stead_quality_weighted": args.stead_quality_weighted,
         "trainable_params": bridge.trainable_parameter_count(),
         "total_params": bridge.total_parameter_count(),
