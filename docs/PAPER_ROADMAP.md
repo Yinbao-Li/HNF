@@ -10,6 +10,7 @@ checklist against concrete, paper-scale runs.
 | SNR robustness (Fig5) | 512 pick + 128 inv × 5 SNR × 2 modes | `outputs/paper_snr_robustness/` |
 | Scene clustering + noise mining | 400 (380 after robust trim) | `outputs/paper_scene_clustering/` |
 | Cluster-conditioned rediscovery | 380 × 35 candidates | `outputs/paper_cluster_rediscovery/` |
+| Absolute-geo rediscovery + confirm | 380 + network/lon sensitivity | `outputs/paper_geo_rediscovery/`, `outputs/paper_geo_confirm/` |
 | Cross-head transfer (priority laws) | 200 events × 4 heads | `outputs/paper_cross_head_transfer/` |
 | Ambon cross-region TT | 64 catalog events | `outputs/paper_ambon_cross_region/` |
 | OBS picking vs EQT/PhaseNet | 400 traces (chunk 201805) | `outputs/paper_obs_picking_compare/` |
@@ -73,6 +74,22 @@ Paper claim update: keep `rho_p_lag→init_tt` and `noise_ratio→pick_err_p`;
 downgrade `rho_mean→vp/vpvs` to head-family descriptive couplings.
 
 Figure: `docs/figures/cross_head_transfer_summary.png`.
+
+### 1c. Absolute geography (lat/lon) confirmation
+**Done (CPU; n=380).**
+
+Scripts: `run_paper_geo_rediscovery.py`, `run_paper_geo_confirm.py`.
+Sample is **ZQ-dominated** (310/380); geo-kmeans C3≈309.
+
+| Claim | Label | Notes |
+|-------|-------|-------|
+| `noise_ratio → pick_err_p` | **geo-confirmed** | survives lat/lon and `is_ZQ`; holds in ZQ-only |
+| `rho_p_lag → init_tt` | **geo-confirmed** | same |
+| `rho_mean → vp_mean` | geo-survives / head-unstable | keep secondary |
+| absolute `source_lat → pick_err_p` | **reinterpreted** | collapses after `is_ZQ` (network/region proxy) |
+| within-ZQ `source_lon → pick_err_p` | local geo | ρ≈0.15 inside ZQ; not universal lat physics |
+
+Figures: `docs/figures/geo_*.png`. Details in `docs/KNOWLEDGE_MINING.md`.
 
 ### 2. Noise-branch utility
 **Done (mining enabled).**

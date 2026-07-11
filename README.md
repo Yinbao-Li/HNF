@@ -576,13 +576,71 @@ head-independent (`cross_head_transfer_summary.png`).*
 envelope / STA/LTA around P, and high peak-lag agreement with envelope
 (`rho_vs_attributes_summary.png`).*
 
+### H. Absolute-geography rediscovery (confirmed)
+
+Prior mining used only `distance_km` / `source_depth_km`. Attaching STEAD
+source/receiver lat–lon (`run_paper_geo_rediscovery.py`, then
+`run_paper_geo_confirm.py`) shows that **absolute geography carries signal**,
+but most of that signal is **regional/network structure** (sample is
+ZQ-dominated: 310/380), not a universal “latitude physics” law.
+
+![Geo cluster map](docs/figures/geo_cluster_map.png)
+
+*Source locations by geo-kmeans cluster (n=380). C3 dominates (n=309) and
+aligns with the ZQ lobe (`geo_cluster_map.png`).*
+
+![Geo QC spatial map](docs/figures/geo_qc_spatial_map.png)
+
+*Strong claim visual: `pick_err_p` and `noise_ratio` vary spatially; crimson
+rings mark non-ZQ events (`geo_qc_spatial_map.png`).*
+
+![Geo priority controls](docs/figures/geo_priority_controls.png)
+
+*Priority latent/QC laws remain after controlling lat/lon **and** `is_ZQ`
+(`geo_priority_controls.png`).*
+
+![Geo absolute vs network](docs/figures/geo_absolute_vs_network.png)
+
+*Absolute-geo edges often collapse after network control; `is_ZQ` itself
+predicts pick error / noise (`geo_absolute_vs_network.png`).*
+
+![Geo sensitivity heatmap](docs/figures/geo_sensitivity_heatmap.png)
+
+*Sensitivity across leave-C3 / non-ZQ / lon tertiles / ZQ-only
+(`geo_sensitivity_heatmap.png`). Small non-ZQ slices are underpowered.*
+
+Confirmed (strong):
+
+- `noise_ratio → pick_err_p` partial ≈ +0.16 after lat/lon **and** after
+  `is_ZQ`; also holds inside ZQ-only (n=310). Not a geography artifact.
+- `rho_p_lag → init_tt` partial ≈ −0.38 after lat/lon **and** after `is_ZQ`;
+  also holds inside ZQ-only. Remains the main causal-chain keeper.
+
+Confirmed (moderate / secondary):
+
+- `rho_mean → vp_mean` survives lat/lon and `is_ZQ` here, but earlier
+  cross-head transfer still shows sign instability — keep descriptive.
+
+Reinterpreted (do not overclaim):
+
+- Pairwise `source_lat → pick_err_p` (ρ≈0.18) / lat→`init_tt` look global,
+  but **collapse after `is_ZQ`**. Explanation: mining sample mixes ZQ
+  (southern-Africa lobe) with TA/other networks; lat/lon mostly tag that
+  regional split (site/path/instrument family), not a physical latitude law.
+- Within ZQ, `source_lon → pick_err_p` remains supported (ρ≈0.15) — a
+  **local** geographic structure inside the dominant network, consistent
+  with the earlier C3 geo-specific lon edge.
+
 Key paper-scale findings:
 
 - `noise_ratio` from the Huygens noise-cancel branch is a useful QC latent
-  (global partial ≈ +0.17 to P pick error; CI excludes 0; head-independent)
+  (global partial ≈ +0.17 to P pick error; CI excludes 0; head-independent;
+  **geo-confirmed** under lat/lon and network controls)
 - `rho_p_lag -> init_tt` is supported after robust trim **and** transfers
-  across 4 physics heads (partial ≈ −0.42 to −0.47)
+  across 4 physics heads (partial ≈ −0.42 to −0.47); **geo-confirmed**
 - `rho_mean -> vp_mean` does **not** transfer (sign flips across heads)
+- absolute lat/lon add mining signal, but mainly as **network/region
+  proxies**; control `is_ZQ` (or equivalent) before claiming geo laws
 - full rediscovery on clusters was required (35-edge screen vs earlier 4)
 - Fig4 method board packaged; Q head train flag `--predict-q` wired
 - Ambon Indonesia catalog used for Fig5 cross-region TT (no waveforms)

@@ -28,6 +28,7 @@ class HuygensWaveLayer(nn.Module):
         use_bias: bool = True,
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
+        obliquity_mix: float = 0.0,
     ):
         super().__init__()
         self.in_features = in_features
@@ -42,7 +43,9 @@ class HuygensWaveLayer(nn.Module):
             learnable_omega=learnable_kernel_params,
             principle=principle,
             obliquity_scale=obliquity_scale,
-            learnable_obliquity=learnable_kernel_params and principle == "huygens_fresnel",
+            obliquity_mix=obliquity_mix,
+            learnable_obliquity=learnable_kernel_params
+            and (principle == "huygens_fresnel" or obliquity_mix > 0.0),
         )
 
         self.proj = (
@@ -145,6 +148,7 @@ class HuygensWaveBlock(nn.Module):
         sparse_band: bool = False,
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
+        obliquity_mix: float = 0.0,
     ):
         super().__init__()
         self.kernel = HuygensKernel(
@@ -160,7 +164,9 @@ class HuygensWaveBlock(nn.Module):
             sparse_band=sparse_band,
             principle=principle,
             obliquity_scale=obliquity_scale,
-            learnable_obliquity=learnable_kernel_params and principle == "huygens_fresnel",
+            obliquity_mix=obliquity_mix,
+            learnable_obliquity=learnable_kernel_params
+            and (principle == "huygens_fresnel" or obliquity_mix > 0.0),
         )
         self.proj_real = nn.Linear(dim, dim, bias=False)
         self.proj_imag = nn.Linear(dim, dim, bias=False)

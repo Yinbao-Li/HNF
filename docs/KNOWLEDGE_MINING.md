@@ -386,8 +386,50 @@ Script: `run_paper_cross_head_transfer.py` → `outputs/paper_cross_head_transfe
 Paper-facing keepers: `rho_p_lag→init_tt`, `noise_ratio→pick_err_p`.
 Downgrade `rho_mean→vp/vpvs` to head-family descriptive couplings.
 
+### Absolute geography (lat/lon) rediscovery + confirmation
+
+Scripts:
+
+- `run_paper_geo_rediscovery.py` → `outputs/paper_geo_rediscovery/`
+- `run_paper_geo_confirm.py` → `outputs/paper_geo_confirm/`
+
+Figures: `docs/figures/geo_cluster_map.png`, `geo_qc_spatial_map.png`,
+`geo_priority_controls.png`, `geo_absolute_vs_network.png`,
+`geo_sensitivity_heatmap.png`.
+
+Sample context (critical for interpretation):
+
+- n=380 after the same robust `init_tt` trim
+- networks: **ZQ 310**, TA 66, others 4 — not a California-only slice
+- geo-kmeans is unbalanced (C3≈309); lon tertiles are balanced (~127)
+
+| Claim | Confirmation label | Evidence |
+|-------|--------------------|----------|
+| `noise_ratio → pick_err_p` | **CONFIRMED (strong)** | partial ≈ +0.16 with lat/lon controls; ≈ +0.16 with `is_ZQ`; holds in ZQ-only |
+| `rho_p_lag → init_tt` | **CONFIRMED (strong)** | partial ≈ −0.38 with lat/lon; ≈ −0.39 with `is_ZQ`; holds in ZQ-only |
+| `rho_mean → vp_mean` | CONFIRMED (moderate) | survives lat/lon and `is_ZQ` here; still head-unstable from cross-head pass |
+| `source_lat → pick_err_p` | **REINTERPRETED** | pairwise/partial vs dist/depth supported; **collapses after `is_ZQ`** |
+| `source_lon → pick_err_p` | geo / within-ZQ | global often geo-specific (C3); **within ZQ** partial ≈ +0.15 still supported |
+| `is_ZQ → pick_err_p` / `noise_ratio` | supported confounder | network tag explains much of the absolute-geo QC signal |
+
+**Physical / operational explanation (not overclaim):**
+
+1. Absolute lat/lon are informative because the mining table mixes distinct
+   acquisition regions (ZQ lobe vs TA/other). That induces differences in
+   noise field, path complexity, and instrument/network practice that show up
+   in `pick_err_*`, `noise_ratio`, and TT fit — even after controlling
+   epicentral distance and depth.
+2. Therefore lat/lon edges should be narrated as **regional/network geography**,
+   not as a universal latitude–error law.
+3. Priority Huygens latents (`noise_ratio`, `rho_p_lag`) are **not** explained
+   away by that geography: they remain after lat/lon and after `is_ZQ`, and
+   remain inside ZQ-only. That is the paper-facing geo confirmation.
+4. Sensitivity on leave-C3 / non-ZQ (n≈70) often loses FDR support; treat as
+   **low power**, not as a rejection of the global laws.
+
 ### Updated next steps
 
-1. Keep scene labels in any future STEAD mining export
+1. Keep scene labels **and** network / lat–lon in any future STEAD mining export
 2. Do not claim scene-specific laws from C2-sized clusters
-3. External-dataset Fig5 still blocked (no Instance/DiTing loader/data)
+3. Always report absolute-geo claims with a network (`is_ZQ`) or region control
+4. External-dataset Fig5 still blocked (no Instance/DiTing loader/data)

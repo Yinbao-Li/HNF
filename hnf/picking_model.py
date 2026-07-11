@@ -14,6 +14,36 @@ from hnf.multiscale import MultiScaleHuygensEncoder, ScaleSpec, default_scale_sp
 from hnf.noise_cancel import HuygensNoiseCancelBranch
 
 
+def _obliquity_block_config(
+    mode: str,
+    target: str,
+    mix: float,
+) -> tuple[str, float]:
+    """Per-block (principle, obliquity_mix) from global obliquity_mode."""
+    mix = float(max(0.0, min(1.0, mix)))
+    if mode == "full_fresnel":
+        return "huygens_fresnel", 1.0
+    if mode == "none":
+        return "huygens", 0.0
+    if mode == "soft_all":
+        return "huygens", mix
+    if mode == "soft_shared" and target == "shared":
+        return "huygens", mix
+    if mode == "det_soft" and target == "det_shared":
+        return "huygens", mix
+    if mode == "det_fresnel" and target == "det_shared":
+        return "huygens_fresnel", 1.0
+    if mode == "noise_soft" and target == "noise":
+        return "huygens", mix
+    if mode == "noise_fresnel" and target == "noise":
+        return "huygens_fresnel", 1.0
+    return "huygens", 0.0
+
+
+def _needs_det_shared_layers(mode: str) -> bool:
+    return mode in {"det_soft", "det_fresnel"}
+
+
 class ComponentSecondarySources(nn.Module):
     """E/N/Z 三分量作为耦合次波源."""
 
@@ -196,6 +226,92 @@ class NoiseCueAdapter(nn.Module):
         return cue, gate
 
 
+class PSGapHead(nn.Module):
+    """Predict S-P interval (seconds) from shared Huygens latents.
+
+    Outputs a positive gap via softplus. Used as a waveform-only prior for
+    joint P/S pairing when catalog distance is unavailable.
+    """
+
+    def __init__(self, embed_dim: int = 64, hidden: int = 64, dropout: float = 0.1):
+        super().__init__()
+        # energy mean/max/std (3) + soft peak time (1) + rho mean/std/max (3) + wave pooled (embed)
+        in_dim = embed_dim + 7
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden, 2),  # [gap_raw, log_sigma_raw]
+        )
+
+    def forward(
+        self,
+        h_real: torch.Tensor,
+        h_imag: torch.Tensor,
+        rho: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        energy_t = (h_real**2 + h_imag**2).mean(dim=-1)  # (B, T)
+        energy_mean = energy_t.mean(dim=-1)
+        energy_max = energy_t.amax(dim=-1)
+        energy_std = energy_t.std(dim=-1, unbiased=False)
+        t_idx = torch.arange(energy_t.size(-1), device=energy_t.device, dtype=energy_t.dtype)
+        soft = energy_t / energy_t.sum(dim=-1, keepdim=True).clamp_min(1e-6)
+        soft_peak = (soft * t_idx).sum(dim=-1) / max(energy_t.size(-1) - 1, 1)
+
+        rho_ = rho.squeeze(-1) if rho.dim() == 3 else rho
+        rho_mean = rho_.mean(dim=-1)
+        rho_std = rho_.std(dim=-1, unbiased=False)
+        rho_max = rho_.amax(dim=-1)
+
+        wave_pool = (h_real**2 + h_imag**2).mean(dim=1).sqrt()  # (B, D)
+        feats = torch.cat(
+            [
+                wave_pool,
+                energy_mean.unsqueeze(-1),
+                energy_max.unsqueeze(-1),
+                energy_std.unsqueeze(-1),
+                soft_peak.unsqueeze(-1),
+                rho_mean.unsqueeze(-1),
+                rho_std.unsqueeze(-1),
+                rho_max.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        raw = self.net(feats)
+        gap_sec = F.softplus(raw[:, 0]) + 0.2
+        gap_sec = gap_sec.clamp(max=30.0)
+        log_sigma = raw[:, 1].clamp(-2.0, 2.5)
+        return gap_sec, log_sigma
+
+
+class LocalPeakRerankHead(nn.Module):
+    """Learned local competition on pick logits (residual refine).
+
+    Targets close-race wrong peaks: GT is often already a local max but loses
+    to a slightly higher spurious peak. A small temporal conv reweights the
+    logit curve without changing the Huygens backbone narrative.
+    """
+
+    def __init__(self, hidden: int = 16, kernel_size: int = 9):
+        super().__init__()
+        pad = kernel_size // 2
+        self.net = nn.Sequential(
+            nn.Conv1d(1, hidden, kernel_size, padding=pad),
+            nn.GELU(),
+            nn.Conv1d(hidden, hidden, 5, padding=2),
+            nn.GELU(),
+            nn.Conv1d(hidden, 1, 5, padding=2),
+        )
+
+    def forward(self, logits: torch.Tensor) -> torch.Tensor:
+        # logits: (B, T)
+        delta = self.net(logits.unsqueeze(1)).squeeze(1)
+        return logits + delta
+
+
 class STEADHNFPickingModel(nn.Module):
     """
     惠更斯物理拾取模型:
@@ -237,6 +353,12 @@ class STEADHNFPickingModel(nn.Module):
         noise_pick_cues: bool = False,
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
+        obliquity_mode: str = "none",
+        obliquity_mix: float = 0.0,
+        predict_ps_gap: bool = False,
+        ps_gap_hidden: int = 64,
+        peak_rerank: bool = False,
+        peak_rerank_hidden: int = 16,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -245,9 +367,18 @@ class STEADHNFPickingModel(nn.Module):
         self.noise_cancel = noise_cancel
         self.noise_det_pick_split = noise_det_pick_split
         self.noise_pick_cues = noise_pick_cues
+        self.predict_ps_gap = predict_ps_gap
+        self.peak_rerank = peak_rerank
         self.multi_scale = multi_scale
         self.num_anchors = max(0, int(num_anchors))
+        # Legacy single principle; obliquity_mode overrides per-block routing.
+        if obliquity_mode == "none" and principle == "huygens_fresnel":
+            obliquity_mode = "full_fresnel"
         self.principle = principle
+        self.obliquity_mode = obliquity_mode
+        self.obliquity_mix = float(max(0.0, min(1.0, obliquity_mix)))
+        self.obliquity_scale = obliquity_scale
+
         self.source_embed = ComponentSecondarySources(embed_dim)
         self.medium_net = TemporalMediumDensity(channels=input_dim)
         self.dropout = nn.Dropout(dropout)
@@ -271,6 +402,7 @@ class STEADHNFPickingModel(nn.Module):
             self.shared_layers = None
         else:
             self.multi_scale_encoder = None
+            sh_pr, sh_mix = _obliquity_block_config(obliquity_mode, "shared", self.obliquity_mix)
             self.shared_layers = nn.ModuleList(
                 [
                     HuygensWaveBlock(
@@ -283,13 +415,40 @@ class STEADHNFPickingModel(nn.Module):
                         learnable_kernel_params=True,
                         dropout=dropout,
                         sparse_band=sparse_band,
-                        principle=principle,
+                        principle=sh_pr,
                         obliquity_scale=obliquity_scale,
+                        obliquity_mix=sh_mix,
                     )
                     for i in range(num_shared_layers)
                 ]
             )
+            if _needs_det_shared_layers(obliquity_mode):
+                det_pr, det_mix = _obliquity_block_config(
+                    obliquity_mode, "det_shared", self.obliquity_mix
+                )
+                self.shared_det_layers = nn.ModuleList(
+                    [
+                        HuygensWaveBlock(
+                            dim=embed_dim,
+                            gamma=gamma * (0.95 ** i),
+                            omega=omega * (1.05 ** i),
+                            wave_speed=6.0,
+                            distance_mode="time",
+                            local_window_sec=local_window_sec,
+                            learnable_kernel_params=True,
+                            dropout=dropout,
+                            sparse_band=sparse_band,
+                            principle=det_pr,
+                            obliquity_scale=obliquity_scale,
+                            obliquity_mix=det_mix,
+                        )
+                        for i in range(num_shared_layers)
+                    ]
+                )
+            else:
+                self.shared_det_layers = None
 
+        pk_pr, pk_mix = _obliquity_block_config(obliquity_mode, "pick", self.obliquity_mix)
         self.p_layers = nn.ModuleList(
             [
                 HuygensWaveBlock(
@@ -302,8 +461,9 @@ class STEADHNFPickingModel(nn.Module):
                     learnable_kernel_params=True,
                     dropout=dropout,
                     sparse_band=sparse_band,
-                    principle=principle,
+                    principle=pk_pr,
                     obliquity_scale=obliquity_scale,
+                    obliquity_mix=pk_mix,
                 )
                 for i in range(num_branch_layers)
             ]
@@ -312,7 +472,7 @@ class STEADHNFPickingModel(nn.Module):
             [
                 HuygensWaveBlock(
                     dim=embed_dim,
-                    gamma=gamma,
+                    gamma=gamma * (0.95 ** i),
                     omega=omega_s * (1.03 ** i),
                     wave_speed=vs,
                     distance_mode="time",
@@ -320,8 +480,9 @@ class STEADHNFPickingModel(nn.Module):
                     learnable_kernel_params=True,
                     dropout=dropout,
                     sparse_band=sparse_band,
-                    principle=principle,
+                    principle=pk_pr,
                     obliquity_scale=obliquity_scale,
+                    obliquity_mix=pk_mix,
                 )
                 for i in range(num_branch_layers)
             ]
@@ -364,6 +525,7 @@ class STEADHNFPickingModel(nn.Module):
         self.noise_cancel_branch: Optional[HuygensNoiseCancelBranch] = None
         self.noise_cue_adapter: Optional[NoiseCueAdapter] = None
         if noise_cancel:
+            nc_pr, nc_mix = _obliquity_block_config(obliquity_mode, "noise", self.obliquity_mix)
             self.noise_cancel_branch = HuygensNoiseCancelBranch(
                 channels=input_dim,
                 source_dim=noise_source_dim,
@@ -373,8 +535,9 @@ class STEADHNFPickingModel(nn.Module):
                 wave_speed=6.0,
                 local_window_sec=local_window_sec,
                 learnable_kernel_params=True,
-                principle=principle,
+                principle=nc_pr,
                 obliquity_scale=obliquity_scale,
+                obliquity_mix=nc_mix,
             )
             if noise_pick_cues:
                 self.noise_cue_adapter = NoiseCueAdapter(
@@ -382,6 +545,18 @@ class STEADHNFPickingModel(nn.Module):
                     hidden=max(16, pick_head_hidden // 2),
                     embed_dim=embed_dim,
                 )
+        self.ps_gap_head: Optional[PSGapHead] = None
+        if predict_ps_gap:
+            self.ps_gap_head = PSGapHead(
+                embed_dim=embed_dim,
+                hidden=ps_gap_hidden,
+                dropout=dropout,
+            )
+        self.p_peak_rerank: Optional[LocalPeakRerankHead] = None
+        self.s_peak_rerank: Optional[LocalPeakRerankHead] = None
+        if peak_rerank:
+            self.p_peak_rerank = LocalPeakRerankHead(hidden=peak_rerank_hidden)
+            self.s_peak_rerank = LocalPeakRerankHead(hidden=peak_rerank_hidden)
 
     def _propagate(
         self,
@@ -401,6 +576,7 @@ class STEADHNFPickingModel(nn.Module):
         h_imag: torch.Tensor,
         t: torch.Tensor,
         rho: torch.Tensor,
+        layers: Optional[nn.ModuleList] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         full_n = h_real.size(1)
         if self.num_anchors > 0 and self.num_anchors < full_n:
@@ -410,8 +586,11 @@ class STEADHNFPickingModel(nn.Module):
         else:
             t_shared, rho_shared = t, rho
 
+        use_layers = layers
+        if use_layers is None:
+            use_layers = self.shared_layers
         h_real, h_imag = self._run_shared_propagation(
-            h_real, h_imag, t=t_shared, rho=rho_shared
+            h_real, h_imag, t=t_shared, rho=rho_shared, layers=use_layers
         )
 
         if self.num_anchors > 0 and self.num_anchors < full_n:
@@ -467,13 +646,22 @@ class STEADHNFPickingModel(nn.Module):
         h_imag: torch.Tensor,
         t: torch.Tensor,
         rho: torch.Tensor,
+        layers: Optional[nn.ModuleList] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.multi_scale_encoder is not None:
             return self.multi_scale_encoder(h_real, h_imag, t=t, rho=rho)
-        assert self.shared_layers is not None
-        for layer in self.shared_layers:
+        use_layers = layers if layers is not None else self.shared_layers
+        assert use_layers is not None
+        for layer in use_layers:
             h_real, h_imag = layer(h_real, h_imag, t=t, rho=rho)
         return h_real, h_imag
+
+    def copy_shared_det_from_pick(self) -> None:
+        """Init det-only shared stack from pick shared weights after resume."""
+        if getattr(self, "shared_det_layers", None) is None or self.shared_layers is None:
+            return
+        for det_layer, pick_layer in zip(self.shared_det_layers, self.shared_layers):
+            det_layer.load_state_dict(pick_layer.state_dict(), strict=False)
 
     def collect_kernel_params(self) -> dict[str, dict[str, float]]:
         """Export learned Huygens kernel parameters for interpretability."""
@@ -484,7 +672,7 @@ class STEADHNFPickingModel(nn.Module):
                     k = layer.kernel
                     params[f"scale{si}_layer{li}"] = {
                         "gamma": float(k.effective_gamma().detach().cpu()),
-                        "omega": float(k.omega.detach().cpu()),
+                        "omega": float(k.effective_omega().detach().cpu()),
                         "wave_speed": float(k.effective_wave_speed().detach().cpu()),
                     }
         elif self.shared_layers is not None:
@@ -492,21 +680,21 @@ class STEADHNFPickingModel(nn.Module):
                 k = layer.kernel
                 params[f"shared_{i}"] = {
                     "gamma": float(k.effective_gamma().detach().cpu()),
-                    "omega": float(k.omega.detach().cpu()),
+                    "omega": float(k.effective_omega().detach().cpu()),
                     "wave_speed": float(k.effective_wave_speed().detach().cpu()),
                 }
         for i, layer in enumerate(self.p_layers):
             k = layer.kernel
             params[f"p_branch_{i}"] = {
                 "gamma": float(k.effective_gamma().detach().cpu()),
-                "omega": float(k.omega.detach().cpu()),
+                "omega": float(k.effective_omega().detach().cpu()),
                 "wave_speed": float(k.effective_wave_speed().detach().cpu()),
             }
         for i, layer in enumerate(self.s_layers):
             k = layer.kernel
             params[f"s_branch_{i}"] = {
                 "gamma": float(k.effective_gamma().detach().cpu()),
-                "omega": float(k.omega.detach().cpu()),
+                "omega": float(k.effective_omega().detach().cpu()),
                 "wave_speed": float(k.effective_wave_speed().detach().cpu()),
             }
         return params
@@ -530,7 +718,10 @@ class STEADHNFPickingModel(nn.Module):
         rho_det = self.medium_net(x_det)
         h_det_real = self.source_embed(x_det)
         h_det_imag = torch.zeros_like(h_det_real)
-        h_det_real, h_det_imag = self._encode_shared_wavefield(h_det_real, h_det_imag, t=t, rho=rho_det)
+        det_layers = self.shared_det_layers if getattr(self, "shared_det_layers", None) is not None else None
+        h_det_real, h_det_imag = self._encode_shared_wavefield(
+            h_det_real, h_det_imag, t=t, rho=rho_det, layers=det_layers
+        )
         det = self._det_logits(h_det_real, h_det_imag, x=x_det)
 
         rho = self.medium_net(x_pick)
@@ -551,7 +742,15 @@ class STEADHNFPickingModel(nn.Module):
 
         p = self.p_pick_head(p_real, p_imag)
         s = self.s_pick_head(s_real, s_imag)
+        if self.p_peak_rerank is not None:
+            p = self.p_peak_rerank(p)
+        if self.s_peak_rerank is not None:
+            s = self.s_peak_rerank(s)
         out: dict[str, torch.Tensor] = {"det": det, "p": p, "s": s, "rho": rho.squeeze(-1)}
+        if self.ps_gap_head is not None:
+            gap_sec, gap_log_sigma = self.ps_gap_head(h_real, h_imag, rho)
+            out["ps_gap_sec"] = gap_sec
+            out["ps_gap_log_sigma"] = gap_log_sigma
         if nc_out is not None:
             for key, value in nc_out.items():
                 out[f"nc_{key}"] = value
@@ -576,7 +775,16 @@ class STEADHNFPickingModel(nn.Module):
         s_real, s_imag = self._propagate(h_real, h_imag, self.s_layers, t, rho)
         p = self.p_pick_head(p_real, p_imag)
         s = self.s_pick_head(s_real, s_imag)
-        return {"p": p, "s": s, "rho": rho.squeeze(-1)}
+        if self.p_peak_rerank is not None:
+            p = self.p_peak_rerank(p)
+        if self.s_peak_rerank is not None:
+            s = self.s_peak_rerank(s)
+        out: dict[str, torch.Tensor] = {"p": p, "s": s, "rho": rho.squeeze(-1)}
+        if self.ps_gap_head is not None:
+            gap_sec, gap_log_sigma = self.ps_gap_head(h_real, h_imag, rho)
+            out["ps_gap_sec"] = gap_sec
+            out["ps_gap_log_sigma"] = gap_log_sigma
+        return out
 
     @torch.no_grad()
     def forward_inversion_features(
@@ -726,6 +934,12 @@ def build_picking_model(
     noise_pick_cues: bool = False,
     principle: str = "huygens",
     obliquity_scale: float = 1.0,
+    obliquity_mode: str = "none",
+    obliquity_mix: float = 0.0,
+    predict_ps_gap: bool = False,
+    ps_gap_hidden: int = 64,
+    peak_rerank: bool = False,
+    peak_rerank_hidden: int = 16,
 ) -> STEADHNFPickingModel:
     """Factory for STEAD HNF picking models."""
     return STEADHNFPickingModel(
@@ -755,6 +969,12 @@ def build_picking_model(
         noise_pick_cues=noise_pick_cues,
         principle=principle,
         obliquity_scale=obliquity_scale,
+        obliquity_mode=obliquity_mode,
+        obliquity_mix=obliquity_mix,
+        predict_ps_gap=predict_ps_gap,
+        ps_gap_hidden=ps_gap_hidden,
+        peak_rerank=peak_rerank,
+        peak_rerank_hidden=peak_rerank_hidden,
     )
 
 

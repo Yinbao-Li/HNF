@@ -11,6 +11,7 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
@@ -79,10 +80,49 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--s-pick-loss-weight", type=float, default=1.0, help="Extra multiplier on S pick loss")
     p.add_argument("--ps-order-loss-weight", type=float, default=0.0, help="Penalty when S precedes P")
     p.add_argument("--ps-min-gap-sec", type=float, default=0.1, help="Min P-S gap in seconds for order loss")
+    p.add_argument(
+        "--distance-gap-loss-weight",
+        type=float,
+        default=0.0,
+        help="Consistency of soft P/S gap vs catalog distance prior (s_per_km*km)",
+    )
+    p.add_argument("--distance-gap-s-per-km", type=float, default=0.119)
+    p.add_argument("--distance-gap-sigma-sec", type=float, default=1.2)
+    p.add_argument("--predict-ps-gap", action="store_true", help="Enable dedicated S-P interval head")
+    p.add_argument("--ps-gap-hidden", type=int, default=64)
+    p.add_argument("--ps-gap-loss-weight", type=float, default=0.5, help="Supervised gap head loss weight")
+    p.add_argument(
+        "--ps-gap-consist-weight",
+        type=float,
+        default=0.1,
+        help="Consistency between predicted gap and soft P/S expectation gap",
+    )
     p.add_argument("--wrong-peak-loss-weight", type=float, default=0.0, help="Rank GT window above distant wrong peaks")
     p.add_argument("--wrong-peak-radius-sec", type=float, default=0.5)
     p.add_argument("--wrong-peak-margin", type=float, default=0.2)
     p.add_argument("--s-wrong-peak-scale", type=float, default=1.0)
+    p.add_argument("--wrong-peak-listwise-weight", type=float, default=0.0, help="Listwise CE over top-k peaks vs GT")
+    p.add_argument("--wrong-peak-listwise-topk", type=int, default=5)
+    p.add_argument(
+        "--rho-sparsity-weight",
+        type=float,
+        default=0.0,
+        help="L1 on rho outside P/S event windows (event-driven medium)",
+    )
+    p.add_argument(
+        "--rho-sparsity-radius-sec",
+        type=float,
+        default=1.5,
+        help="Keep-window radius around GT P/S for rho sparsity",
+    )
+    p.add_argument(
+        "--kernel-phys-prior-weight",
+        type=float,
+        default=0.0,
+        help="Relative L2 prior on effective gamma/omega/c toward construction anchors",
+    )
+    p.add_argument("--peak-rerank", action="store_true", help="Learned local competition head on P/S logits")
+    p.add_argument("--peak-rerank-hidden", type=int, default=16)
     p.add_argument("--post-process-p-before-s", action="store_true")
     p.add_argument("--score-mode", choices=["mean", "det_guard", "pick_focus"], default="mean")
     p.add_argument("--det-score-floor", type=float, default=0.985)
@@ -104,6 +144,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--nc-noise-suppress-weight", type=float, default=0.2)
     p.add_argument("--freeze-all-but-noise-epochs", type=int, default=0)
     p.add_argument("--freeze-all-but-pick-epochs", type=int, default=0)
+    p.add_argument("--freeze-all-but-gap-epochs", type=int, default=0, help="Train only ps_gap_head")
     p.add_argument("--multi-scale", action="store_true", help="Use multi-scale DeepHuygens encoder")
     p.add_argument("--sparse-band", action="store_true", help="Banded sparse light-cone matmul")
     p.add_argument("--num-anchors", type=int, default=0, help="Low-rank anchor count for shared propagation (0=off)")
@@ -114,6 +155,27 @@ def parse_args() -> argparse.Namespace:
         help="Wave kernel principle (huygens baseline vs Huygens–Fresnel obliquity)",
     )
     p.add_argument("--obliquity-scale", type=float, default=1.0, help="Fresnel obliquity lateral scale")
+    p.add_argument(
+        "--obliquity-mode",
+        default="none",
+        choices=[
+            "none",
+            "soft_all",
+            "soft_shared",
+            "det_soft",
+            "det_fresnel",
+            "noise_soft",
+            "noise_fresnel",
+            "full_fresnel",
+        ],
+        help="Where to apply obliquity χ (soft blend or Fresnel)",
+    )
+    p.add_argument(
+        "--obliquity-mix",
+        type=float,
+        default=0.25,
+        help="Soft χ blend weight in [0,1] for huygens+χ modes",
+    )
     p.set_defaults(residual_pick_head=True, residual_det_head=True)
     p.add_argument("--no-residual-pick-head", action="store_false", dest="residual_pick_head")
     p.add_argument("--no-residual-det-head", action="store_false", dest="residual_det_head")
@@ -178,6 +240,87 @@ def ps_order_loss(
     return F.relu(p_exp + min_gap_bins - s_exp).mean()
 
 
+def distance_gap_consistency_loss(
+    p_logits: torch.Tensor,
+    s_logits: torch.Tensor,
+    distance_km: torch.Tensor,
+    event_mask: torch.Tensor,
+    p_valid: torch.Tensor,
+    s_valid: torch.Tensor,
+    seq_len: int,
+    *,
+    s_per_km: float = 0.119,
+    sigma_sec: float = 1.2,
+) -> torch.Tensor:
+    """Pull soft P/S expectations toward catalog distance S−P prior.
+
+    Uses STEAD source_distance_km: μ = s_per_km * distance. This injects the
+    same geometric knowledge that helped at inference (fix_weak_distance)
+    into training, without an external teacher model.
+    """
+    if distance_km is None:
+        return torch.tensor(0.0, device=p_logits.device)
+    mask = (
+        event_mask
+        & (p_valid > 0)
+        & (s_valid > 0)
+        & torch.isfinite(distance_km)
+        & (distance_km > 0)
+    )
+    if not mask.any():
+        return torch.tensor(0.0, device=p_logits.device)
+
+    p_prob = torch.sigmoid(p_logits[mask])
+    s_prob = torch.sigmoid(s_logits[mask])
+    t = torch.arange(p_prob.size(-1), device=p_prob.device, dtype=p_prob.dtype)
+    p_exp = (p_prob * t).sum(dim=-1) / p_prob.sum(dim=-1).clamp_min(1e-6)
+    s_exp = (s_prob * t).sum(dim=-1) / s_prob.sum(dim=-1).clamp_min(1e-6)
+    gap_sec = (s_exp - p_exp) * (60.0 / float(seq_len))
+    mu = distance_km[mask] * float(s_per_km)
+    # Softplus keeps gap positive preference; Huber on residual vs μ
+    resid = gap_sec - mu
+    return F.smooth_l1_loss(resid / max(sigma_sec, 1e-3), torch.zeros_like(resid))
+
+
+def ps_gap_head_loss(
+    outputs: dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
+    seq_len: int,
+    consist_weight: float = 0.1,
+) -> torch.Tensor:
+    """Supervise predicted S-P gap; optional consistency with soft pick expectations."""
+    if "ps_gap_sec" not in outputs:
+        return torch.tensor(0.0, device=batch["det"].device)
+    event_mask = (batch["det"] > 0.5) & (batch["p_valid"] > 0) & (batch["s_valid"] > 0)
+    if not event_mask.any():
+        return torch.tensor(0.0, device=batch["det"].device)
+
+    pred = outputs["ps_gap_sec"][event_mask]
+    log_sigma = outputs.get("ps_gap_log_sigma")
+    if log_sigma is not None:
+        log_sigma = log_sigma[event_mask]
+    gt = (batch["s_idx"][event_mask].float() - batch["p_idx"][event_mask].float()) * (60.0 / float(seq_len))
+    gt = gt.clamp(min=0.2, max=30.0)
+
+    # Heteroscedastic Gaussian NLL on seconds (stable via softplus sigma).
+    if log_sigma is not None:
+        sigma = F.softplus(log_sigma) + 0.2
+        nll = 0.5 * ((pred - gt) / sigma) ** 2 + torch.log(sigma)
+        loss = nll.mean()
+    else:
+        loss = F.smooth_l1_loss(pred, gt)
+
+    if consist_weight > 0:
+        p_prob = torch.sigmoid(outputs["p"][event_mask])
+        s_prob = torch.sigmoid(outputs["s"][event_mask])
+        t = torch.arange(p_prob.size(-1), device=p_prob.device, dtype=p_prob.dtype)
+        p_exp = (p_prob * t).sum(dim=-1) / p_prob.sum(dim=-1).clamp_min(1e-6)
+        s_exp = (s_prob * t).sum(dim=-1) / s_prob.sum(dim=-1).clamp_min(1e-6)
+        soft_gap = ((s_exp - p_exp) * (60.0 / float(seq_len))).clamp(min=0.0, max=30.0)
+        loss = loss + consist_weight * F.smooth_l1_loss(pred, soft_gap.detach())
+    return loss
+
+
 def wrong_peak_rank_loss(
     logits: torch.Tensor,
     target_idx: torch.Tensor,
@@ -200,6 +343,102 @@ def wrong_peak_rank_loss(
     return F.relu(margin - pos_max + neg_max).mean()
 
 
+def wrong_peak_listwise_loss(
+    logits: torch.Tensor,
+    target_idx: torch.Tensor,
+    valid_mask: torch.Tensor,
+    seq_len: int,
+    radius_sec: float = 0.5,
+    topk: int = 5,
+    temperature: float = 0.75,
+) -> torch.Tensor:
+    """Listwise CE over top-k peaks: push mass onto the GT-neighborhood peak.
+
+    Addresses close-race wrong peaks where GT is a local max but not global argmax.
+    """
+    if not valid_mask.any():
+        return torch.tensor(0.0, device=logits.device)
+    logits = logits[valid_mask]
+    gt = target_idx[valid_mask]
+    radius_bins = max(1, int(round(radius_sec * seq_len / 60.0)))
+    # top-k global peaks as hard negatives + ensure GT window max is included
+    k = min(topk, logits.size(-1))
+    top_vals, top_idx = torch.topk(logits, k=k, dim=-1)
+    # GT window max location
+    t = torch.arange(seq_len, device=logits.device).view(1, -1)
+    local_mask = (t - gt.unsqueeze(1)).abs() <= radius_bins
+    neg_fill = torch.full_like(logits, -1e9)
+    pos_vals = torch.where(local_mask, logits, neg_fill)
+    pos_idx = pos_vals.argmax(dim=-1)
+    # Build candidate set: topk union pos_idx
+    cand_idx = top_idx
+    # Replace last slot with pos_idx when missing
+    has_pos = (cand_idx == pos_idx.unsqueeze(1)).any(dim=-1)
+    if (~has_pos).any():
+        cand_idx = cand_idx.clone()
+        cand_idx[~has_pos, -1] = pos_idx[~has_pos]
+    cand_logits = torch.gather(logits, 1, cand_idx) / max(temperature, 1e-3)
+    # Target: which candidate is closest to GT (prefer exact pos_idx)
+    target = (cand_idx == pos_idx.unsqueeze(1)).float().argmax(dim=-1)
+    return F.cross_entropy(cand_logits, target)
+
+
+def rho_event_sparsity_loss(
+    rho: torch.Tensor,
+    batch: dict[str, torch.Tensor],
+    seq_len: int,
+    radius_sec: float = 1.5,
+) -> torch.Tensor:
+    """Penalize medium density outside P/S arrival windows (and on noise traces)."""
+    if rho.dim() == 3 and rho.size(-1) == 1:
+        rho = rho.squeeze(-1)
+    b, t_len = rho.shape
+    dt = 60.0 / max(seq_len - 1, 1)
+    radius = max(1, int(round(radius_sec / dt)))
+    t = torch.arange(t_len, device=rho.device).view(1, -1).expand(b, -1)
+    keep = torch.zeros(b, t_len, device=rho.device, dtype=torch.bool)
+    event = batch["det"] > 0.5
+    for idx_key, valid_key in (("p_idx", "p_valid"), ("s_idx", "s_valid")):
+        idx = batch[idx_key].long().clamp(0, t_len - 1).unsqueeze(1)
+        valid = event & (batch[valid_key] > 0)
+        keep = keep | (valid.unsqueeze(1) & ((t - idx).abs() <= radius))
+    outside = rho * (~keep).float()
+    loss = outside.mean()
+    noise = ~event
+    if noise.any():
+        loss = loss + rho[noise].mean()
+    return loss
+
+
+def kernel_physics_prior_loss(model: nn.Module) -> torch.Tensor:
+    """Average relative L2 prior over all HuygensKernel modules."""
+    from hnf.kernel import HuygensKernel
+
+    terms: list[torch.Tensor] = []
+    for module in model.modules():
+        if isinstance(module, HuygensKernel):
+            terms.append(module.physics_prior_loss())
+    if not terms:
+        return torch.tensor(0.0)
+    return torch.stack(terms).mean()
+
+
+def remap_omega_after_legacy_resume(model: nn.Module, ckpt_state: dict) -> int:
+    """Old checkpoints stored raw ω; new code uses softplus(ω). Preserve effective ω."""
+    from hnf.kernel import HuygensKernel
+
+    if any(k.endswith("c_log_scale") for k in ckpt_state):
+        return 0
+    n = 0
+    with torch.no_grad():
+        for module in model.modules():
+            if isinstance(module, HuygensKernel) and module._learnable_omega:
+                w = module.omega.data.clamp_min(1e-3)
+                module.omega.data.copy_(torch.log(torch.expm1(w)))
+                n += 1
+    return n
+
+
 def compute_loss(
     outputs: dict[str, torch.Tensor],
     batch: dict[str, torch.Tensor],
@@ -213,10 +452,21 @@ def compute_loss(
     s_pick_loss_weight: float = 1.0,
     ps_order_loss_weight: float = 0.0,
     ps_min_gap_sec: float = 0.1,
+    distance_gap_loss_weight: float = 0.0,
+    distance_gap_s_per_km: float = 0.119,
+    distance_gap_sigma_sec: float = 1.2,
+    ps_gap_loss_weight: float = 0.0,
+    ps_gap_consist_weight: float = 0.1,
     wrong_peak_loss_weight: float = 0.0,
     wrong_peak_radius_sec: float = 0.5,
     wrong_peak_margin: float = 0.2,
     s_wrong_peak_scale: float = 1.0,
+    wrong_peak_listwise_weight: float = 0.0,
+    wrong_peak_listwise_topk: int = 5,
+    rho_sparsity_weight: float = 0.0,
+    rho_sparsity_radius_sec: float = 1.5,
+    kernel_phys_prior_weight: float = 0.0,
+    model: Optional[nn.Module] = None,
     seq_len: int = 400,
     noise_cancel_weight: float = 0.0,
     nc_consistency_weight: float = 0.5,
@@ -267,6 +517,29 @@ def compute_loss(
             min_gap_sec=ps_min_gap_sec,
         )
 
+    dist_gap_loss = torch.tensor(0.0, device=det_target.device)
+    if distance_gap_loss_weight > 0 and event_mask.any() and "source_distance_km" in batch:
+        dist_gap_loss = distance_gap_consistency_loss(
+            outputs["p"],
+            outputs["s"],
+            batch["source_distance_km"],
+            event_mask,
+            batch["p_valid"],
+            batch["s_valid"],
+            seq_len=seq_len,
+            s_per_km=distance_gap_s_per_km,
+            sigma_sec=distance_gap_sigma_sec,
+        )
+
+    gap_loss = torch.tensor(0.0, device=det_target.device)
+    if ps_gap_loss_weight > 0 and "ps_gap_sec" in outputs:
+        gap_loss = ps_gap_head_loss(
+            outputs,
+            batch,
+            seq_len=seq_len,
+            consist_weight=ps_gap_consist_weight,
+        )
+
     wrong_peak_loss = torch.tensor(0.0, device=det_target.device)
     if wrong_peak_loss_weight > 0 and event_mask.any():
         p_valid = event_mask & (batch["p_valid"] > 0)
@@ -287,6 +560,37 @@ def compute_loss(
             radius_sec=wrong_peak_radius_sec,
             margin=wrong_peak_margin,
         )
+        if wrong_peak_listwise_weight > 0:
+            lw = wrong_peak_listwise_loss(
+                outputs["p"],
+                batch["p_idx"],
+                p_valid,
+                seq_len=seq_len,
+                radius_sec=wrong_peak_radius_sec,
+                topk=wrong_peak_listwise_topk,
+            )
+            lw = lw + s_wrong_peak_scale * wrong_peak_listwise_loss(
+                outputs["s"],
+                batch["s_idx"],
+                s_valid,
+                seq_len=seq_len,
+                radius_sec=wrong_peak_radius_sec,
+                topk=wrong_peak_listwise_topk,
+            )
+            wrong_peak_loss = wrong_peak_loss + wrong_peak_listwise_weight * lw
+
+    rho_loss = torch.tensor(0.0, device=det_target.device)
+    if rho_sparsity_weight > 0 and "rho" in outputs:
+        rho_loss = rho_event_sparsity_loss(
+            outputs["rho"],
+            batch,
+            seq_len=seq_len,
+            radius_sec=rho_sparsity_radius_sec,
+        )
+
+    prior_loss = torch.tensor(0.0, device=det_target.device)
+    if kernel_phys_prior_weight > 0 and model is not None:
+        prior_loss = kernel_physics_prior_loss(model)
 
     nc_loss = torch.tensor(0.0, device=det_target.device)
     if noise_cancel_weight > 0 and "nc_u_final" in outputs:
@@ -309,7 +613,11 @@ def compute_loss(
         det_loss_weight * det_loss
         + pick_loss_weight * pick_loss
         + ps_order_loss_weight * order_loss
+        + distance_gap_loss_weight * dist_gap_loss
+        + ps_gap_loss_weight * gap_loss
         + wrong_peak_loss_weight * wrong_peak_loss
+        + rho_sparsity_weight * rho_loss
+        + kernel_phys_prior_weight * prior_loss
         + noise_cancel_weight * nc_loss
     )
 
@@ -339,10 +647,20 @@ def evaluate(
     s_pick_loss_weight: float = 1.0,
     ps_order_loss_weight: float = 0.0,
     ps_min_gap_sec: float = 0.1,
+    distance_gap_loss_weight: float = 0.0,
+    distance_gap_s_per_km: float = 0.119,
+    distance_gap_sigma_sec: float = 1.2,
+    ps_gap_loss_weight: float = 0.0,
+    ps_gap_consist_weight: float = 0.1,
     wrong_peak_loss_weight: float = 0.0,
     wrong_peak_radius_sec: float = 0.5,
     wrong_peak_margin: float = 0.2,
     s_wrong_peak_scale: float = 1.0,
+    wrong_peak_listwise_weight: float = 0.0,
+    wrong_peak_listwise_topk: int = 5,
+    rho_sparsity_weight: float = 0.0,
+    rho_sparsity_radius_sec: float = 1.5,
+    kernel_phys_prior_weight: float = 0.0,
     post_process_p_before_s: bool = False,
     noise_cancel_weight: float = 0.0,
     nc_consistency_weight: float = 0.5,
@@ -374,10 +692,21 @@ def evaluate(
             s_pick_loss_weight=s_pick_loss_weight,
             ps_order_loss_weight=ps_order_loss_weight,
             ps_min_gap_sec=ps_min_gap_sec,
+            distance_gap_loss_weight=distance_gap_loss_weight,
+            distance_gap_s_per_km=distance_gap_s_per_km,
+            distance_gap_sigma_sec=distance_gap_sigma_sec,
+            ps_gap_loss_weight=ps_gap_loss_weight,
+            ps_gap_consist_weight=ps_gap_consist_weight,
             wrong_peak_loss_weight=wrong_peak_loss_weight,
             wrong_peak_radius_sec=wrong_peak_radius_sec,
             wrong_peak_margin=wrong_peak_margin,
             s_wrong_peak_scale=s_wrong_peak_scale,
+            wrong_peak_listwise_weight=wrong_peak_listwise_weight,
+            wrong_peak_listwise_topk=wrong_peak_listwise_topk,
+            rho_sparsity_weight=rho_sparsity_weight,
+            rho_sparsity_radius_sec=rho_sparsity_radius_sec,
+            kernel_phys_prior_weight=kernel_phys_prior_weight,
+            model=model,
             seq_len=seq_len,
             noise_cancel_weight=noise_cancel_weight,
             nc_consistency_weight=nc_consistency_weight,
@@ -448,10 +777,16 @@ PICK_TRAIN_PREFIXES = (
     "s_layers.",
     "p_pick_head.",
     "s_pick_head.",
+    "p_peak_rerank.",
+    "s_peak_rerank.",
 )
 
 
 def apply_freeze_schedule(model: nn.Module, epoch: int, args: argparse.Namespace) -> None:
+    if args.freeze_all_but_gap_epochs > 0 and epoch <= args.freeze_all_but_gap_epochs:
+        for name, param in model.named_parameters():
+            param.requires_grad = name.startswith("ps_gap_head.")
+        return
     if args.freeze_all_but_noise_epochs > 0 and epoch <= args.freeze_all_but_noise_epochs:
         for name, param in model.named_parameters():
             param.requires_grad = name.startswith("noise_cancel_branch.")
@@ -589,6 +924,12 @@ def train() -> None:
         noise_pick_cues=args.noise_pick_cues,
         principle=args.principle,
         obliquity_scale=args.obliquity_scale,
+        obliquity_mode=args.obliquity_mode,
+        obliquity_mix=args.obliquity_mix,
+        predict_ps_gap=args.predict_ps_gap,
+        ps_gap_hidden=args.ps_gap_hidden,
+        peak_rerank=args.peak_rerank,
+        peak_rerank_hidden=args.peak_rerank_hidden,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -604,6 +945,13 @@ def train() -> None:
             missing, unexpected = load_picking_model_state(
                 model, ckpt["state_dict"], strict=False
             )
+            n_omega = remap_omega_after_legacy_resume(model, ckpt["state_dict"])
+            if n_omega:
+                print(
+                    f"[STEAD-HNF-PHYS] remapped {n_omega} omega params for softplus",
+                    flush=True,
+                )
+            model.copy_shared_det_from_pick()
             resume_epoch = int(ckpt.get("epoch", 0))
             src_score = float(ckpt.get("score", -1.0))
             arch_changed = bool(missing or unexpected)
@@ -654,7 +1002,8 @@ def train() -> None:
         f"lr={args.lr} per_time_det={args.per_time_det} focal={args.focal_gamma} "
         f"ps_order_w={args.ps_order_loss_weight} multi_scale={args.multi_scale} "
         f"sparse_band={args.sparse_band} num_anchors={args.num_anchors} "
-        f"principle={args.principle} obliquity_scale={args.obliquity_scale} "
+        f"principle={args.principle} obliquity_mode={args.obliquity_mode} "
+        f"obliquity_mix={args.obliquity_mix} obliquity_scale={args.obliquity_scale} "
         f"res_pick={args.residual_pick_head} res_det={args.residual_det_head} augment={args.augment} "
         f"pick_head={args.pick_head_hidden}x{args.pick_head_layers} score_mode={args.score_mode} "
         f"freeze_bb={args.freeze_backbone_epochs} freeze_det={args.freeze_det_epochs} "
@@ -706,27 +1055,43 @@ def train() -> None:
         )
         for step, batch in enumerate(pbar, start=1):
             batch = move_batch_to_device(batch, device, non_blocking=True)
+            gap_only = (
+                args.freeze_all_but_gap_epochs > 0
+                and epoch <= args.freeze_all_but_gap_epochs
+                and args.predict_ps_gap
+            )
             with torch.amp.autocast("cuda", enabled=amp_enabled):
                 outputs = model(batch["x"], batch["t"])
                 loss = compute_loss(
                     outputs,
                     batch,
-                    pick_loss_weight=args.pick_loss_weight,
+                    pick_loss_weight=0.0 if gap_only else args.pick_loss_weight,
                     pick_pos_weight=args.pick_pos_weight,
-                    noise_pick_penalty=args.noise_pick_penalty,
+                    noise_pick_penalty=0.0 if gap_only else args.noise_pick_penalty,
                     focal_gamma=args.focal_gamma,
-                    det_loss_weight=args.det_loss_weight,
+                    det_loss_weight=0.0 if gap_only else args.det_loss_weight,
                     det_event_weight=args.det_event_weight,
                     p_pick_loss_weight=args.p_pick_loss_weight,
                     s_pick_loss_weight=args.s_pick_loss_weight,
-                    ps_order_loss_weight=args.ps_order_loss_weight,
+                    ps_order_loss_weight=0.0 if gap_only else args.ps_order_loss_weight,
                     ps_min_gap_sec=args.ps_min_gap_sec,
-                    wrong_peak_loss_weight=args.wrong_peak_loss_weight,
+                    distance_gap_loss_weight=0.0 if gap_only else args.distance_gap_loss_weight,
+                    distance_gap_s_per_km=args.distance_gap_s_per_km,
+                    distance_gap_sigma_sec=args.distance_gap_sigma_sec,
+                    ps_gap_loss_weight=args.ps_gap_loss_weight if args.predict_ps_gap else 0.0,
+                    ps_gap_consist_weight=0.0 if gap_only else args.ps_gap_consist_weight,
+                    wrong_peak_loss_weight=0.0 if gap_only else args.wrong_peak_loss_weight,
                     wrong_peak_radius_sec=args.wrong_peak_radius_sec,
                     wrong_peak_margin=args.wrong_peak_margin,
                     s_wrong_peak_scale=args.s_wrong_peak_scale,
+                    wrong_peak_listwise_weight=0.0 if gap_only else args.wrong_peak_listwise_weight,
+                    wrong_peak_listwise_topk=args.wrong_peak_listwise_topk,
+                    rho_sparsity_weight=0.0 if gap_only else args.rho_sparsity_weight,
+                    rho_sparsity_radius_sec=args.rho_sparsity_radius_sec,
+                    kernel_phys_prior_weight=0.0 if gap_only else args.kernel_phys_prior_weight,
+                    model=model,
                     seq_len=args.seq_len,
-                    noise_cancel_weight=args.noise_cancel_weight if args.noise_cancel else 0.0,
+                    noise_cancel_weight=0.0 if gap_only else (args.noise_cancel_weight if args.noise_cancel else 0.0),
                     nc_consistency_weight=args.nc_consistency_weight,
                     nc_phase_weight=args.nc_phase_weight,
                     nc_preserve_weight=args.nc_preserve_weight,
@@ -788,10 +1153,20 @@ def train() -> None:
             s_pick_loss_weight=args.s_pick_loss_weight,
             ps_order_loss_weight=args.ps_order_loss_weight,
             ps_min_gap_sec=args.ps_min_gap_sec,
+            distance_gap_loss_weight=args.distance_gap_loss_weight,
+            distance_gap_s_per_km=args.distance_gap_s_per_km,
+            distance_gap_sigma_sec=args.distance_gap_sigma_sec,
+            ps_gap_loss_weight=args.ps_gap_loss_weight if args.predict_ps_gap else 0.0,
+            ps_gap_consist_weight=args.ps_gap_consist_weight,
             wrong_peak_loss_weight=args.wrong_peak_loss_weight,
             wrong_peak_radius_sec=args.wrong_peak_radius_sec,
             wrong_peak_margin=args.wrong_peak_margin,
             s_wrong_peak_scale=args.s_wrong_peak_scale,
+            wrong_peak_listwise_weight=args.wrong_peak_listwise_weight,
+            wrong_peak_listwise_topk=args.wrong_peak_listwise_topk,
+            rho_sparsity_weight=args.rho_sparsity_weight,
+            rho_sparsity_radius_sec=args.rho_sparsity_radius_sec,
+            kernel_phys_prior_weight=args.kernel_phys_prior_weight,
             post_process_p_before_s=args.post_process_p_before_s,
             noise_cancel_weight=args.noise_cancel_weight if args.noise_cancel else 0.0,
             nc_consistency_weight=args.nc_consistency_weight,
@@ -864,7 +1239,7 @@ def train() -> None:
         return
 
     ckpt = torch.load(eval_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt["state_dict"])
+    model.load_state_dict(ckpt["state_dict"], strict=False)
     test_metrics = evaluate(
         model,
         test_loader,
@@ -882,10 +1257,20 @@ def train() -> None:
         s_pick_loss_weight=args.s_pick_loss_weight,
         ps_order_loss_weight=args.ps_order_loss_weight,
         ps_min_gap_sec=args.ps_min_gap_sec,
+        distance_gap_loss_weight=args.distance_gap_loss_weight,
+        distance_gap_s_per_km=args.distance_gap_s_per_km,
+        distance_gap_sigma_sec=args.distance_gap_sigma_sec,
+        ps_gap_loss_weight=args.ps_gap_loss_weight if args.predict_ps_gap else 0.0,
+        ps_gap_consist_weight=args.ps_gap_consist_weight,
         wrong_peak_loss_weight=args.wrong_peak_loss_weight,
         wrong_peak_radius_sec=args.wrong_peak_radius_sec,
         wrong_peak_margin=args.wrong_peak_margin,
         s_wrong_peak_scale=args.s_wrong_peak_scale,
+        wrong_peak_listwise_weight=args.wrong_peak_listwise_weight,
+        wrong_peak_listwise_topk=args.wrong_peak_listwise_topk,
+        rho_sparsity_weight=args.rho_sparsity_weight,
+        rho_sparsity_radius_sec=args.rho_sparsity_radius_sec,
+        kernel_phys_prior_weight=args.kernel_phys_prior_weight,
         post_process_p_before_s=args.post_process_p_before_s,
         noise_cancel_weight=args.noise_cancel_weight if args.noise_cancel else 0.0,
         nc_consistency_weight=args.nc_consistency_weight,

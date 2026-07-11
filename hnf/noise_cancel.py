@@ -82,6 +82,7 @@ class HuygensNoiseCancelBranch(nn.Module):
         learnable_kernel_params: bool = True,
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
+        obliquity_mix: float = 0.0,
     ):
         super().__init__()
         self.source_dim = source_dim
@@ -105,7 +106,9 @@ class HuygensNoiseCancelBranch(nn.Module):
             sparse_band=True,
             principle=principle,
             obliquity_scale=obliquity_scale,
-            learnable_obliquity=learnable_kernel_params and principle == "huygens_fresnel",
+            obliquity_mix=obliquity_mix,
+            learnable_obliquity=learnable_kernel_params
+            and (principle == "huygens_fresnel" or obliquity_mix > 0.0),
         )
         self.to_noise = nn.Conv1d(source_dim, channels, kernel_size=1, bias=False)
         self.enhancer = CoherentTriaxialEnhancer(channels=channels, hidden=hidden)
