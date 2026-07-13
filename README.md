@@ -7,7 +7,7 @@ Kernel + density design
   → Framework (layers, field reconstruction)
   → STEAD classification & phase picking (run20)
   → 1D travel-time / FWI-lite baselines
-  → Zhizi inversion bridge (macro Physics Head)
+  → Physics Decoder (macro Physics Head)
   → Proof suite (geometry-aware STEAD + baselines + latent plots)
   → Interpretability suite (kernel χ, contrib rows, ablations)
 ```
@@ -136,7 +136,7 @@ Dataset: `hnf/stead_picking_dataset.py` (includes `source_distance_km` / `source
 
 ## 4. 1D inversion baselines
 
-Before the Zhizi bridge, a layered-Earth stack was built and compared end-to-end.
+Before the Physics Decoder, a layered-Earth stack was built and compared end-to-end.
 
 | Component | Module |
 |-----------|--------|
@@ -162,7 +162,7 @@ python run_inv05_pick_to_inversion.py
 
 ---
 
-## 5. Zhizi inversion bridge
+## 5. Physics Decoder
 
 ### Pipeline
 
@@ -174,7 +174,7 @@ Frozen run20
   → short differentiable waveform refine (Route A2) or travel-time refine
 ```
 
-Code: `hnf/zhizi_physics_head.py`, `zhizi_inversion_bridge.py`, `zhizi_inversion_dataset.py`, `zhizi_inversion_loss.py`.
+Code: `hnf/zhizi_physics_head.py`, `physics_decoder.py`, `zhizi_inversion_dataset.py`, `zhizi_inversion_loss.py`.
 
 ### Training (converged recipe)
 
@@ -427,7 +427,7 @@ python run_interpret_suite.py --device cuda --copy-to-docs
 
 ![Bridge latent panel](docs/figures/interpret/bridge_latent/bridge_latent_00.png)
 
-*Figure: frozen run20 features through the Zhizi bridge — ρ(t), envelope, P/S logits vs GT onsets.*
+*Figure: frozen run20 features through the Physics Decoder — ρ(t), envelope, P/S logits vs GT onsets.*
 
 ![Bridge ρ vs distance](docs/figures/interpret/bridge_latent/bridge_rho_vs_distance.png)
 
@@ -669,7 +669,7 @@ Key paper-scale findings:
 
 ```
 HNF/
-├── hnf/                         # kernel, layers, field, picking, inversion, Zhizi bridge
+├── hnf/                         # kernel, layers, field, picking, inversion, Physics Decoder
 │   ├── kernel.py density.py layers.py fmm.py field.py ...
 │   ├── picking_model.py noise_cancel.py multiscale.py
 │   ├── inversion_1d.py inversion_baselines.py acoustic_fwi_1d.py ray_paths.py

@@ -1,6 +1,7 @@
 # 数据集与训练产物（体积大，勿上传）
 STEAD/
 outputs/
+external_data/
 *.pt
 *.hdf5
 *.h5

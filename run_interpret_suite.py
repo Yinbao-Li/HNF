@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Interpretability proof package for HNF (picking + Zhizi bridge).
+Interpretability proof package for HNF (picking + Physics Decoder).
 
 Sections:
   A) Kernel physics: obliquity χ(θ), Huygens vs Huygens–Fresnel |K| difference
@@ -36,7 +36,7 @@ from hnf.inversion_1d import LayeredEarth1D, default_synth_model, travel_time_ph
 from hnf.kernel import HuygensKernel
 from hnf.picking_metrics import idx_to_sec
 from hnf.stead_picking_dataset import STEADPickingDataset
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, load_physics_head_state
+from hnf.physics_decoder import PhysicsDecoder, load_physics_head_state
 
 
 RUN20_REF = {
@@ -375,7 +375,7 @@ def run_bridge_latent_panels(
     geo_condition = bool(state.get("geo_condition", False)) or bool(
         (state.get("args") or {}).get("geo_condition", False)
     )
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=base.n_layers,
         embed_dim=embed_dim,
@@ -457,7 +457,7 @@ def run_joint_latent_summary(args, device: torch.device, out_dir: Path) -> dict:
     base = default_synth_model(device)
     state = torch.load(args.physics_head, map_location=device, weights_only=False)
     geo_condition = bool(state.get("geo_condition", False)) or bool((state.get("args") or {}).get("geo_condition", False))
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=base.n_layers,
         embed_dim=embed_dim,
@@ -758,7 +758,7 @@ def run_branch_parameter_ablation(
     base = default_synth_model(device)
     state = torch.load(args.physics_head, map_location=device, weights_only=False)
     geo_condition = bool(state.get("geo_condition", False)) or bool((state.get("args") or {}).get("geo_condition", False))
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=base.n_layers,
         embed_dim=embed_dim,

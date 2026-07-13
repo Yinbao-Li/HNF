@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Train Zhizi inversion bridge (frozen backbone + Physics Head).
+Train Physics Decoder (frozen backbone + Physics Head).
 
 Stage 1: synthetic 1D layered Earth, travel-time physics loss + soft latent priors.
 Does NOT update picking/det/P/S heads.
@@ -22,7 +22,7 @@ from hnf.inversion_1d import LayeredEarth1D, default_synth_model
 from hnf.inv_plot import perturb_initial
 from hnf.picking_prior import run_picking_on_batch
 from hnf.stead_zhizi_inversion_dataset import SteadZhiziInversionDataset
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, load_physics_head_state
+from hnf.physics_decoder import PhysicsDecoder, load_physics_head_state
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
 from hnf.zhizi_inversion_loss import zhizi_inversion_loss
 
@@ -132,7 +132,7 @@ def _val_score(va: dict[str, float], dataset: str) -> float:
     return va.get("rmse_vp_rmse", va.get("rmse_vp", va.get("loss", float("inf"))))
 
 
-def _apply_train_freeze(bridge: ZhiziInversionBridge, train_geo_only: bool) -> None:
+def _apply_train_freeze(bridge: PhysicsDecoder, train_geo_only: bool) -> None:
     if not train_geo_only:
         return
     for name, param in bridge.physics_head.named_parameters():
@@ -142,7 +142,7 @@ def _apply_train_freeze(bridge: ZhiziInversionBridge, train_geo_only: bool) -> N
 
 
 def run_epoch(
-    bridge: ZhiziInversionBridge,
+    bridge: PhysicsDecoder,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer | None,
     device: torch.device,
@@ -353,7 +353,7 @@ def main() -> None:
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
 
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
         embed_dim=embed_dim,

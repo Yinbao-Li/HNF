@@ -24,7 +24,7 @@ from hnf.acoustic_fwi_1d import DirectWaveForward, invert_acoustic_fwi
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model, model_rmse
 from hnf.inv_plot import perturb_initial
 from hnf.ray_paths import direct_ray_path
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge
+from hnf.physics_decoder import PhysicsDecoder
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
 
 
@@ -81,7 +81,7 @@ def main() -> None:
     backbone, ckpt_args = load_model(ckpt, device, bypass_noise_cancel=True)
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
         embed_dim=embed_dim,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch.nn as nn
 
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, load_inversion_bridge_from_checkpoint
+from hnf.physics_decoder import PhysicsDecoder, load_physics_decoder_from_checkpoint
 
 DEFAULT_SYNTH_HEAD = "outputs/zhizi_inversion_bridge_macro/best_physics_head.pt"
 DEFAULT_STEAD_HEAD = "outputs/zhizi_inversion_mixed_geo/best_physics_head.pt"
@@ -22,8 +22,8 @@ class DualPathInversionBridge:
     Causal: real geometry only enters STEAD path; synth path has no geo conditioning.
     """
 
-    stead: ZhiziInversionBridge
-    synth: ZhiziInversionBridge
+    stead: PhysicsDecoder
+    synth: PhysicsDecoder
     stead_head: str
     synth_head: str
 
@@ -42,11 +42,11 @@ def load_dual_path_bridge(
     n_layers: int = 5,
     infer_seq_len: int = 600,
 ) -> DualPathInversionBridge:
-    stead = load_inversion_bridge_from_checkpoint(
+    stead = load_physics_decoder_from_checkpoint(
         backbone, stead_head, device,
         embed_dim=embed_dim, n_layers=n_layers, infer_seq_len=infer_seq_len,
     )
-    synth = load_inversion_bridge_from_checkpoint(
+    synth = load_physics_decoder_from_checkpoint(
         backbone, synth_head, device,
         embed_dim=embed_dim, n_layers=n_layers, infer_seq_len=infer_seq_len,
     )

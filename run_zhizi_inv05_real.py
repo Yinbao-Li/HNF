@@ -25,11 +25,11 @@ from hnf.inv_plot import perturb_initial
 from hnf.picking_metrics import idx_to_sec
 from hnf.picking_prior import run_picking_on_batch
 from hnf.stead_picking_dataset import STEADPickingDataset
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge
+from hnf.physics_decoder import PhysicsDecoder
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="inv05-real: STEAD + Zhizi inversion bridge")
+    p = argparse.ArgumentParser(description="inv05-real: STEAD + Physics Decoder")
     p.add_argument("--checkpoint", default="outputs/run20/20_wrongpeak_sharp/best.pt")
     p.add_argument("--physics-head", default="outputs/zhizi_inversion_bridge_macro/best_physics_head.pt")
     p.add_argument("--head-mode", choices=["residual", "macro"], default="macro")
@@ -94,7 +94,7 @@ def main() -> None:
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     base = default_synth_model(device)
     n_layers = base.n_layers
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
         embed_dim=embed_dim,

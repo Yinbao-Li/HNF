@@ -29,7 +29,7 @@ from hnf.picking_metrics import idx_to_sec
 from hnf.picking_prior import run_picking_on_batch
 from hnf.stead_picking_dataset import STEADPickingDataset
 from hnf.stead_zhizi_inversion_dataset import encode_geometry_tensor
-from hnf.zhizi_inversion_bridge import load_inversion_bridge_from_checkpoint
+from hnf.physics_decoder import load_physics_decoder_from_checkpoint
 from run_knowledge_mining import (
     _normal_p_from_r,
     bootstrap_ci,
@@ -191,7 +191,7 @@ def collect_per_head(
         name = short_name(hp)
         head_names.append(name)
         bridges.append(
-            load_inversion_bridge_from_checkpoint(
+            load_physics_decoder_from_checkpoint(
                 backbone,
                 str(p),
                 device,

@@ -34,9 +34,9 @@ from hnf.ray_paths import direct_ray_path
 from hnf.stead_picking_dataset import STEADPickingDataset
 from hnf.dual_path_inversion import DualPathInversionBridge, load_dual_path_bridge
 from hnf.stead_zhizi_inversion_dataset import encode_geometry_tensor
-from hnf.zhizi_inversion_bridge import (
-    ZhiziInversionBridge,
-    load_inversion_bridge_from_checkpoint,
+from hnf.physics_decoder import (
+    PhysicsDecoder,
+    load_physics_decoder_from_checkpoint,
     load_physics_head_state,
 )
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
@@ -480,7 +480,7 @@ def main() -> None:
     n_layers = default_synth_model(device).n_layers
 
     dual: DualPathInversionBridge | None = None
-    bridge: ZhiziInversionBridge
+    bridge: PhysicsDecoder
     if args.dual_path or args.physics_head_stead or args.physics_head_synth:
         stead_head = args.physics_head_stead or args.physics_head
         synth_head = args.physics_head_synth or "outputs/zhizi_inversion_bridge_macro/best_physics_head.pt"
@@ -498,7 +498,7 @@ def main() -> None:
             "physics_head_synth": dual.synth_head,
         }
     else:
-        bridge = load_inversion_bridge_from_checkpoint(
+        bridge = load_physics_decoder_from_checkpoint(
             backbone, args.physics_head, device,
             head_mode=args.head_mode,
             embed_dim=embed_dim,

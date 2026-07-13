@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Zhizi (智子) inversion bridge: Physics Head maps latent picking features to 1D Earth.
+Physics Head for the Physics Decoder: maps latent picking features to 1D Earth.
 
 Latent quantities (rho, kernel wave_speed) are NOT physical units — they condition
 the head and regularization only. Calibration happens via travel-time physics loss.

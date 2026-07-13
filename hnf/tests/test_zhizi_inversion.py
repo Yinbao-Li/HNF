@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Tests for Zhizi inversion bridge."""
+"""Tests for Physics Decoder / Zhizi inversion."""
 
 import torch
 
 from hnf.inversion_1d import default_station_distances, default_synth_model, synthesize_travel_times
 from hnf.stead_zhizi_inversion_dataset import SteadZhiziInversionDataset
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge, features_to_head_inputs
+from hnf.physics_decoder import PhysicsDecoder, features_to_head_inputs
 from hnf.zhizi_inversion_loss import zhizi_inversion_loss
 from hnf.zhizi_physics_head import (
     ZhiziPhysicsHead,
@@ -115,7 +115,7 @@ def test_bridge_trainable_count_only_head():
             }
 
     bb = FakeBackbone()
-    bridge = ZhiziInversionBridge(bb, n_layers=5, embed_dim=16, hidden=16, infer_seq_len=None)
+    bridge = PhysicsDecoder(bb, n_layers=5, embed_dim=16, hidden=16, infer_seq_len=None)
     assert bridge.trainable_parameter_count() == count_physics_head_params(bridge.physics_head)
     assert bridge.trainable_parameter_count() < bridge.total_parameter_count() or True
 

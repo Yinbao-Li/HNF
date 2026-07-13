@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Evaluate Zhizi inversion bridge vs classical travel-time baselines.
+Evaluate Physics Decoder vs classical travel-time baselines.
 
 Uses synthetic multi-station waveforms (same generator as training) and
 reports Vp/Vs RMSE + travel-time misfit per method.
@@ -21,12 +21,12 @@ from analyze_stead_picking import load_model
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model, model_rmse, travel_time_phase
 from hnf.inversion_baselines import invert_lbfgs_torch
 from hnf.inv_plot import perturb_initial
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge
+from hnf.physics_decoder import PhysicsDecoder
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Evaluate Zhizi inversion bridge")
+    p = argparse.ArgumentParser(description="Evaluate Physics Decoder")
     p.add_argument("--checkpoint", default="outputs/run20/20_wrongpeak_sharp/best.pt")
     p.add_argument("--physics-head", default="outputs/zhizi_inversion_bridge/best_physics_head.pt")
     p.add_argument("--output-dir", default="outputs/zhizi_inversion_bridge")
@@ -60,7 +60,7 @@ def main() -> None:
     backbone, ckpt_args = load_model(ckpt, device, bypass_noise_cancel=True)
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
         embed_dim=embed_dim,

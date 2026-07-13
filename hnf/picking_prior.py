@@ -3,7 +3,7 @@
 Map run20 picking outputs (rho, P/S picks, kernel vp/vs) to 1D inversion priors.
 
 NOTE: Hard rho/kernel -> vp mapping (inv06 procedural prior) is deprecated.
-Use ``hnf.zhizi_inversion_bridge.ZhiziInversionBridge`` + ``ZhiziPhysicsHead`` instead:
+Use ``hnf.physics_decoder.PhysicsDecoder`` + ``ZhiziPhysicsHead`` instead:
 latent features feed a trainable head; physics losses calibrate to real Earth parameters.
 """
 

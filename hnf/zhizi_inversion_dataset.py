@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""On-the-fly synthetic dataset for Zhizi inversion bridge training."""
+"""On-the-fly synthetic dataset for Physics Decoder training."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def random_layered_earth(
 
 class ZhiziInversionDataset(Dataset):
     """
-    Synthetic multi-station events for stage-1 inversion bridge training.
+    Synthetic multi-station events for stage-1 Physics Decoder training.
 
     Each item: waveforms (N, T, 3), travel times, true earth model.
     """

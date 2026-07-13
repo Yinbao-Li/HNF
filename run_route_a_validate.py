@@ -26,7 +26,7 @@ from analyze_stead_picking import load_model
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model
 from hnf.inv_plot import perturb_initial
 from hnf.route_a_refine import RouteARow, build_verdict, refine_gn, rmse_vs_true
-from hnf.zhizi_inversion_bridge import ZhiziInversionBridge
+from hnf.physics_decoder import PhysicsDecoder
 from hnf.zhizi_inversion_dataset import ZhiziInversionDataset
 
 
@@ -60,7 +60,7 @@ def main() -> None:
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
 
-    bridge = ZhiziInversionBridge(
+    bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
         embed_dim=embed_dim,

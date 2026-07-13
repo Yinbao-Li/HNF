@@ -243,6 +243,13 @@ python train_zhizi_inversion.py --dataset synthetic --head-mode macro --predict-
   --n-train 80 --n-val 16 --epochs 12 --output-dir outputs/zhizi_inversion_macro_q
 ```
 
+## Future application domains (design)
+
+| Domain | Doc | Priority vs current work |
+|--------|-----|--------------------------|
+| II — AD/FTD EEG | `hnf/eeg_*`, `train_eeg.py` | After STEAD/OBS bandwidth frees |
+| III — Sparse 4D Flow → constitutive discovery | [`DOMAIN_III_FLUID_RHEOLOGY.md`](DOMAIN_III_FLUID_RHEOLOGY.md) | Design only; after EEG Stage-1 |
+
 ## Next minimum paper upgrades
 
 1. Improve OBS transfer: more OBS chunks, HNF light-adapt / threshold sweep, PhaseNet post-processing

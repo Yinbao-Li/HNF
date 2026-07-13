@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Physics losses for Zhizi inversion bridge (travel-time + soft priors)."""
+"""Physics losses for the Physics Decoder (travel-time + soft priors)."""
 
 from __future__ import annotations
 

@@ -78,7 +78,7 @@ single correlation coefficient.
 
 The current recommended chain is:
 
-`gamma/omega -> kernel behavior -> rho / envelope / pick timing -> macro bridge -> vp/vs -> fit quality`
+`gamma/omega -> kernel behavior -> rho / envelope / pick timing -> Physics Decoder -> vp/vs -> fit quality`
 
 This means a candidate discovery should answer:
 

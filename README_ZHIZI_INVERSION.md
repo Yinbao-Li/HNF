@@ -1,4 +1,4 @@
-# Zhizi Inversion Bridge (macro head)
+# Physics Decoder (Zhizi inversion, macro head)
 
 Frozen run20 picking backbone + macro Physics Head (`scale` / `contrast` / `Vs ratio`) → `vp0/vs0`, then short waveform refinement. Goal: a **better FWI-lite initializer**.
 
