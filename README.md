@@ -120,7 +120,7 @@ heads.
 Trainer: `train_stead_picking.py`. Historical launches live under
 `scripts/experiments/` (`run11`…`run27`; legacy freeze =
 `scripts/experiments/run20_stead_picking.py`). Current primary:
-`run28_stead_ms_fresnel_phys.py`.
+`scripts/experiments/run28_stead_ms_fresnel_phys.py`.
 
 Design choices in **run28** (multi-scale + Huygens–Fresnel + weak phys regs):
 
@@ -214,7 +214,7 @@ Reports: `outputs/route_a2_run28_macro_n256/`, `route_a2_run20_macro_n256/`,
 ### Proof suite (large-N)
 
 ```bash
-python run_proof_suite.py --device cuda --max-events 500 --n-synth 128 \
+python scripts/inversion/run_proof_suite.py --device cuda --max-events 500 --n-synth 128 \
   --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --physics-head outputs/physics_decoder_run28_macro/best_physics_head.pt \
   --head-mode macro --output-dir outputs/proof_suite_run28_n500
@@ -245,15 +245,15 @@ python scripts/inversion/run_phase_ef_overview.py \
 
 ```
 HNF/
-├── hnf/                         # library (kernel, picking, Physics Decoder, …)
-├── docs/figures/                # README figures (+ interpret/, probing/, knowledge/)
-├── outputs/CURRENT.md           # which dumps are canonical after prune
-├── train_*.py / eval_*.py       # day-to-day train / eval entry points
-├── run28_stead_ms_fresnel_phys.py / run_interpret_suite.py / run_probing_suite.py
-├── run_route_a2_waveform.py / run_proof_suite.py / run_knowledge_mining*.py
-├── scripts/                     # archived / specialized drivers (see scripts/README.md)
-│   ├── experiments/             # run11–run27 numbered picking launches
-│   ├── paper/ / inversion/ / picking/ / domain/
+├── hnf/                    # library (kernel, picking, Physics Decoder, …)
+├── docs/figures/           # README figures (+ interpret/, probing/, knowledge/)
+├── outputs/CURRENT.md      # which dumps are canonical after prune
+├── train_*.py / eval_*.py / download_*.py   # day-to-day entry points
+├── scripts/                # all run_* drivers (see scripts/README.md)
+│   ├── experiments/        # run11–run28 numbered picking launches
+│   ├── interpret/          # interpret / probing / knowledge mining
+│   ├── inversion/          # inv, proof, route A/A2, phase E/F
+│   ├── paper/ / picking/ / domain/
 └── docs/EXPERIMENT_PLAN.md
 ```
 
@@ -262,10 +262,10 @@ CKPT=outputs/run28/28_ms_fresnel_phys_20ep/best.pt
 HEAD=outputs/physics_decoder_run28_macro/best_physics_head.pt
 
 python eval_stead_picking.py --checkpoint $CKPT
-python run_interpret_suite.py --device cuda --checkpoint $CKPT \
+python scripts/interpret/run_interpret_suite.py --device cuda --checkpoint $CKPT \
   --output-dir outputs/interpret_suite_run28 --copy-to-docs
-python run_probing_suite.py --device cuda --checkpoint $CKPT --copy-to-docs
-python run_route_a2_waveform.py --checkpoint $CKPT --physics-head $HEAD \
+python scripts/interpret/run_probing_suite.py --device cuda --checkpoint $CKPT --copy-to-docs
+python scripts/inversion/run_route_a2_waveform.py --checkpoint $CKPT --physics-head $HEAD \
   --head-mode macro --n-test 256 --output-dir outputs/route_a2_run28_macro_n256
 ```
 
@@ -276,12 +276,12 @@ python run_route_a2_waveform.py --checkpoint $CKPT --physics-head $HEAD \
 Two complementary tracks on the **frozen seismic model**:
 
 1. **Parameter interpretability** — does γ, ω, χ, kernel rows, and ρ align with
-   wave physics? (largely implemented in `run_interpret_suite.py`)
+   wave physics? (largely implemented in `scripts/interpret/run_interpret_suite.py`)
 2. **Physical-neuron probing** — treat ρ / K activations as mechanistic units
    and test *causal* decision roles (partially implemented; roadmap below)
 
 ```bash
-python run_interpret_suite.py --device cuda --copy-to-docs \
+python scripts/interpret/run_interpret_suite.py --device cuda --copy-to-docs \
   --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --output-dir outputs/interpret_suite_run28
 # → outputs/interpret_suite_run28/interpret_report.json
@@ -356,7 +356,7 @@ reversed that for picking metrics.
 
 ## II.2 Probing “physical neurons”
 
-Script: `run_probing_suite.py` → `outputs/probing_suite_run28/` (+
+Script: `scripts/interpret/run_probing_suite.py` → `outputs/probing_suite_run28/` (+
 `docs/figures/probing/`).
 
 ### (1) Causal-chain tracking **[done — first pass]**
@@ -378,7 +378,7 @@ False-P-on-noise K-row gallery is implemented; first pass found few high-confide
 false P after thresholding. Re-run with relaxed thresholds when packaging Part II.
 
 ```bash
-python run_probing_suite.py --device cuda --copy-to-docs \
+python scripts/interpret/run_probing_suite.py --device cuda --copy-to-docs \
   --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --output-dir outputs/probing_suite_run28
 ```
@@ -401,8 +401,8 @@ along the mechanism chain
 [`docs/KNOWLEDGE_MINING.md`](docs/KNOWLEDGE_MINING.md).
 
 ```bash
-python run_knowledge_mining.py
-python run_knowledge_mining_cross.py   # outputs/knowledge_mining_v4
+python scripts/interpret/run_knowledge_mining.py
+python scripts/interpret/run_knowledge_mining_cross.py   # outputs/knowledge_mining_v4
 ```
 
 Key keepers / cautions:

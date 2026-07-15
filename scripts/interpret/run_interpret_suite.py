@@ -11,8 +11,8 @@ Sections:
   E) Inversion init→refine scatter (synthetic)
 
 Usage:
-  python run_interpret_suite.py --device cuda
-  python run_interpret_suite.py --device cuda --copy-to-docs
+  python scripts/interpret/run_interpret_suite.py --device cuda
+  python scripts/interpret/run_interpret_suite.py --device cuda --copy-to-docs
 """
 
 from __future__ import annotations
@@ -1235,7 +1235,7 @@ def main() -> None:
         "## Inversion",
         f"- {report['inversion'].get('summary')}",
         "",
-        "Run: `python run_interpret_suite.py --device cuda --copy-to-docs`",
+        "Run: `python scripts/interpret/run_interpret_suite.py --device cuda --copy-to-docs`",
     ]
     (out_dir / "interpret_report.md").write_text("\n".join(md))
 

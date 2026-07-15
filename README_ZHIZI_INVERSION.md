@@ -38,7 +38,7 @@ Optional: `--kernel-summary --mid-tt-weight 0.08` → `physics_decoder_run28_mac
 ## Eval
 
 ```bash
-python run_route_a2_waveform.py \
+python scripts/inversion/run_route_a2_waveform.py \
   --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --physics-head outputs/physics_decoder_run28_macro/best_physics_head.pt \
   --head-mode macro --n-test 256 --fwi-steps 60 --device cuda \

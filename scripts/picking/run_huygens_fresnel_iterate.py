@@ -164,7 +164,7 @@ def stage_invert(args: argparse.Namespace, pick_ckpt: Path) -> None:
     a2 = OUT / "route_a2_32"
     a2_cmd = [
         sys.executable,
-        str(ROOT / "run_route_a2_waveform.py"),
+        str(ROOT / "scripts" / "inversion" / "run_route_a2_waveform.py"),
         "--checkpoint", str(pick_ckpt),
         "--head-mode", "macro",
         "--physics-head", str(head),
@@ -176,7 +176,7 @@ def stage_invert(args: argparse.Namespace, pick_ckpt: Path) -> None:
     run(a2_cmd, args.dry_run)
     proof_cmd = [
         sys.executable,
-        str(ROOT / "run_proof_suite.py"),
+        str(ROOT / "scripts" / "inversion" / "run_proof_suite.py"),
         "--checkpoint", str(pick_ckpt),
         "--physics-head", str(head),
         "--head-mode", "macro",

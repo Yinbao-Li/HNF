@@ -5,18 +5,17 @@ Run all commands from the **repo root** (`HNF/`), so `outputs/`, `STEAD/`, and
 
 ```bash
 cd /path/to/HNF
-python scripts/paper/run_paper_fig1_overview.py
+python scripts/interpret/run_probing_suite.py --device cuda
 ```
 
 | Directory | Contents |
 |-----------|----------|
-| `experiments/` | Numbered STEAD picking launches **run11–run27** (archive / ablation history). Primary train entry is still root `run28_stead_ms_fresnel_phys.py`. |
-| `paper/` | Paper figure / board drivers (`run_paper_*`). |
-| `inversion/` | Classic 1D inv, Zhizi eval helpers, Phase E/F / perf sweeps. |
-| `picking/` | Diagnostics (wrong-peak, realtime, Fresnel iterate, …). |
-| `domain/` | Non-seismic helpers (e.g. EEG analysis). |
+| `experiments/` | Numbered STEAD picking launches **run11–run28** (primary: `run28_stead_ms_fresnel_phys.py`) |
+| `interpret/` | `run_interpret_suite`, `run_probing_suite`, `run_knowledge_mining*` |
+| `inversion/` | Classic 1D inv, Zhizi helpers, `run_proof_suite`, `run_route_a*`, Phase E/F / perf |
+| `paper/` | Paper figure / board drivers (`run_paper_*`) |
+| `picking/` | Diagnostics (wrong-peak, realtime, Fresnel iterate, …) |
+| `domain/` | Non-seismic helpers (e.g. EEG analysis) |
 
-Day-to-day entry points stay at repo root: `train_*.py`, `eval_*.py`,
-`run28_*`, `run_interpret_suite.py`, `run_probing_suite.py`,
-`run_route_a2_waveform.py`, `run_proof_suite.py`, `run_knowledge_mining*.py`,
-`download_*.py`.
+Repo root keeps only `train_*` / `eval_*` / `download_*` / a few picking helpers
+(`analyze_` / `explain_` / `ablation_` / `benchmark_`).

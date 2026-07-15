@@ -14,7 +14,7 @@ geometry, pick quality, and travel-time fit quality.
 
 ## First-pass export
 
-`run_knowledge_mining.py` now exports:
+`scripts/interpret/run_knowledge_mining.py` now exports:
 
 - `sample_level_stats.csv`
 - `sample_level_stats.json`
@@ -231,7 +231,7 @@ mined **across models / checkpoints**, not only across events.
 
 ## Fourth-pass update (cross-model)
 
-Pass 4 is implemented in `run_knowledge_mining_cross.py` and exported to
+Pass 4 is implemented in `scripts/interpret/run_knowledge_mining_cross.py` and exported to
 `outputs/knowledge_mining_v4`. It adds:
 
 - ablation-derived sensitivity ranking from interpret-suite scans
@@ -278,7 +278,7 @@ Figures:
    Saved interpret-suite branch scans on the representative event were flat,
    partly because earlier scans wrote *effective* gamma into the *raw*
    Parameter (softplus mismatch) and only touched layer 0. That bug is now
-   fixed in `run_interpret_suite.py` (raw-parameter scans over all branch
+   fixed in `scripts/interpret/run_interpret_suite.py` (raw-parameter scans over all branch
    layers). A live stronger scan still recovers only a weak
    `p_omega -> p_lag` effect (lag span ≈ `0.075 s`) and near-zero
    gamma → `vp/vs` propagation. This reinforces the architectural reading:

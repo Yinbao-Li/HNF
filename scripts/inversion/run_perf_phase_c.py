@@ -93,7 +93,7 @@ def main() -> None:
         run(
             [
                 py,
-                str(ROOT / "run_proof_suite.py"),
+                str(ROOT / "scripts" / "inversion" / "run_proof_suite.py"),
                 "--checkpoint",
                 args.pick_checkpoint,
                 "--physics-head",
@@ -114,7 +114,7 @@ def main() -> None:
         run(
             [
                 py,
-                str(ROOT / "run_interpret_suite.py"),
+                str(ROOT / "scripts" / "interpret" / "run_interpret_suite.py"),
                 "--checkpoint",
                 args.pick_checkpoint,
                 "--physics-head",

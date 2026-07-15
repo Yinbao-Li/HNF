@@ -10,7 +10,7 @@
     vs physically plausible onset windows.
 
 Usage:
-  python run_probing_suite.py --device cuda \\
+  python scripts/interpret/run_probing_suite.py --device cuda \\
     --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \\
     --copy-to-docs
 """

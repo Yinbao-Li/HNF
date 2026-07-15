@@ -8,7 +8,7 @@ Proof-of-superiority package:
   4) Training curve + comparison dashboards
 
 Usage:
-  python run_proof_suite.py --device cuda --max-events 48 --n-synth 32
+  python scripts/inversion/run_proof_suite.py --device cuda --max-events 48 --n-synth 32
 """
 
 from __future__ import annotations
