@@ -20,7 +20,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "outputs" / "run22"
 BASE = ROOT / "outputs" / "run20" / "20_wrongpeak_sharp" / "best.pt"
 EQT_REF = {"det_f1": 0.9992, "p_f1": 0.9894, "s_f1": 0.9707}

@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Run13: fixed run12 compute strategy (anchors) + run11 ablation on top.
-
-Base (no ablation flags):
-  - seq800, 01 architecture, scalar det
-  - --num-anchors 128  (run12, adopted without ablation)
-  - sparse-band omitted (GPU slower than dense at seq800)
-
-Ablations (run11-style, sequential from 01 checkpoint):
-  - 13_base              (no residual pick/det heads)
-  - 13_aug               (+ residual heads, default on)
-  - 13_multiscale
-  - 13_aug_multiscale
-"""
+"""Run11 ablation: data aug / multi-scale DeepHuygens on ablation-01 base."""
 
 from __future__ import annotations
 
@@ -22,9 +9,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-OUT_ROOT = ROOT / "outputs" / "run13"
+ROOT = Path(__file__).resolve().parents[2]
+OUT_ROOT = ROOT / "outputs" / "run11"
 STATE_PATH = OUT_ROOT / "state.json"
+
+# Ablation 01 strict test baseline
+BASELINE = {
+    "det_f1": 0.9889249729369639,
+    "p_f1": 0.904525849450614,
+    "s_f1": 0.9042715072500761,
+    "ps_sum": 1.80879735670069,
+}
+
 BASE_RESUME = ROOT / "outputs" / "ablation" / "01_seq800" / "best.pt"
 
 COMMON = [
@@ -33,13 +29,13 @@ COMMON = [
     "--seq-len",
     "800",
     "--batch-size",
-    "24",
+    "12",
     "--grad-accum-steps",
-    "2",
+    "4",
     "--epochs",
     "8",
     "--num-workers",
-    "2",
+    "0",
     "--embed-dim",
     "64",
     "--num-shared-layers",
@@ -56,27 +52,31 @@ COMMON = [
     "15.0",
     "--seed",
     "42",
-    "--num-anchors",
-    "128",
 ]
 
 RUNS = [
-    ("13_base", {}),
-    ("13_aug", {"augment": True}),
-    ("13_multiscale", {"multi_scale": True}),
-    ("13_aug_multiscale", {"augment": True, "multi_scale": True}),
+    (
+        "11a_aug",
+        {"augment": True},
+        str(BASE_RESUME),
+    ),
+    (
+        "11b_multiscale",
+        {"multi_scale": True},
+        str(BASE_RESUME),
+    ),
+    (
+        "11c_aug_multiscale",
+        {"augment": True, "multi_scale": True},
+        str(BASE_RESUME),
+    ),
 ]
 
 
-def build_cmd(name: str, flags: dict[str, bool]) -> list[str]:
-    cmd = COMMON + [
-        "--output-dir",
-        str(OUT_ROOT / name),
-        "--resume",
-        str(BASE_RESUME),
-    ]
-    if name == "13_base":
-        cmd.extend(["--no-residual-pick-head", "--no-residual-det-head"])
+def build_cmd(name: str, flags: dict[str, bool], resume: str) -> list[str]:
+    cmd = COMMON + ["--output-dir", str(OUT_ROOT / name)]
+    if resume:
+        cmd += ["--resume", resume]
     if flags.get("augment"):
         cmd.append("--augment")
     if flags.get("multi_scale"):
@@ -98,8 +98,8 @@ def save_state(state: dict) -> None:
 def main() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(description="Run13: anchors base + run11 ablations")
-    p.add_argument("--only", default=None)
+    p = argparse.ArgumentParser(description="Run11 STEAD picking experiments")
+    p.add_argument("--only", default=None, help="Run single experiment name, e.g. 11a_aug")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -110,37 +110,36 @@ def main() -> None:
         if not runs:
             raise SystemExit(f"Unknown run: {args.only}")
 
-    for name, flags in runs:
+    for name, flags, resume in runs:
         if name in state.get("completed", []):
-            print(f"[run13] skip completed {name}", flush=True)
+            print(f"[run11] skip completed {name}", flush=True)
             continue
-        cmd = build_cmd(name, flags)
-        print(f"[run13] >>> {' '.join(cmd)}", flush=True)
+        cmd = build_cmd(name, flags, resume)
+        print(f"[run11] >>> {' '.join(cmd)}", flush=True)
         if args.dry_run:
             continue
         proc = subprocess.run(cmd, cwd=ROOT)
         if proc.returncode != 0:
-            print(f"[run13] FAILED {name} code={proc.returncode}", flush=True)
+            print(f"[run11] FAILED {name} code={proc.returncode}", flush=True)
             raise SystemExit(proc.returncode)
 
         metrics_path = OUT_ROOT / name / "test_metrics.json"
         if metrics_path.is_file():
             metrics = json.loads(metrics_path.read_text())
-            state.setdefault("results", []).append(
-                {
-                    "name": name,
-                    "flags": flags,
-                    "det_f1": metrics.get("det_f1"),
-                    "p_f1": metrics.get("p_f1"),
-                    "s_f1": metrics.get("s_f1"),
-                    "ps_sum": metrics.get("p_f1", 0) + metrics.get("s_f1", 0),
-                }
-            )
+            entry = {
+                "name": name,
+                "flags": flags,
+                "det_f1": metrics.get("det_f1"),
+                "p_f1": metrics.get("p_f1"),
+                "s_f1": metrics.get("s_f1"),
+                "ps_sum": metrics.get("p_f1", 0) + metrics.get("s_f1", 0),
+            }
+            state.setdefault("results", []).append(entry)
         state.setdefault("completed", []).append(name)
         save_state(state)
 
-    print("[run13] done", flush=True)
-    print(json.dumps(state, indent=2), flush=True)
+    print("[run11] done", flush=True)
+    print(json.dumps(state, indent=2))
 
 
 if __name__ == "__main__":

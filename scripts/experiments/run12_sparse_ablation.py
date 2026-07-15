@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT_ROOT = ROOT / "outputs" / "run12"
 STATE_PATH = OUT_ROOT / "state.json"
 BASE_RESUME = ROOT / "outputs" / "ablation" / "01_seq800" / "best.pt"

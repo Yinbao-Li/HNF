@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Run15: refine P/S toward 0.95+ from 14_main, keep det>=0.99.
+Run16: analysis-driven two-phase push toward det 0.995+ / P/S 0.95+.
 
-Strategy:
-  - Resume 14_main/best.pt (same 48x4 pick heads, no anchors)
-  - Freeze shared backbone + det head for all epochs
-  - Train only P/S branches + pick heads
-  - Sharper labels, stronger pick loss, extra P weight
-  - det_guard checkpoint selection
+Phase A (16_det_onset): onset-aware det + raw HF branch, train det only
+Phase B (16_pick_refine): freeze shared+det, refine P/S branches + pick heads
 """
 
 from __future__ import annotations
@@ -18,13 +14,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-OUT_ROOT = ROOT / "outputs" / "run15"
+ROOT = Path(__file__).resolve().parents[2]
+OUT_ROOT = ROOT / "outputs" / "run16"
 STATE_PATH = OUT_ROOT / "state.json"
 BASE_RESUME = ROOT / "outputs" / "run14" / "14_main" / "best.pt"
-
-# Freeze through epoch 999 => entire run
-FREEZE_ALL = "999"
 
 COMMON = [
     sys.executable,
@@ -56,36 +49,51 @@ COMMON = [
     "--score-mode",
     "det_guard",
     "--det-score-floor",
-    "0.985",
+    "0.988",
     "--post-process-p-before-s",
     "--no-residual-det-head",
-    "--freeze-backbone-epochs",
-    FREEZE_ALL,
-    "--freeze-det-epochs",
-    FREEZE_ALL,
+    "--enhanced-det-head",
 ]
 
 RUNS = [
     (
-        "15_pick_refine",
+        "16_det_onset",
         {
             "resume": BASE_RESUME,
+            "epochs": 4,
+            "lr": "2e-4",
+            "det_loss_weight": "2.5",
+            "det_event_weight": "3.0",
+            "pick_loss_weight": "1.0",
+            "freeze_all_but_det_epochs": "4",
+            "freeze_backbone_epochs": "0",
+            "freeze_det_epochs": "0",
+        },
+    ),
+    (
+        "16_pick_refine",
+        {
+            "resume": OUT_ROOT / "16_det_onset" / "best.pt",
             "epochs": 6,
-            "lr": "1.5e-4",
-            "label_sigma_sec": "0.30",
+            "lr": "1.2e-4",
+            "label_sigma_sec": "0.32",
             "pick_pos_weight": "35",
             "pick_loss_weight": "4.0",
-            "p_pick_loss_weight": "1.8",
-            "s_pick_loss_weight": "1.0",
+            "p_pick_loss_weight": "1.5",
+            "s_pick_loss_weight": "1.3",
             "det_loss_weight": "1.5",
-            "ps_order_loss_weight": "0.25",
+            "det_event_weight": "2.0",
+            "ps_order_loss_weight": "0.2",
+            "freeze_backbone_epochs": "999",
+            "freeze_det_epochs": "999",
+            "freeze_all_but_det_epochs": "0",
         },
     ),
 ]
 
 
 def build_cmd(name: str, cfg: dict) -> list[str]:
-    return COMMON + [
+    cmd = COMMON + [
         "--output-dir",
         str(OUT_ROOT / name),
         "--resume",
@@ -94,21 +102,30 @@ def build_cmd(name: str, cfg: dict) -> list[str]:
         str(cfg["epochs"]),
         "--lr",
         str(cfg["lr"]),
-        "--label-sigma-sec",
-        str(cfg["label_sigma_sec"]),
-        "--pick-pos-weight",
-        str(cfg["pick_pos_weight"]),
-        "--pick-loss-weight",
-        str(cfg["pick_loss_weight"]),
-        "--p-pick-loss-weight",
-        str(cfg["p_pick_loss_weight"]),
-        "--s-pick-loss-weight",
-        str(cfg["s_pick_loss_weight"]),
         "--det-loss-weight",
         str(cfg["det_loss_weight"]),
-        "--ps-order-loss-weight",
-        str(cfg["ps_order_loss_weight"]),
+        "--det-event-weight",
+        str(cfg["det_event_weight"]),
+        "--freeze-backbone-epochs",
+        str(cfg["freeze_backbone_epochs"]),
+        "--freeze-det-epochs",
+        str(cfg["freeze_det_epochs"]),
+        "--freeze-all-but-det-epochs",
+        str(cfg["freeze_all_but_det_epochs"]),
+        "--pick-loss-weight",
+        str(cfg["pick_loss_weight"]),
     ]
+    if "label_sigma_sec" in cfg:
+        cmd.extend(["--label-sigma-sec", str(cfg["label_sigma_sec"])])
+    if "pick_pos_weight" in cfg:
+        cmd.extend(["--pick-pos-weight", str(cfg["pick_pos_weight"])])
+    if "p_pick_loss_weight" in cfg:
+        cmd.extend(["--p-pick-loss-weight", str(cfg["p_pick_loss_weight"])])
+    if "s_pick_loss_weight" in cfg:
+        cmd.extend(["--s-pick-loss-weight", str(cfg["s_pick_loss_weight"])])
+    if "ps_order_loss_weight" in cfg:
+        cmd.extend(["--ps-order-loss-weight", str(cfg["ps_order_loss_weight"])])
+    return cmd
 
 
 def load_state() -> dict:
@@ -125,7 +142,7 @@ def save_state(state: dict) -> None:
 def main() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(description="Run15: branch-only P/S refine toward 0.95+")
+    p = argparse.ArgumentParser(description="Run16: onset det + P/S refine")
     p.add_argument("--only", default=None)
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
@@ -139,19 +156,19 @@ def main() -> None:
 
     for name, cfg in runs:
         if name in state.get("completed", []):
-            print(f"[run15] skip completed {name}", flush=True)
+            print(f"[run16] skip completed {name}", flush=True)
             continue
         resume_path = Path(cfg["resume"])
         if not resume_path.is_file():
-            print(f"[run15] missing resume for {name}: {resume_path}", flush=True)
+            print(f"[run16] missing resume for {name}: {resume_path}", flush=True)
             raise SystemExit(1)
         cmd = build_cmd(name, cfg)
-        print(f"[run15] >>> {' '.join(cmd)}", flush=True)
+        print(f"[run16] >>> {' '.join(cmd)}", flush=True)
         if args.dry_run:
             continue
         proc = subprocess.run(cmd, cwd=ROOT)
         if proc.returncode != 0:
-            print(f"[run15] FAILED {name} code={proc.returncode}", flush=True)
+            print(f"[run16] FAILED {name} code={proc.returncode}", flush=True)
             raise SystemExit(proc.returncode)
 
         metrics_path = OUT_ROOT / name / "test_metrics.json"
@@ -169,7 +186,7 @@ def main() -> None:
         state.setdefault("completed", []).append(name)
         save_state(state)
 
-    print("[run15] done", flush=True)
+    print("[run16] done", flush=True)
     print(json.dumps(state, indent=2), flush=True)
 
 

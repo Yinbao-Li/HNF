@@ -117,9 +117,10 @@ Picking model (`STEADHNFPickingModel`): three-component secondary sources →
 temporal `rho(t)` → Huygens wave blocks (optional noise-cancel) → det / P / S
 heads.
 
-Trainer: `train_stead_picking.py`. Orchestration: `run11_stead_picking.py` …
-`run20_stead_picking.py` (legacy freeze); kitchen-sink line
-`run28_stead_ms_fresnel_phys.py` (current primary).
+Trainer: `train_stead_picking.py`. Historical launches live under
+`scripts/experiments/` (`run11`…`run27`; legacy freeze =
+`scripts/experiments/run20_stead_picking.py`). Current primary:
+`run28_stead_ms_fresnel_phys.py`.
 
 Design choices in **run28** (multi-scale + Huygens–Fresnel + weak phys regs):
 
@@ -159,9 +160,9 @@ Dataset: `hnf/stead_picking_dataset.py` (includes geometry fields for later mini
 | Ray paths | `hnf/ray_paths.py` |
 
 ```bash
-python run_inv01_synth_1d.py
-python run_inv_full_compare.py
-python run_inv_fwi_lite.py
+python scripts/inversion/run_inv01_synth_1d.py
+python scripts/inversion/run_inv_full_compare.py
+python scripts/inversion/run_inv_fwi_lite.py
 ```
 
 **Takeaway:** classical TT solvers reach the lowest absolute Vp RMSE on
@@ -225,9 +226,9 @@ Synth wave Z>P: **68%** (n=128). Full JSON: `outputs/proof_suite_run28_n500/proo
 ### Imaging: synthetic closed loop → real-data profile
 
 ```bash
-python run_phase_e_synth_imaging.py --device cuda --output-dir outputs/phase_e_formal
-python run_phase_f_stead_profile.py --device cuda --output-dir outputs/phase_f_qc
-python run_phase_ef_overview.py \
+python scripts/inversion/run_phase_e_synth_imaging.py --device cuda --output-dir outputs/phase_e_formal
+python scripts/inversion/run_phase_f_stead_profile.py --device cuda --output-dir outputs/phase_f_qc
+python scripts/inversion/run_phase_ef_overview.py \
   --phase-e-report outputs/phase_e_formal/report.json \
   --phase-f-report outputs/phase_f_qc/report.json \
   --output-dir outputs/phase_ef_overview
@@ -244,13 +245,15 @@ python run_phase_ef_overview.py \
 
 ```
 HNF/
-├── hnf/                    # kernel, layers, field, picking, inversion, Physics Decoder, eeg_*
-├── docs/figures/           # README figures (+ interpret/, probing/, knowledge/)
-├── outputs/CURRENT.md      # which dumps are canonical after prune
-├── train_stead_picking.py / run20… / run28_stead_ms_fresnel_phys.py
-├── train_zhizi_inversion.py / run_route_a2_waveform.py / run_proof_suite.py
-├── run_interpret_suite.py / run_probing_suite.py / run_knowledge_mining*.py
-├── train_eeg.py / download_eeg_adftd.py / download_raclette.py
+├── hnf/                         # library (kernel, picking, Physics Decoder, …)
+├── docs/figures/                # README figures (+ interpret/, probing/, knowledge/)
+├── outputs/CURRENT.md           # which dumps are canonical after prune
+├── train_*.py / eval_*.py       # day-to-day train / eval entry points
+├── run28_stead_ms_fresnel_phys.py / run_interpret_suite.py / run_probing_suite.py
+├── run_route_a2_waveform.py / run_proof_suite.py / run_knowledge_mining*.py
+├── scripts/                     # archived / specialized drivers (see scripts/README.md)
+│   ├── experiments/             # run11–run27 numbered picking launches
+│   ├── paper/ / inversion/ / picking/ / domain/
 └── docs/EXPERIMENT_PLAN.md
 ```
 

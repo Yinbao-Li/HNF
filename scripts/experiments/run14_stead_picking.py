@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Run18: frozen denoise + det, pick-branch-only refine on 17_noise_warmup.
+Run14: keep det>=0.99 while pushing P/S F1 toward 0.95+.
 
-Rationale (from run16/run17):
-  - Joint full-model refine hurts P/S (16_pick_refine, 17_joint)
-  - Noise warmup improves det without destroying pick (17_noise_warmup)
-  - Pick-only refine on fixed representations worked in run14 (freeze det/backbone)
-
-Epochs: 6 (val curves plateau after ~4-6 in prior refine runs; more rarely helps)
+Strategy (vs run13):
+  - No num_anchors (full temporal resolution, preserve det)
+  - Same 01_seq800 backbone (no multi_scale — it hurt det in run13)
+  - Deeper dilated pick heads + envelope residual
+  - Stronger pick loss / P emphasis / P-S order constraint
+  - det_guard checkpoint scoring + freeze backbone/det early
+  - 12-epoch fine-tune, then optional 6-epoch sharp pass
+  - (updated) 8-epoch main + 4-epoch sharp
 """
 
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-OUT_ROOT = ROOT / "outputs" / "run18"
+ROOT = Path(__file__).resolve().parents[2]
+OUT_ROOT = ROOT / "outputs" / "run14"
 STATE_PATH = OUT_ROOT / "state.json"
-BASE_RESUME = ROOT / "outputs" / "run17" / "17_noise_warmup" / "best.pt"
+BASE_RESUME = ROOT / "outputs" / "ablation" / "01_seq800" / "best.pt"
 
 COMMON = [
     sys.executable,
@@ -30,11 +31,11 @@ COMMON = [
     "--seq-len",
     "800",
     "--batch-size",
-    "16",
+    "24",
     "--grad-accum-steps",
-    "3",
+    "2",
     "--num-workers",
-    "1",
+    "2",
     "--embed-dim",
     "64",
     "--num-shared-layers",
@@ -54,37 +55,47 @@ COMMON = [
     "--score-mode",
     "det_guard",
     "--det-score-floor",
-    "0.988",
+    "0.985",
     "--post-process-p-before-s",
-    "--no-residual-det-head",
-    "--enhanced-det-head",
-    "--noise-cancel",
-    "--noise-source-dim",
-    "16",
     "--reset-best-score",
+    "--no-residual-det-head",
 ]
 
 RUNS = [
     (
-        "18_pick_refine",
+        "14_main",
         {
             "resume": BASE_RESUME,
-            "epochs": 6,
-            "lr": "8e-5",
-            "label_sigma_sec": "0.36",
-            "pick_pos_weight": "28",
-            "pick_loss_weight": "2.5",
-            "p_pick_loss_weight": "1.3",
-            "s_pick_loss_weight": "1.4",
-            "det_loss_weight": "0.5",
-            "det_event_weight": "1.0",
-            "ps_order_loss_weight": "0.12",
-            "noise_cancel_weight": "0.0",
-            "freeze_all_but_pick_epochs": "6",
+            "epochs": 8,
+            "lr": "3e-4",
+            "label_sigma_sec": "0.35",
+            "pick_pos_weight": "30",
+            "pick_loss_weight": "3.5",
+            "p_pick_loss_weight": "1.5",
+            "s_pick_loss_weight": "1.0",
+            "det_loss_weight": "1.5",
+            "ps_order_loss_weight": "0.2",
+            "freeze_backbone_epochs": "2",
+            "freeze_det_epochs": "8",
+            "continue_train": False,
+        },
+    ),
+    (
+        "14_sharp",
+        {
+            "resume": OUT_ROOT / "14_main" / "best.pt",
+            "epochs": 4,
+            "lr": "1e-4",
+            "label_sigma_sec": "0.32",
+            "pick_pos_weight": "35",
+            "pick_loss_weight": "4.0",
+            "p_pick_loss_weight": "1.6",
+            "s_pick_loss_weight": "1.0",
+            "det_loss_weight": "1.5",
+            "ps_order_loss_weight": "0.25",
             "freeze_backbone_epochs": "0",
-            "freeze_det_epochs": "0",
-            "freeze_all_but_det_epochs": "0",
-            "freeze_all_but_noise_epochs": "0",
+            "freeze_det_epochs": "4",
+            "continue_train": False,
         },
     ),
 ]
@@ -100,40 +111,35 @@ def build_cmd(name: str, cfg: dict) -> list[str]:
         str(cfg["epochs"]),
         "--lr",
         str(cfg["lr"]),
-        "--noise-cancel-weight",
-        str(cfg["noise_cancel_weight"]),
+        "--label-sigma-sec",
+        str(cfg["label_sigma_sec"]),
+        "--pick-pos-weight",
+        str(cfg["pick_pos_weight"]),
         "--pick-loss-weight",
         str(cfg["pick_loss_weight"]),
+        "--p-pick-loss-weight",
+        str(cfg["p_pick_loss_weight"]),
+        "--s-pick-loss-weight",
+        str(cfg["s_pick_loss_weight"]),
         "--det-loss-weight",
         str(cfg["det_loss_weight"]),
-        "--freeze-all-but-pick-epochs",
-        str(cfg["freeze_all_but_pick_epochs"]),
-        "--freeze-all-but-noise-epochs",
-        str(cfg["freeze_all_but_noise_epochs"]),
+        "--ps-order-loss-weight",
+        str(cfg["ps_order_loss_weight"]),
         "--freeze-backbone-epochs",
         str(cfg["freeze_backbone_epochs"]),
         "--freeze-det-epochs",
         str(cfg["freeze_det_epochs"]),
-        "--freeze-all-but-det-epochs",
-        str(cfg["freeze_all_but_det_epochs"]),
     ]
-    for key, flag in [
-        ("label_sigma_sec", "--label-sigma-sec"),
-        ("pick_pos_weight", "--pick-pos-weight"),
-        ("p_pick_loss_weight", "--p-pick-loss-weight"),
-        ("s_pick_loss_weight", "--s-pick-loss-weight"),
-        ("det_event_weight", "--det-event-weight"),
-        ("ps_order_loss_weight", "--ps-order-loss-weight"),
-    ]:
-        if key in cfg:
-            cmd.extend([flag, str(cfg[key])])
     if cfg.get("continue_train"):
         cmd.append("--continue")
     return cmd
 
 
-def maybe_continue(name: str, cfg: dict) -> dict:
-    last_ckpt = OUT_ROOT / name / "last.pt"
+def maybe_continue_main(name: str, cfg: dict) -> dict:
+    """If 14_main stopped mid-run, resume from last.pt for remaining epochs."""
+    if name != "14_main" or cfg.get("continue_train"):
+        return cfg
+    last_ckpt = OUT_ROOT / "14_main" / "last.pt"
     if not last_ckpt.is_file():
         return cfg
     import torch
@@ -145,7 +151,10 @@ def maybe_continue(name: str, cfg: dict) -> dict:
     updated = dict(cfg)
     updated["resume"] = last_ckpt
     updated["continue_train"] = True
-    print(f"[run18] continue {name} from epoch {done_epoch + 1}/{target_epochs}", flush=True)
+    print(
+        f"[run14] continue {name} from epoch {done_epoch + 1}/{target_epochs}",
+        flush=True,
+    )
     return updated
 
 
@@ -163,7 +172,7 @@ def save_state(state: dict) -> None:
 def main() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(description="Run18: frozen denoise, pick-only refine")
+    p = argparse.ArgumentParser(description="Run14: det-safe P/S boost toward 0.95+")
     p.add_argument("--only", default=None)
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
@@ -177,22 +186,20 @@ def main() -> None:
 
     for name, cfg in runs:
         if name in state.get("completed", []):
-            print(f"[run18] skip completed {name}", flush=True)
+            print(f"[run14] skip completed {name}", flush=True)
             continue
-        cfg = maybe_continue(name, cfg)
+        cfg = maybe_continue_main(name, cfg)
         resume_path = Path(cfg["resume"])
         if not resume_path.is_file():
-            print(f"[run18] missing resume for {name}: {resume_path}", flush=True)
+            print(f"[run14] missing resume for {name}: {resume_path}", flush=True)
             raise SystemExit(1)
         cmd = build_cmd(name, cfg)
-        print(f"[run18] >>> {' '.join(cmd)}", flush=True)
+        print(f"[run14] >>> {' '.join(cmd)}", flush=True)
         if args.dry_run:
             continue
-        env = dict(os.environ)
-        env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-        proc = subprocess.run(cmd, cwd=ROOT, env=env)
+        proc = subprocess.run(cmd, cwd=ROOT)
         if proc.returncode != 0:
-            print(f"[run18] FAILED {name} code={proc.returncode}", flush=True)
+            print(f"[run14] FAILED {name} code={proc.returncode}", flush=True)
             raise SystemExit(proc.returncode)
 
         metrics_path = OUT_ROOT / name / "test_metrics.json"
@@ -205,13 +212,12 @@ def main() -> None:
                     "p_f1": metrics.get("p_f1"),
                     "s_f1": metrics.get("s_f1"),
                     "ps_sum": metrics.get("p_f1", 0) + metrics.get("s_f1", 0),
-                    "n_params": metrics.get("n_params"),
                 }
             )
         state.setdefault("completed", []).append(name)
         save_state(state)
 
-    print("[run18] done", flush=True)
+    print("[run14] done", flush=True)
     print(json.dumps(state, indent=2), flush=True)
 
 

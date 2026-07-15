@@ -18,7 +18,7 @@ PYTHONUNBUFFERED=1 python run_route_a2_waveform.py \
   --output-dir outputs/route_a2_waveform_macro_repro
 
 echo "[2/2] STEAD inv05-real macro comparison..."
-PYTHONUNBUFFERED=1 python run_zhizi_inv05_real.py \
+PYTHONUNBUFFERED=1 python scripts/inversion/run_zhizi_inv05_real.py \
   --checkpoint "$CKPT" \
   --physics-head "$HEAD" \
   --head-mode macro \

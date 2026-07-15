@@ -231,15 +231,15 @@ Fig4 board: `docs/figures/fig4_method_comparison.png`
 ## Reproduce commands
 
 ```bash
-python run_paper_fig1_overview.py
-python run_paper_snr_robustness.py --max-pick-events 512 --max-inv-events 128
-python run_paper_scene_clustering.py --max-events 400 --n-clusters 4
-python run_paper_cluster_rediscovery.py --seed 11
-python run_paper_cross_head_transfer.py --max-events 200
-python run_paper_ambon_cross_region.py --n-events 64 --steps 400
-python run_paper_obs_picking_compare.py --max-events 400
-python run_paper_fig4_board.py
-python run_paper_rho_vs_attributes.py --max-events 300 --n-cases 12
+python scripts/paper/run_paper_fig1_overview.py
+python scripts/paper/run_paper_snr_robustness.py --max-pick-events 512 --max-inv-events 128
+python scripts/paper/run_paper_scene_clustering.py --max-events 400 --n-clusters 4
+python scripts/paper/run_paper_cluster_rediscovery.py --seed 11
+python scripts/paper/run_paper_cross_head_transfer.py --max-events 200
+python scripts/paper/run_paper_ambon_cross_region.py --n-events 64 --steps 400
+python scripts/paper/run_paper_obs_picking_compare.py --max-events 400
+python scripts/paper/run_paper_fig4_board.py
+python scripts/paper/run_paper_rho_vs_attributes.py --max-events 300 --n-cases 12
 python train_zhizi_inversion.py --dataset synthetic --head-mode macro --predict-q \
   --n-train 80 --n-val 16 --epochs 12 --output-dir outputs/zhizi_inversion_macro_q
 ```

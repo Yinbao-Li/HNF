@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Run20: short sharp pass from run19 with wrong-peak suppression.
+Run21: STEAD sharp pass with higher temporal resolution.
 
-Rationale:
-  - run19 is current best overall P/S
-  - residual failure mode is still wrong_peak, especially S
-  - best epoch landed at the end, so a short low-LR sharp pass is justified
+Changes vs run20:
+  - seq_len 800 -> 1200  (finer pick grid on 60 s traces)
+  - local_window_sec 15 -> 30  (wider Huygens kernel support)
+
+Goal: beat EQT(STEAD) P/S F1 on the official STEAD test split.
+Resume from run20 best checkpoint.
 """
 
 from __future__ import annotations
@@ -17,22 +19,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-OUT_ROOT = ROOT / "outputs" / "run20"
+ROOT = Path(__file__).resolve().parents[2]
+OUT_ROOT = ROOT / "outputs" / "run21"
 STATE_PATH = OUT_ROOT / "state.json"
-BASE_RESUME = ROOT / "outputs" / "run19" / "19_detpick_split" / "best.pt"
+BASE_RESUME = ROOT / "outputs" / "run20" / "20_wrongpeak_sharp" / "best.pt"
 
 COMMON = [
     sys.executable,
     str(ROOT / "train_stead_picking.py"),
-    "--seq-len", "800",
-    "--batch-size", "16",
-    "--grad-accum-steps", "3",
+    "--seq-len", "1200",
+    "--batch-size", "6",
+    "--grad-accum-steps", "8",
     "--num-workers", "1",
     "--embed-dim", "64",
     "--num-shared-layers", "2",
     "--num-branch-layers", "2",
-    "--local-window-sec", "15.0",
+    "--local-window-sec", "30.0",
     "--seed", "42",
     "--pick-head-hidden", "48",
     "--pick-head-layers", "4",
@@ -51,24 +53,24 @@ COMMON = [
 
 RUNS = [
     (
-        "20_wrongpeak_sharp",
+        "21_seq1200_win30_sharp",
         {
             "resume": BASE_RESUME,
-            "epochs": 4,
-            "lr": "3e-5",
-            "label_sigma_sec": "0.35",
-            "pick_pos_weight": "28",
-            "pick_loss_weight": "2.8",
-            "p_pick_loss_weight": "1.3",
-            "s_pick_loss_weight": "1.6",
+            "epochs": 6,
+            "lr": "2e-5",
+            "label_sigma_sec": "0.30",
+            "pick_pos_weight": "30",
+            "pick_loss_weight": "3.0",
+            "p_pick_loss_weight": "1.4",
+            "s_pick_loss_weight": "1.7",
             "det_loss_weight": "1.0",
             "det_event_weight": "2.0",
-            "ps_order_loss_weight": "0.12",
-            "wrong_peak_loss_weight": "0.15",
-            "wrong_peak_radius_sec": "0.45",
+            "ps_order_loss_weight": "0.15",
+            "wrong_peak_loss_weight": "0.18",
+            "wrong_peak_radius_sec": "0.40",
             "wrong_peak_margin": "0.25",
-            "s_wrong_peak_scale": "1.35",
-            "noise_cancel_weight": "0.05",
+            "s_wrong_peak_scale": "1.4",
+            "noise_cancel_weight": "0.04",
             "freeze_all_but_noise_epochs": "0",
             "freeze_all_but_pick_epochs": "0",
             "freeze_backbone_epochs": "0",
@@ -108,8 +110,6 @@ def build_cmd(name: str, cfg: dict) -> list[str]:
     ]:
         if key in cfg:
             cmd.extend([flag, str(cfg[key])])
-    if cfg.get("continue_train"):
-        cmd.append("--continue")
     return cmd
 
 
@@ -127,7 +127,7 @@ def save_state(state: dict) -> None:
 def main() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(description="Run20: wrong-peak sharp refine")
+    p = argparse.ArgumentParser(description="Run21: seq1200 + win30 sharp refine")
     p.add_argument("--only", default=None)
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
@@ -141,21 +141,21 @@ def main() -> None:
 
     for name, cfg in runs:
         if name in state.get("completed", []):
-            print(f"[run20] skip completed {name}", flush=True)
+            print(f"[run21] skip completed {name}", flush=True)
             continue
         resume_path = Path(cfg["resume"])
         if not resume_path.is_file():
-            print(f"[run20] missing resume for {name}: {resume_path}", flush=True)
+            print(f"[run21] missing resume for {name}: {resume_path}", flush=True)
             raise SystemExit(1)
         cmd = build_cmd(name, cfg)
-        print(f"[run20] >>> {' '.join(cmd)}", flush=True)
+        print(f"[run21] >>> {' '.join(cmd)}", flush=True)
         if args.dry_run:
             continue
         env = dict(os.environ)
         env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         proc = subprocess.run(cmd, cwd=ROOT, env=env)
         if proc.returncode != 0:
-            print(f"[run20] FAILED {name} code={proc.returncode}", flush=True)
+            print(f"[run21] FAILED {name} code={proc.returncode}", flush=True)
             raise SystemExit(proc.returncode)
 
         metrics_path = OUT_ROOT / name / "test_metrics.json"
@@ -174,7 +174,7 @@ def main() -> None:
         state.setdefault("completed", []).append(name)
         save_state(state)
 
-    print("[run20] done", flush=True)
+    print("[run21] done", flush=True)
     print(json.dumps(state, indent=2), flush=True)
 
 

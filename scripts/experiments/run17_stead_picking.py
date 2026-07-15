@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT_ROOT = ROOT / "outputs" / "run17"
 STATE_PATH = OUT_ROOT / "state.json"
 BASE_RESUME = ROOT / "outputs" / "run16" / "16_det_onset" / "best.pt"
