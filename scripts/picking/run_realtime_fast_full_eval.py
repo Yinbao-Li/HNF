@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.picking_metrics import (
     apply_p_before_s_constraint,
     det_pred_from_logits,
@@ -21,7 +21,7 @@ from hnf.picking_metrics import (
     update_picking_counts,
 )
 from hnf.stead_picking_dataset import STEADPickingDataset
-from train_stead_picking import EvalAccumulator
+from tools.train_stead_picking import EvalAccumulator
 
 
 def eval_full(model, loader, device, seq_len, pick_th=0.3):

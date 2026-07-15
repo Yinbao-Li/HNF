@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 
-from analyze_stead_picking import analyze, export_pick_curve, plot_pick_curves
+from tools.analyze_stead_picking import analyze, export_pick_curve, plot_pick_curves
 
 
 def parse_args() -> argparse.Namespace:

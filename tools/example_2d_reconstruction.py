@@ -1,13 +1,19 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-2D field reconstruction demo: synthetic data → HNF → visualization.
+"""2D field reconstruction demo: synthetic data → HNF → visualization.
 
 Run from the HNF project root:
     python example_2d_reconstruction.py
-    python example_2d_reconstruction.py --field-type vortex --n-obs 200 --train-steps 300
-"""
+    python example_2d_reconstruction.py --field-type vortex --n-obs 200 --train-steps 300"""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
 from pathlib import Path

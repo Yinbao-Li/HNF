@@ -18,7 +18,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.inversion_1d import default_synth_model, travel_time_phase
 from hnf.inversion_baselines import invert_hnf_adam, invert_lbfgs_torch
 from hnf.inv_plot import perturb_initial

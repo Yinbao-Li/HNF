@@ -42,7 +42,7 @@ def main() -> None:
 
     cmd = [
         sys.executable,
-        "train_stead_picking.py",
+        "tools/train_stead_picking.py",
         "--output-dir",
         str(out),
         "--epochs",

@@ -39,7 +39,7 @@ def main() -> None:
 
     cmd = [
         sys.executable,
-        "train_stead_picking.py",
+        "tools/train_stead_picking.py",
         "--resume",
         args.resume,
         "--reset-best-score",

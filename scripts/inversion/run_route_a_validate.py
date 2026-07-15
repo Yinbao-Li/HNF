@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model
 from hnf.inv_plot import perturb_initial
 from hnf.route_a_refine import RouteARow, build_verdict, refine_gn, rmse_vs_true

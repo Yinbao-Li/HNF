@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Download RACLETTE example cohort via public WebDAV (no pyvista required).
 
@@ -5,10 +6,16 @@ Pulls:
   - meta.json for all subjects in all 4 variants (~1 MB)
   - tutorial example Data/ (+ GroundTruth for 7p_2Venc) (~13 GB)
 
-Source: ETH RACLETTE DOI 10.3929/ethz-c-000799752
-"""
+Source: ETH RACLETTE DOI 10.3929/ethz-c-000799752"""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
 import json

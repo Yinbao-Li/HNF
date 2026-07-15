@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Train Physics Decoder (frozen backbone + Physics Head).
+"""Train Physics Decoder (frozen backbone + Physics Head).
 
 Stage 1: synthetic 1D layered Earth, travel-time physics loss + soft latent priors.
-Does NOT update picking/det/P/S heads.
-"""
+Does NOT update picking/det/P/S heads."""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
 import json
@@ -16,7 +21,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.acoustic_fwi_1d import DirectWaveForward, unrolled_waveform_refine
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model
 from hnf.inv_plot import perturb_initial

@@ -23,7 +23,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.picking_metrics import idx_to_sec
 from hnf.stead_picking_dataset import STEADPickingDataset
 from run_knowledge_mining import spearman_corr, bootstrap_ci, _normal_p_from_r

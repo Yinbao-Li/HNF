@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.inversion_1d import default_synth_model
 from hnf.picking_metrics import idx_to_sec
 from hnf.picking_prior import run_picking_on_batch

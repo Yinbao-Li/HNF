@@ -383,6 +383,6 @@ def load_prior_cache(path: Path, device: torch.device | str = "cpu") -> PickingP
 
 def load_picking_model_from_checkpoint(checkpoint: Path, device: torch.device, bypass: bool = True):
     """Thin wrapper around analyze_stead_picking.load_model."""
-    from analyze_stead_picking import load_model
+    from tools.analyze_stead_picking import load_model
 
     return load_model(checkpoint, device, bypass_noise_cancel=bypass)

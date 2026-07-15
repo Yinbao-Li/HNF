@@ -12,11 +12,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from analyze_stead_picking import _noise_ratio_from_outputs, _subsample_indices, load_model
+from tools.analyze_stead_picking import _noise_ratio_from_outputs, _subsample_indices, load_model
 from hnf.picking_metrics import apply_p_before_s_constraint, idx_to_sec, tolerance_bins
 from hnf.stead_picking_dataset import STEADPickingDataset
 from run_adaptive_pick_eval import _local_max_indices
-from train_stead_picking import move_batch_to_device
+from tools.train_stead_picking import move_batch_to_device
 
 
 @torch.no_grad()

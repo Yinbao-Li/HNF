@@ -166,7 +166,7 @@ Protocol fixes:
 - STEAD models use `peak` norm; OBS models use `std` norm
 - HNF uses per-channel demean+std (matches STEAD training)
 - HNF forward returns **logits**; must `sigmoid` before threshold (matches
-  `train_stead_picking.py`) — fixing this barely changes OBS F1
+  `tools/train_stead_picking.py`) — fixing this barely changes OBS F1
 - Drop incomplete 3C traces (ZH / Z1H)
 
 OBS failure mode for HNF: det head often NaN; P argmax median error ~10–14 s
@@ -240,7 +240,7 @@ python scripts/paper/run_paper_ambon_cross_region.py --n-events 64 --steps 400
 python scripts/paper/run_paper_obs_picking_compare.py --max-events 400
 python scripts/paper/run_paper_fig4_board.py
 python scripts/paper/run_paper_rho_vs_attributes.py --max-events 300 --n-cases 12
-python train_zhizi_inversion.py --dataset synthetic --head-mode macro --predict-q \
+python tools/train_zhizi_inversion.py --dataset synthetic --head-mode macro --predict-q \
   --n-train 80 --n-val 16 --epochs 12 --output-dir outputs/zhizi_inversion_macro_q
 ```
 
@@ -248,7 +248,7 @@ python train_zhizi_inversion.py --dataset synthetic --head-mode macro --predict-
 
 | Domain | Doc | Priority vs current work |
 |--------|-----|--------------------------|
-| II — AD/FTD EEG | `hnf/eeg_*`, `train_eeg.py` | After STEAD/OBS bandwidth frees |
+| II — AD/FTD EEG | `hnf/eeg_*`, `tools/train_eeg.py` | After STEAD/OBS bandwidth frees |
 | III — Sparse 4D Flow → constitutive discovery | [`DOMAIN_III_FLUID_RHEOLOGY.md`](DOMAIN_III_FLUID_RHEOLOGY.md) | Design only; after EEG Stage-1 |
 
 ## Next minimum paper upgrades

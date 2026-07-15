@@ -28,7 +28,7 @@ FREEZE_ALL = "999"
 
 COMMON = [
     sys.executable,
-    str(ROOT / "train_stead_picking.py"),
+    str(ROOT / "tools" / "tools/train_stead_picking.py"),
     "--seq-len",
     "800",
     "--batch-size",

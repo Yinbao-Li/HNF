@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.picking_metrics import (
     EvalAccumulator,
     apply_p_before_s_constraint,
@@ -28,7 +28,7 @@ from hnf.picking_metrics import (
 )
 from hnf.stead_picking_dataset import STEADPickingDataset
 from run_paper_obs_picking_compare import _pick_only_counts, normalize_wave
-from train_stead_picking import evaluate
+from tools.train_stead_picking import evaluate
 
 
 def parse_args() -> argparse.Namespace:

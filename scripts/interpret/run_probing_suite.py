@@ -28,7 +28,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.picking_metrics import idx_to_sec
 from hnf.stead_picking_dataset import STEADPickingDataset
 

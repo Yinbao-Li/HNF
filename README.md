@@ -101,8 +101,8 @@ the Physics Decoder + optional waveform refine.
 ```
 
 ```bash
-python example_2d_reconstruction.py
-python example_2d_reconstruction.py --field-type vortex --n-obs 200 --train-steps 300
+python tools/example_2d_reconstruction.py
+python tools/example_2d_reconstruction.py --field-type vortex --n-obs 200 --train-steps 300
 ```
 
 Helpers: `hnf/visualize.py`, `hnf/demos.py`.
@@ -110,14 +110,14 @@ Helpers: `hnf/visualize.py`, `hnf/demos.py`.
 ### STEAD classification → phase picking
 
 ```bash
-python train_stead.py --device cuda
+python tools/train_stead.py --device cuda
 ```
 
 Picking model (`STEADHNFPickingModel`): three-component secondary sources →
 temporal `rho(t)` → Huygens wave blocks (optional noise-cancel) → det / P / S
 heads.
 
-Trainer: `train_stead_picking.py`. Historical launches live under
+Trainer: `tools/train_stead_picking.py`. Historical launches live under
 `scripts/experiments/` (`run11`…`run27`; legacy freeze =
 `scripts/experiments/run20_stead_picking.py`). Current primary:
 `scripts/experiments/run28_stead_ms_fresnel_phys.py`.
@@ -139,8 +139,8 @@ outputs/run28/28_ms_fresnel_phys_20ep/best.pt
 ```
 
 ```bash
-python eval_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
-python explain_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
+python tools/eval_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
+python tools/explain_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
 ```
 
 Dataset: `hnf/stead_picking_dataset.py` (includes geometry fields for later mining).
@@ -187,7 +187,7 @@ Code: `hnf/physics_decoder.py`, `zhizi_physics_head.py`,
 
 ```bash
 # Preferred run28 macro (init-focused claim)
-python train_zhizi_inversion.py \
+python tools/train_zhizi_inversion.py \
   --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --head-mode macro --epochs 8 --n-train 96 --n-val 16 \
   --unrolled-weight 0.5 --unrolled-steps 5 \
@@ -195,7 +195,7 @@ python train_zhizi_inversion.py \
   --output-dir outputs/physics_decoder_run28_macro
 
 # Optional: kernel_summary + weak mid-TT
-python train_zhizi_inversion.py ... --kernel-summary --mid-tt-weight 0.08 \
+python tools/train_zhizi_inversion.py ... --kernel-summary --mid-tt-weight 0.08 \
   --output-dir outputs/physics_decoder_run28_macro_ks
 ```
 
@@ -248,7 +248,7 @@ HNF/
 ├── hnf/                    # library (kernel, picking, Physics Decoder, …)
 ├── docs/figures/           # README figures (+ interpret/, probing/, knowledge/)
 ├── outputs/CURRENT.md      # which dumps are canonical after prune
-├── train_*.py / eval_*.py / download_*.py   # day-to-day entry points
+├── tools/                  # train / eval / download / explain helpers
 ├── scripts/                # all run_* drivers (see scripts/README.md)
 │   ├── experiments/        # run11–run28 numbered picking launches
 │   ├── interpret/          # interpret / probing / knowledge mining
@@ -261,7 +261,7 @@ HNF/
 CKPT=outputs/run28/28_ms_fresnel_phys_20ep/best.pt
 HEAD=outputs/physics_decoder_run28_macro/best_physics_head.pt
 
-python eval_stead_picking.py --checkpoint $CKPT
+python tools/eval_stead_picking.py --checkpoint $CKPT
 python scripts/interpret/run_interpret_suite.py --device cuda --checkpoint $CKPT \
   --output-dir outputs/interpret_suite_run28 --copy-to-docs
 python scripts/interpret/run_probing_suite.py --device cuda --checkpoint $CKPT --copy-to-docs
@@ -516,8 +516,8 @@ asks whether the **same pattern**—sparse observation → HNF encoder → task 
 |-------|----------|
 | Dataset | `hnf/eeg_dataset.py` (OpenNeuro ds004504 / ADFTD) |
 | Model | `hnf/eeg_model.py` |
-| Train / eval | `train_eeg.py`, `eval_eeg.py`, `run_eeg_analysis.py`, `transfer_eeg.py` |
-| Download | `download_eeg_adftd.py` → `external_data/eeg_adftd/` |
+| Train / eval | `tools/train_eeg.py`, `tools/eval_eeg.py`, `scripts/domain/run_eeg_analysis.py`, `tools/transfer_eeg.py` |
+| Download | `tools/download_eeg_adftd.py` → `external_data/eeg_adftd/` |
 
 Reuse from Domain I: multi-scale HNF blocks, ρ probing narrative, optional
 frozen-backbone transfer. Claims stay at **classification / transfer metrics +
@@ -536,7 +536,7 @@ constitutive parameters → knowledge-mining residuals vs a base rheology family
 reconstruction realism—**not** constitutive GT by default.
 
 ```bash
-python download_raclette.py \
+python tools/download_raclette.py \
   --out-dir external_data/raclette/Tutorials/DataDownload/Downloaded
 ```
 

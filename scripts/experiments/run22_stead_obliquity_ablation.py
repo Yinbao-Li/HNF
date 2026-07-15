@@ -27,7 +27,7 @@ EQT_REF = {"det_f1": 0.9992, "p_f1": 0.9894, "s_f1": 0.9707}
 
 COMMON = [
     sys.executable,
-    str(ROOT / "train_stead_picking.py"),
+    str(ROOT / "tools" / "tools/train_stead_picking.py"),
     "--seq-len", "800",
     "--batch-size", "8",
     "--grad-accum-steps", "6",

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Real-time picking ablation: with vs without Huygens noise-cancel branch.
+"""Real-time picking ablation: with vs without Huygens noise-cancel branch.
 
 Modes on run20 checkpoint:
   default      - det on denoised u_final, pick on raw + noise cues (training setup)
@@ -9,10 +8,16 @@ Modes on run20 checkpoint:
 
 Usage:
     python benchmark_realtime_picking.py
-    python benchmark_realtime_picking.py --max-batches 500
-"""
+    python benchmark_realtime_picking.py --max-batches 500"""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
 import json
@@ -22,7 +27,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import analyze, load_model
+from tools.analyze_stead_picking import analyze, load_model
 from hnf.stead_picking_dataset import STEADPickingDataset
 
 
@@ -144,7 +149,7 @@ def main() -> None:
                 update_detection_counts,
                 update_picking_counts,
             )
-            from train_stead_picking import EvalAccumulator
+            from tools.train_stead_picking import EvalAccumulator
 
             model.eval()
             acc_accum = EvalAccumulator()

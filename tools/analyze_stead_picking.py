@@ -4,6 +4,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import argparse
 import json
 from collections import Counter
@@ -22,7 +29,7 @@ from hnf.picking_metrics import (
 )
 from hnf.picking_model import build_picking_model, load_picking_model_state
 from hnf.stead_picking_dataset import STEADPickingDataset
-from train_stead_picking import move_batch_to_device
+from tools.train_stead_picking import move_batch_to_device
 
 
 def load_model(checkpoint: Path, device: torch.device, bypass_noise_cancel: bool = False):

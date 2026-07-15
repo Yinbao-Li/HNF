@@ -58,7 +58,7 @@ def stage_pick(args: argparse.Namespace) -> Path:
         raise FileNotFoundError(f"Missing run19 resume: {BASE_RESUME}")
     cmd = [
         sys.executable,
-        str(ROOT / "train_stead_picking.py"),
+        str(ROOT / "tools" / "tools/train_stead_picking.py"),
         "--seq-len", "800",
         "--batch-size", "8",
         "--grad-accum-steps", "6",
@@ -146,7 +146,7 @@ def stage_invert(args: argparse.Namespace, pick_ckpt: Path) -> None:
     INV_DIR.mkdir(parents=True, exist_ok=True)
     train_cmd = [
         sys.executable,
-        str(ROOT / "train_zhizi_inversion.py"),
+        str(ROOT / "tools" / "train_zhizi_inversion.py"),
         "--checkpoint", str(pick_ckpt),
         "--head-mode", "macro",
         "--epochs", str(args.inv_epochs),

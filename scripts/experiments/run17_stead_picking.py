@@ -23,7 +23,7 @@ BASE_RESUME = ROOT / "outputs" / "run16" / "16_det_onset" / "best.pt"
 
 COMMON = [
     sys.executable,
-    str(ROOT / "train_stead_picking.py"),
+    str(ROOT / "tools" / "tools/train_stead_picking.py"),
     "--seq-len",
     "800",
     "--batch-size",

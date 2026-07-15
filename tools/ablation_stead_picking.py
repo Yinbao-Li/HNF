@@ -4,13 +4,20 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import json
 import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / "outputs" / "ablation"
 STATE_PATH = OUT_ROOT / "state.json"
 LOG_PATH = OUT_ROOT / "ablation.log"
@@ -88,7 +95,7 @@ def arch_compatible(a: dict, b: dict) -> bool:
 def build_cmd(cfg: dict, out_dir: Path, resume: Optional[str]) -> list[str]:
     cmd = [
         sys.executable,
-        str(ROOT / "train_stead_picking.py"),
+        str(ROOT / "tools" / "train_stead_picking.py"),
         "--seq-len",
         str(cfg["seq_len"]),
         "--batch-size",
@@ -176,7 +183,7 @@ def run_train(cfg: dict, name: str, resume_hint: Optional[str], prev_cfg: dict, 
 
 def eval_post_only(cfg: dict, name: str, ckpt: str) -> dict:
     """Re-evaluate best checkpoint with post-process flag (no retrain)."""
-    from eval_stead_picking import evaluate_checkpoint
+    from tools.eval_stead_picking import evaluate_checkpoint
 
     metrics = evaluate_checkpoint(
         ckpt,

@@ -23,7 +23,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.picking_metrics import (
     EvalAccumulator,
     apply_p_before_s_constraint,

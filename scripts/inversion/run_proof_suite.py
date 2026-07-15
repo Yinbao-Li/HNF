@@ -23,7 +23,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model
+from tools.analyze_stead_picking import load_model
 from hnf.acoustic_fwi_1d import DirectWaveForward, invert_acoustic_fwi
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model, model_rmse, travel_time_phase
 from hnf.inversion_baselines import invert_gauss_newton, invert_hnf_adam, invert_lbfgs_torch

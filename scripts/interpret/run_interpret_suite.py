@@ -30,8 +30,8 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from analyze_stead_picking import load_model as load_picking_ckpt
-from eval_stead_picking import evaluate_checkpoint
+from tools.analyze_stead_picking import load_model as load_picking_ckpt
+from tools.eval_stead_picking import evaluate_checkpoint
 from hnf.inversion_1d import LayeredEarth1D, default_synth_model, travel_time_phase
 from hnf.kernel import HuygensKernel
 from hnf.picking_metrics import idx_to_sec

@@ -46,7 +46,7 @@ def main() -> None:
         run(
             [
                 py,
-                str(ROOT / "train_zhizi_inversion.py"),
+                str(ROOT / "tools" / "train_zhizi_inversion.py"),
                 "--checkpoint",
                 args.pick_checkpoint,
                 "--output-dir",

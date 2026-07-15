@@ -79,7 +79,7 @@ EXPERIMENTS = [
 def build_common(epochs: int) -> list[str]:
     return [
         sys.executable,
-        str(ROOT / "train_stead_picking.py"),
+        str(ROOT / "tools" / "tools/train_stead_picking.py"),
         "--epochs",
         str(epochs),
         *COMMON_TAIL,

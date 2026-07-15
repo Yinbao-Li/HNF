@@ -26,7 +26,7 @@ BASE_RESUME = ROOT / "outputs" / "run20" / "20_wrongpeak_sharp" / "best.pt"
 
 COMMON = [
     sys.executable,
-    str(ROOT / "train_stead_picking.py"),
+    str(ROOT / "tools" / "tools/train_stead_picking.py"),
     "--seq-len", "1200",
     "--batch-size", "6",
     "--grad-accum-steps", "8",

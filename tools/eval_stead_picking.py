@@ -4,6 +4,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import argparse
 import json
 from pathlib import Path
@@ -13,7 +20,7 @@ from torch.utils.data import DataLoader
 
 from hnf.picking_model import build_picking_model, load_picking_model_state
 from hnf.stead_picking_dataset import STEADPickingDataset
-from train_stead_picking import evaluate
+from tools.train_stead_picking import evaluate
 
 
 def evaluate_checkpoint(

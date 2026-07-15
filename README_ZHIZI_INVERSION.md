@@ -25,7 +25,7 @@ See master write-up: [`README.md`](README.md). Plan: [`docs/EXPERIMENT_PLAN.md`]
 ## Train (run28)
 
 ```bash
-python train_zhizi_inversion.py \
+python tools/train_zhizi_inversion.py \
   --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --head-mode macro --epochs 8 --n-train 96 --n-val 16 \
   --unrolled-weight 0.5 --unrolled-steps 5 \
