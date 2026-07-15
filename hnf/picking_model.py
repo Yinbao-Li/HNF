@@ -800,6 +800,8 @@ class STEADHNFPickingModel(nn.Module):
         """
         was_training = self.training
         self.eval()
+        if t.dim() == 2:
+            t = t.unsqueeze(0).expand(x.shape[0], -1, -1)
         _x_det, x_pick, nc_out = self._apply_noise_cancel(x, t)
         rho = self.medium_net(x_pick)
         h_real = self.source_embed(x_pick)
@@ -825,6 +827,9 @@ class STEADHNFPickingModel(nn.Module):
             device=x.device,
             dtype=h_real.dtype,
         )
+        from hnf.zhizi_physics_head import kernel_summary_from_params
+
+        ksum = kernel_summary_from_params(kparams, device=x.device, dtype=h_real.dtype)
         batch = x.shape[0]
         out: dict[str, torch.Tensor] = {
             "h_real": h_real,
@@ -832,6 +837,7 @@ class STEADHNFPickingModel(nn.Module):
             "rho": rho.squeeze(-1),
             "kernel_vp": kernel_vp.expand(batch),
             "kernel_vs": kernel_vs.expand(batch),
+            "kernel_summary": ksum.unsqueeze(0).expand(batch, -1),
         }
         if include_picks:
             p_real, p_imag = self._propagate(h_real, h_imag, self.p_layers, t, rho)

@@ -1,8 +1,0 @@
-[STEAD-HNF-PHYS] device=cuda params=65631 train=360000 val=25638 test=126566 seq_len=400 bs=16 accum=4 amp=False vp=8.0 vs=4.5 window=15.0s workers=0
-ep 001  train_loss=2.5608  val_loss=2.2839  det_f1=0.9451  p_f1=0.7819  s_f1=0.7929  score=0.8400
-ep 002  train_loss=2.2476  val_loss=2.1740  det_f1=0.9603  p_f1=0.8192  s_f1=0.8285  score=0.8693
-ep 003  train_loss=2.1474  val_loss=2.0937  det_f1=0.9762  p_f1=0.7651  s_f1=0.8446  score=0.8620
-ep 004  train_loss=2.0956  val_loss=2.0688  det_f1=0.9784  p_f1=0.8237  s_f1=0.7924  score=0.8648
-ep 005  train_loss=2.0708  val_loss=2.0429  det_f1=0.9825  p_f1=0.8122  s_f1=0.8078  score=0.8675
-ep 006  train_loss=2.0551  val_loss=2.0384  det_f1=0.9848  p_f1=0.7941  s_f1=0.8321  score=0.8703
-ep 007  train_loss=2.0441  val_loss=2.0316  det_f1=0.9840  p_f1=0.8228  s_f1=0.8317  score=0.8795

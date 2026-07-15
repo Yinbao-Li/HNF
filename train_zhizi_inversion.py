@@ -61,6 +61,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--pairwise-weight", type=float, default=0.0, help="Make Zhizi beat perturb baseline after unrolled refine")
     p.add_argument("--pairwise-margin", type=float, default=0.0)
     p.add_argument("--head-mode", choices=["residual", "macro"], default="residual")
+    p.add_argument(
+        "--kernel-summary",
+        action="store_true",
+        help="Feed branch γ/ω/c summary into Physics Head (strengthens kernel→vp/vs path)",
+    )
+    p.add_argument(
+        "--mid-tt-weight",
+        type=float,
+        default=0.0,
+        help="Weak mid-TT coupling to kernel prior travel times",
+    )
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
@@ -165,6 +176,7 @@ def run_epoch(
     pairwise_vp_init: torch.Tensor,
     pairwise_vs_init: torch.Tensor,
     pairwise_q_init: torch.Tensor,
+    mid_tt_weight: float = 0.0,
 ) -> dict[str, float]:
     train = optimizer is not None
     bridge.train(train)
@@ -211,6 +223,7 @@ def run_epoch(
             true_vs=true_vs,
             vp_sup_weight=vp_sup_weight if train else 0.0,
             anchor_weight=anchor_weight,
+            mid_tt_weight=mid_tt_weight,
         )
 
         dt = float(t[1, 0] - t[0, 0]) if t.shape[0] > 1 else 0.01
@@ -353,6 +366,9 @@ def main() -> None:
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
 
+    from hnf.zhizi_physics_head import KERNEL_SUMMARY_DIM
+
+    ksum_dim = KERNEL_SUMMARY_DIM if args.kernel_summary else 0
     bridge = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
@@ -363,6 +379,7 @@ def main() -> None:
         head_mode=args.head_mode,
         geo_condition=args.geo_condition,
         predict_q=args.predict_q,
+        kernel_summary_dim=ksum_dim,
     ).to(device)
 
     if args.resume_physics_head:
@@ -382,7 +399,8 @@ def main() -> None:
 
     print(
         f"[zhizi-inv] dataset={args.dataset} geo={args.geo_condition} "
-        f"predict_q={args.predict_q} "
+        f"predict_q={args.predict_q} kernel_summary_dim={ksum_dim} "
+        f"mid_tt_weight={args.mid_tt_weight} "
         f"trainable params={bridge.trainable_parameter_count()} "
         f"total={bridge.total_parameter_count()}",
         flush=True,
@@ -455,9 +473,11 @@ def main() -> None:
         args.unrolled_steps, args.unrolled_step_size,
         args.pairwise_weight, args.pairwise_margin,
         pairwise_vp_init, pairwise_vs_init, pairwise_q_init,
+        args.mid_tt_weight,
     )
     for epoch in range(1, args.epochs + 1):
         tr = run_epoch(bridge, train_loader, opt, device, args.dataset, *epoch_args)
+        # val: no vp supervision, keep mid_tt for diagnostics
         va_args = (0.0,) + epoch_args[1:]
         va = run_epoch(bridge, val_loader, None, device, args.dataset, *va_args)
         row = {"epoch": epoch, "train": tr, "val": va}
@@ -482,6 +502,8 @@ def main() -> None:
                     "geo_condition": args.geo_condition,
                     "predict_q": args.predict_q,
                     "train_geo_only": args.train_geo_only,
+                    "kernel_summary_dim": ksum_dim,
+                    "mid_tt_weight": args.mid_tt_weight,
                 },
                 out_dir / "best_physics_head.pt",
             )

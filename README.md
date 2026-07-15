@@ -1,27 +1,45 @@
 # Huygens Neural Field (HNF)
 
-A physics-inspired neural field built on the Huygens principle. A learnable complex kernel models wave-like interactions; the same stack supports sparse field reconstruction, STEAD phase picking, and 1D velocity inversion with a frozen picking backbone (“Zhizi” bridge).
+A physics-inspired neural field built on the Huygens principle. A learnable
+complex kernel models wave-like interactions; the same research pattern—
+**model → interpretability / probing → physics discovery → domain transfer**—
+is developed first on seismology (STEAD picking + Physics Decoder), then
+extended to EEG and sparse fluid flow.
 
 ```
-Kernel + density design
-  → Framework (layers, field reconstruction)
-  → STEAD classification & phase picking (run20)
-  → 1D travel-time / FWI-lite baselines
-  → Physics Decoder (macro Physics Head)
-  → Proof suite (geometry-aware STEAD + baselines + latent plots)
-  → Interpretability suite (kernel χ, contrib rows, ablations)
+I. Model                kernel, architecture, STEAD picking, Physics Decoder
+II. Interpretability    parameter proofs + physical-neuron probing
+III. Physics discovery  knowledge mining, geography, reparameterization
+IV. Generalization      Domains II (EEG) / III (fluid rheology)
 ```
 
 | Stage | Artifact | Result |
 |-------|----------|--------|
-| Picking | `outputs/run20/20_wrongpeak_sharp/best.pt` | det F1 **0.994** / P **0.959** / S **0.949** (~**139k** params) |
-| Inversion init | `outputs/zhizi_inversion_bridge_macro/best_physics_head.pt` | Waveform refine win-rate **93.8%** (synth); STEAD geom refine **77.1%** |
+| Picking (primary) | `outputs/run28/28_ms_fresnel_phys_20ep/best.pt` | det **0.998** / P **0.980** / S **0.965** (~192k; 50ep weights) |
+| Picking (legacy) | `outputs/run20/20_wrongpeak_sharp/best.pt` | det 0.994 / P 0.959 / S 0.949 (~139k) |
+| Decoder (preferred) | `outputs/physics_decoder_run28_macro/best_physics_head.pt` | val VpRMSE **0.136**; A2 n=256 **init** 0.173 (vs perturb 0.146; init-win 41%) |
+| Decoder (ks variant) | `outputs/physics_decoder_run28_macro_ks/` | +kernel_summary + mid-TT; A2 wave-win 56% (still soft) |
+| Legacy Decoder | `outputs/zhizi_inversion_bridge_macro/` | run20-macro A2 **wave-win 91%** (init weak 0.304) |
 
-Figures below live in [`docs/figures/`](docs/figures/) (copied from completed `outputs/` runs). Inversion recipe details: [`README_ZHIZI_INVERSION.md`](README_ZHIZI_INVERSION.md).
+Figures: [`docs/figures/`](docs/figures/). Outputs index: [`outputs/CURRENT.md`](outputs/CURRENT.md).
+Inversion notes: [`README_ZHIZI_INVERSION.md`](README_ZHIZI_INVERSION.md).
+Plan: [`docs/EXPERIMENT_PLAN.md`](docs/EXPERIMENT_PLAN.md) —
+**next = Step 4 OBS multi-chunk** → mining/reparam → EEG → fluid.
+
+> **Parts I–III use seismology as the running example.** Part IV reuses the
+> same four-step pattern on other sparse-observation domains.
+>
+> **Decoder claim (current):** run28 macro is a stronger **FWI-lite initializer**
+> than run20-macro (large-N init). Do **not** advertise 90%+ Route A2 wave-win
+> for the run28 stack; that remains a run20-macro specialty.
 
 ---
 
-## Setup
+# I. Model
+
+Setup, design, structure, and the seismic training / evaluation stack.
+
+## I.1 Setup
 
 ```bash
 cd HNF
@@ -30,7 +48,7 @@ pip install -r requirements.txt
 
 - Python deps: `torch>=2.0`, `numpy`, `matplotlib`, `pytest`, `tqdm`, `openpyxl`
 - Place STEAD under `STEAD/` (~90GB; gitignored)
-- Large run products stay in `outputs/` (gitignored); key plots are mirrored to `docs/figures/`
+- Large run products stay in `outputs/` (gitignored); key plots mirror to `docs/figures/`
 - GPU ≥12GB recommended; picking uses `seq_len=800`; bridge inference often uses `infer_seq_len=600`
 
 ```bash
@@ -38,9 +56,7 @@ python -c "from hnf import HuygensKernel, HuygensNeuralField, STEADHNFPickingMod
 pytest hnf/tests -q
 ```
 
----
-
-## 1. Model design
+## I.2 Model design
 
 Huygens kernel (`hnf/kernel.py`):
 
@@ -48,7 +64,10 @@ Huygens kernel (`hnf/kernel.py`):
 K_{\text{Huygens}}(x_i,x_j)=\frac{1}{r^2+\varepsilon}\exp(-\gamma r^2)\exp(i\,\omega r)
 \]
 
-**Huygens–Fresnel** variant (`--principle huygens_fresnel`): spherical \(1/r\) amplitude, extra \(i\omega/(2\pi)\) phase, and obliquity \(\chi(\theta)=\tfrac12(1+\cos\theta)\) suppressing off-axis secondary sources. Selected via `--principle` on the picking trainer; default remains `huygens`.
+**Huygens–Fresnel** variant (`--principle huygens_fresnel`): spherical \(1/r\)
+amplitude, extra \(i\omega/(2\pi)\) phase, and obliquity
+\(\chi(\theta)=\tfrac12(1+\cos\theta)\) suppressing off-axis secondary sources.
+Selected via `--principle` on the picking trainer; default remains `huygens`.
 
 | Piece | Role |
 |-------|------|
@@ -60,18 +79,20 @@ K_{\text{Huygens}}(x_i,x_j)=\frac{1}{r^2+\varepsilon}\exp(-\gamma r^2)\exp(i\,\o
 
 Supporting modules:
 
-- **`DensityNet`** (`density.py`) — spatial density ρ(x), Softplus-positive
+- **`DensityNet`** (`density.py`) — spatial / temporal density ρ, Softplus-positive
 - **`HuygensWaveLayer` / `HuygensAttention`** (`layers.py`) — stack the kernel in deep models
 - **`FastMultipoleMethod`** (`fmm.py`) — far-field acceleration
 - **`DeepHuygensKernel`**, **`BayesianHNF`** — deeper / uncertainty variants
 
-In the picking model, **ρ(t)** and kernel wave-speed are **soft conditioners**, not literal crustal density or absolute velocity. Physical `vp/vs` comes from the physics head + refinement.
+In the picking model, **ρ(t)** and kernel wave-speed are **soft conditioners**,
+not literal crustal density or absolute velocity. Physical `vp/vs` comes from
+the Physics Decoder + optional waveform refine.
 
----
+## I.3 Model structure
 
-## 2. Field reconstruction
+### Field reconstruction
 
-`HuygensNeuralField` solves a kernel regression from sparse observations:
+`HuygensNeuralField` solves kernel regression from sparse observations:
 
 ```
 (x_obs, y) → K_obs = Re(K(obs,obs))
@@ -84,59 +105,50 @@ python example_2d_reconstruction.py
 python example_2d_reconstruction.py --field-type vortex --n-obs 200 --train-steps 300
 ```
 
-Plot helpers: `hnf/visualize.py`. Kernel demos: `hnf/demos.py` (`demo_causality`, `demo_fmm_benchmark`, …).
+Helpers: `hnf/visualize.py`, `hnf/demos.py`.
 
----
-
-## 3. STEAD: classification → phase picking
-
-### Classification
+### STEAD classification → phase picking
 
 ```bash
 python train_stead.py --device cuda
 ```
 
-Validates Huygens attention on STEAD earthquake / noise waveforms.
+Picking model (`STEADHNFPickingModel`): three-component secondary sources →
+temporal `rho(t)` → Huygens wave blocks (optional noise-cancel) → det / P / S
+heads.
 
-### Picking model (`STEADHNFPickingModel`)
+Trainer: `train_stead_picking.py`. Orchestration: `run11_stead_picking.py` …
+`run20_stead_picking.py` (legacy freeze); kitchen-sink line
+`run28_stead_ms_fresnel_phys.py` (current primary).
 
-Three-component secondary sources → temporal `rho(t)` → Huygens wave blocks (optional noise-cancel branch) → det / P / S heads (envelope-residual pick heads).
-
-Trainer: `train_stead_picking.py`. Orchestration scripts: `run11_stead_picking.py` … `run20_stead_picking.py`.
-
-Design choices retained in the final model:
+Design choices in **run28** (multi-scale + Huygens–Fresnel + weak phys regs):
 
 - Preserve full temporal resolution and stable detection, then push P/S
 - Denoise branch primarily for **det**; P/S use **raw** waveform plus denoise cues
-- Stage-wise freezing of backbone / det while refining pick heads
-- Short low-LR sharp pass with wrong-peak suppression (**run20**)
+- Wrong-peak / P-before-S / noise-cancel cues carried from the run20 recipe
+- From-scratch long cosine schedule (**50 epochs**; local 20ep pilot was strong
+  but inferior)
 
-**Frozen checkpoint**
+**Primary checkpoint** (50ep weights on this box)
 
 ```text
-outputs/run20/20_wrongpeak_sharp/best.pt
-  det_f1 ≈ 0.994   p_f1 ≈ 0.959   s_f1 ≈ 0.949   n_params ≈ 139402
+outputs/run28/28_ms_fresnel_phys_20ep/best.pt
+  (= outputs/run28/28_ms_fresnel_phys_50ep/best.pt via symlink)
+  det_f1 ≈ 0.998   p_f1 ≈ 0.980   s_f1 ≈ 0.965   n_params ≈ 191724
 ```
 
 ```bash
-python run20_stead_picking.py
-python eval_stead_picking.py --checkpoint outputs/run20/20_wrongpeak_sharp/best.pt
-python explain_stead_picking.py --checkpoint outputs/run20/20_wrongpeak_sharp/best.pt
+python eval_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
+python explain_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
 ```
 
-Dataset: `hnf/stead_picking_dataset.py` (includes `source_distance_km` / `source_depth_km` for real-event geometry).
-
-**Pick threshold sweep**
+Dataset: `hnf/stead_picking_dataset.py` (includes geometry fields for later mining).
 
 ![Picking threshold sweep](docs/figures/picking_threshold_sweep.png)
 
-*Figure: threshold vs picking metrics on the run20 model (`picking_threshold_sweep.png`).*
+*Figure: historical threshold sweep (run20-era figure; re-sweep on run28 optional).*
 
----
-
-## 4. 1D inversion baselines
-
-Before the Physics Decoder, a layered-Earth stack was built and compared end-to-end.
+### 1D inversion baselines
 
 | Component | Module |
 |-----------|--------|
@@ -145,513 +157,177 @@ Before the Physics Decoder, a layered-Earth stack was built and compared end-to-
 | Acoustic FWI-lite | `hnf/acoustic_fwi_1d.py` |
 | Synthetic waveforms | `hnf/synth_waveforms_1d.py` |
 | Ray paths | `hnf/ray_paths.py` |
-| Profile / misfit plots | `hnf/inv_plot.py` |
 
 ```bash
 python run_inv01_synth_1d.py
 python run_inv_full_compare.py
 python run_inv_fwi_lite.py
-python run_inv05_pick_to_inversion.py
 ```
 
-**Takeaway:** classical travel-time solvers (esp. GN / L-BFGS) reach the lowest absolute Vp RMSE on synthetic oracles. Waveform FWI-lite improves from a given start model. The Zhizi line therefore targets a **better waveform-inversion initializer**, scored against a standard perturbed start.
+**Takeaway:** classical TT solvers reach the lowest absolute Vp RMSE on
+synthetic oracles. The Zhizi line targets a **better waveform-inversion
+initializer**.
 
 ![Inversion full comparison](docs/figures/full_comparison.png)
 
-*Figure: multi-method 1D inversion overview (`full_comparison.png`).*
-
----
-
-## 5. Physics Decoder
-
-### Pipeline
+### Physics Decoder
 
 ```
-Frozen run20
-  → station features: rho(t), envelope, kernel soft scales, P/S picks
+Frozen run28 picking backbone
+  → rho(t), envelope, kernel soft scales, P/S picks [, kernel_summary γ/ω/c]
   → macro Physics Head: scale / contrast / Vs ratio
-  → vp0/vs0 relative to a reference layered model (zero init ≈ reference)
-  → short differentiable waveform refine (Route A2) or travel-time refine
+  → vp0/vs0 relative to a reference layered model
+  → optional waveform refine (Route A2) or travel-time refine
 ```
 
-Code: `hnf/zhizi_physics_head.py`, `physics_decoder.py`, `zhizi_inversion_dataset.py`, `zhizi_inversion_loss.py`.
-
-### Training (converged recipe)
-
-Short training is sufficient; best Val Vp RMSE ≈ **0.277** near epoch 4.
+Code: `hnf/physics_decoder.py`, `zhizi_physics_head.py`,
+`zhizi_inversion_dataset.py`, `zhizi_inversion_loss.py`
+(shim: `zhizi_inversion_bridge.py`).
 
 ```bash
+# Preferred run28 macro (init-focused claim)
 python train_zhizi_inversion.py \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --head-mode macro --epochs 8 --n-train 96 --n-val 16 \
   --unrolled-weight 0.5 --unrolled-steps 5 \
   --vp-sup-weight 0.05 --lr 3e-3 \
-  --output-dir outputs/zhizi_inversion_bridge_macro
+  --output-dir outputs/physics_decoder_run28_macro
+
+# Optional: kernel_summary + weak mid-TT
+python train_zhizi_inversion.py ... --kernel-summary --mid-tt-weight 0.08 \
+  --output-dir outputs/physics_decoder_run28_macro_ks
 ```
 
-Checkpoint: `outputs/zhizi_inversion_bridge_macro/best_physics_head.pt`.
+**Large-N Route A2 (n=256, preferred metric = init):**
 
-![Training curves](docs/figures/training_curves.png)
+| Head | init VpRMSE (Z) | init-win vs perturb | wave-win |
+|------|----------------:|--------------------:|---------:|
+| **run28 macro** | **0.173** | **40.6%** | 52.7% |
+| run28 + ks | 0.186 | 37.5% | 56.3% |
+| run20 macro (legacy) | 0.304 | 3.1% | **91.4%** |
+| perturb baseline | 0.146 | — | — |
 
-*Figure: validation Vp RMSE, total loss, and unrolled Vp MSE (`training_curves.png`). Best early in the run.*
+Reports: `outputs/route_a2_run28_macro_n256/`, `route_a2_run20_macro_n256/`,
+`route_a2_run28_macro_ks_n256/`.
 
-### Route A2 (synthetic waveform refine)
+### Proof suite (large-N)
 
 ```bash
-python run_route_a2_waveform.py \
-  --head-mode macro \
-  --physics-head outputs/zhizi_inversion_bridge_macro/best_physics_head.pt \
-  --n-test 32 --fwi-steps 60 --device cuda
+python run_proof_suite.py --device cuda --max-events 500 --n-synth 128 \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
+  --physics-head outputs/physics_decoder_run28_macro/best_physics_head.pt \
+  --head-mode macro --output-dir outputs/proof_suite_run28_n500
 ```
 
-| Setting | Zhizi + wave VpRMSE | Perturb + wave | Zhizi better |
-|---------|---------------------|----------------|--------------|
-| 32 events | **0.924** | 0.982 | **93.8%** |
-| 64 events | **0.935** | 0.977 | **87.5%** |
+STEAD geom refine (**n=500**): win-rate **69.6%** (PASS vs 65% gate).
+Synth wave Z>P: **68%** (n=128). Full JSON: `outputs/proof_suite_run28_n500/proof_report.json`.
 
-One-shot init need not beat a hand perturbation; the macro deformation more often lands FWI-lite in a better basin.
-
----
-
-## 6. Proof suite (geometry-aware STEAD + baselines + latents)
+### Imaging: synthetic closed loop → real-data profile
 
 ```bash
-python run_proof_suite.py --device cuda --max-events 48 --n-synth 32 \
-  --output-dir outputs/proof_suite
-```
-
-Full JSON: `outputs/proof_suite/proof_report.json`. Figures below are the same plots shipped in `docs/figures/`.
-
-### STEAD with real epicentral distance / depth (n=48)
-
-| Metric | Zhizi refine | Perturb refine |
-|--------|--------------|----------------|
-| Mean TT misfit | **3.08** | 11.22 |
-| Win rate | **77.1%** | — |
-| Wilcoxon (approx.) | p ≈ 3×10⁻⁵ | — |
-
-![STEAD refine scatter](docs/figures/stead_refine_scatter.png)
-
-*Figure: points below the diagonal favor Zhizi after travel-time refine (`stead_refine_scatter.png`).*
-
-![STEAD geometry conditioning](docs/figures/stead_geom_conditioning.png)
-
-*Figure: TT misfit delta vs distance (color = depth) and win-rate by distance bin (`stead_geom_conditioning.png`). Longer ranges show higher Zhizi win rates.*
-
-### Synthetic full baseline compare (n=32)
-
-| Method | Mean Vp RMSE |
-|--------|--------------|
-| zhizi_wave | **0.924** |
-| perturb_wave | 0.982 |
-| gn_tt (travel-time oracle) | 0.136 |
-| lbfgs_tt | 0.201 |
-| adam_tt | 1.597 |
-
-Zhizi vs perturb (wave): Wilcoxon p ≈ 6×10⁻⁷.
-
-![Synthetic method bars](docs/figures/synth_full_compare_bars.png)
-
-*Figure: mean Vp RMSE across init / wave refine / TT solvers (`synth_full_compare_bars.png`).*
-
-![Wave RMSE delta histogram](docs/figures/synth_wave_delta_hist.png)
-
-*Figure: paired `zhizi_wave − perturb_wave` (negative = Zhizi better) (`synth_wave_delta_hist.png`).*
-
-### Ray paths
-
-![Example ray paths](docs/figures/example_paths.png)
-
-*Figure: direct P/S rays for True / Zhizi init / Zhizi+wave models (`example_paths.png`).*
-
-### Intermediate variables (ρ, envelope, picks, macro)
-
-![Latent panel](docs/figures/latent_case_00.png)
-
-*Figure: Z waveform, latent **ρ(t)**, wavefield envelope, and P/S pick curves with ground-truth onsets. ρ rises with strong energy (esp. S), aligned with phase arrivals (`latent_case_00.png`).*
-
-![ρ vs distance](docs/figures/rho_vs_distance.png)
-
-*Figure: mean ρ vs epicentral distance on latent sample cases (`rho_vs_distance.png`).*
-
-![Macro / latent diagnostics](docs/figures/macro_latent_diagnostics.png)
-
-*Figure: macro-implied Vp scale / contrast / Vs·Vp, ρ vs geometry, kernel soft prior, and scale–contrast coupling on STEAD (`macro_latent_diagnostics.png`).*
-
-| Quantity | Reading from the plots |
-|----------|-------------------------|
-| `rho(t)` | Soft latent weight; spikes with energetic / S intervals |
-| Envelope | Complex wavefield energy tracking phase structure |
-| kernel_vp / vs | Dimensionless soft scales conditioning the head |
-| macro (scale, contrast, ratio) | Low-dim deformation of the reference layered model |
-
-Reproduce helper: `bash scripts/reproduce_macro_route.sh`.
-
----
-
-## 7. Imaging output: synthetic closed loop -> real-data profile
-
-The bridge is no longer only a picking / inversion metric story. It now
-produces image-style structural outputs in two stages:
-
-1. `Phase E`: recover a known quasi-2D synthetic model and verify that the
-   assembled section matches truth with explicit coverage / uncertainty maps.
-2. `Phase F`: transfer the same local-1D-to-section idea to real STEAD events,
-   aggregate along epicentral distance, and expose trusted vs fragile regions.
-
-```bash
-# Synthetic image closed loop
 python run_phase_e_synth_imaging.py --device cuda --output-dir outputs/phase_e_formal
-
-# Real-data pseudo-2D profile with QC/trust mask
 python run_phase_f_stead_profile.py --device cuda --output-dir outputs/phase_f_qc
-
-# README/report-ready combined panel
 python run_phase_ef_overview.py \
   --phase-e-report outputs/phase_e_formal/report.json \
   --phase-f-report outputs/phase_f_qc/report.json \
   --output-dir outputs/phase_ef_overview
 ```
 
-### Phase E: synthetic closed loop
-
-`outputs/phase_e_formal/report.json` summarizes the formal synthetic imaging
-run:
-
-| Metric | Value |
-|--------|-------|
-| Model type | `marmousi_style` |
-| Mean Vp RMSE | **0.851** |
-| Mean Vs RMSE | **0.418** |
-| Max Vp uncertainty | **0.047** |
-| Coverage nonzero fraction | **0.130** |
-
-This is the key proof that the framework can go from sparse observations to a
-readable 2D geologic image while still exposing where it is illuminated and
-where it is uncertain.
-
-### Phase F: QC-filtered real-data pseudo-2D
-
-`outputs/phase_f_qc/report.json` summarizes the first trusted real-data profile:
-
-| Metric | Value |
-|--------|-------|
-| Events used | **72** |
-| QC-kept events | **57** |
-| QC keep fraction | **79.2%** |
-| Mean refined TT misfit | **2.708** |
-| Mean events per bin | **5.7** |
-| Trusted-bin fraction | **59.1%** |
-| P pick MAE | **0.689 s** |
-| S pick MAE | **0.149 s** |
-
-Default QC thresholds:
-
-- `pick_err_p <= 0.35 s`
-- `pick_err_s <= 0.25 s`
-- `refined_tt <= 6.0`
-- `event_count >= 3`
-- `vp_std <= 2.0`
-- `vs_std <= 1.5`
-
-These rules generate `trust_mask` and masked `Vp / Vs / VpVs` panels so the
-real-data image can be presented with an explicit confidence boundary rather
-than a full unqualified interpolation.
+| Phase | Highlight |
+|-------|-----------|
+| E (synth) | marmousi-style mean Vp RMSE **0.851**, coverage / uncertainty maps |
+| F (STEAD) | 57/72 QC-kept events; trusted-bin fraction **59.1%** with trust mask |
 
 ![Phase E/F overview](docs/figures/phase_ef_overview.png)
 
-*Figure: synthetic closed-loop evidence (top/left) and QC-filtered real-data
-profile with trust mask and support maps (right/bottom) assembled into one
-overview panel (`phase_ef_overview.png`).*
+## I.4 Repository layout & short reproduce
+
+```
+HNF/
+├── hnf/                    # kernel, layers, field, picking, inversion, Physics Decoder, eeg_*
+├── docs/figures/           # README figures (+ interpret/, probing/, knowledge/)
+├── outputs/CURRENT.md      # which dumps are canonical after prune
+├── train_stead_picking.py / run20… / run28_stead_ms_fresnel_phys.py
+├── train_zhizi_inversion.py / run_route_a2_waveform.py / run_proof_suite.py
+├── run_interpret_suite.py / run_probing_suite.py / run_knowledge_mining*.py
+├── train_eeg.py / download_eeg_adftd.py / download_raclette.py
+└── docs/EXPERIMENT_PLAN.md
+```
+
+```bash
+CKPT=outputs/run28/28_ms_fresnel_phys_20ep/best.pt
+HEAD=outputs/physics_decoder_run28_macro/best_physics_head.pt
+
+python eval_stead_picking.py --checkpoint $CKPT
+python run_interpret_suite.py --device cuda --checkpoint $CKPT \
+  --output-dir outputs/interpret_suite_run28 --copy-to-docs
+python run_probing_suite.py --device cuda --checkpoint $CKPT --copy-to-docs
+python run_route_a2_waveform.py --checkpoint $CKPT --physics-head $HEAD \
+  --head-mode macro --n-test 256 --output-dir outputs/route_a2_run28_macro_n256
+```
 
 ---
 
-## 8. Interpretability suite
+# II. Interpretability
 
-Quantitative + visual evidence that internal variables align with physical phase structure (not post-hoc labels).
+Two complementary tracks on the **frozen seismic model**:
+
+1. **Parameter interpretability** — does γ, ω, χ, kernel rows, and ρ align with
+   wave physics? (largely implemented in `run_interpret_suite.py`)
+2. **Physical-neuron probing** — treat ρ / K activations as mechanistic units
+   and test *causal* decision roles (partially implemented; roadmap below)
 
 ```bash
-python run_interpret_suite.py --device cuda --copy-to-docs
-# → outputs/interpret_suite/interpret_report.json
-# → docs/figures/interpret/
+python run_interpret_suite.py --device cuda --copy-to-docs \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
+  --output-dir outputs/interpret_suite_run28
+# → outputs/interpret_suite_run28/interpret_report.json
+# → docs/figures/interpret/ (mirrored)
 ```
 
 ![Interpretability summary panel](docs/figures/interpret/interpretability_summary_panel.png)
 
-*Figure: one-page summary of the current interpretability chain: kernel parameter semantics (`gamma`, `omega`), counterfactual waveform response, temporal lag statistics, branch-level parameter ablation, latent-to-physical mapping, and `vp/vs` travel-time sensitivity (`interpretability_summary_panel.png`).*
+*Figure: γ/ω semantics, counterfactual waveform response, lag stats, branch
+ablation, latent→physics mapping, and vp/vs TT sensitivity.*
 
 ![Causal chain graph](docs/figures/interpret/causal_chain_graph.png)
 
-*Figure: structural causal-chain summary for the current HNF stack. The present evidence supports a strong path from `gamma/omega` to kernel support / oscillation, then to `rho(t)` and pick timing, but only a weak local propagation from branch-specific kernel perturbations into downstream `vp/vs` under the current macro-bridge design (`causal_chain_graph.png`).*
+*Figure: evidence is strong on `gamma/omega → kernel → rho/picks`, weaker on
+local branch knobs → bridge `vp/vs` under the current macro design.*
 
-![Causal wave summary](docs/figures/interpret/causal_wave_summary.png)
+## II.1 Parameter interpretability (implemented)
 
-*Figure: wave-level causal checks from counterfactual perturbations. Amplitude scaling mainly changes `rho` magnitude, time shifting moves `rho` and pick peaks together, and heavy smoothing disturbs S-related behavior more strongly than P (`causal_wave_summary.png`).*
-
-### A. Kernel physics (Huygens vs Fresnel)
+### Kernel physics (Huygens vs Fresnel)
 
 ![Fresnel obliquity and kernel difference](docs/figures/interpret/kernel_obliquity_diff.png)
 
-*Figure: Fresnel obliquity χ (left), log|K| Huygens (center), |K_Fresnel|−|K_Huygens| (right). Obliquity damps off-axis lags; kernel difference concentrates on longer causal lags.*
-
-![Kernel row slice](docs/figures/interpret/kernel_row_slice.png)
-
-*Figure: χ and |K| along one causal receiver row — forward cone structure.*
-
 ![Kernel gamma omega semantics](docs/figures/interpret/kernel_gamma_omega_semantics.png)
 
-*Figure: learned branch/layer kernel parameters (`gamma`, `omega`, `wave_speed`), plus explicit row scans showing that larger `gamma` narrows effective support while larger `omega` increases oscillatory phase structure. In the current run the learned ranges are approximately `gamma ≈ 0.10..3.37`, `omega ≈ 0.93..5.03`, and `wave_speed ≈ 4.51..8.00` (`kernel_gamma_omega_semantics.png`).*
+*Learned ranges (current run): `gamma ≈ 0.10..3.37`, `omega ≈ 0.93..5.03`,
+`wave_speed ≈ 4.51..8.00`. Larger γ narrows support; larger ω increases
+oscillatory phase along causal rows.*
 
-### B. Picking explainability (run20)
+### Picking explainability (run28 suite; figures may still show run20-era labels)
 
 ![Kernel contribution at GT P](docs/figures/interpret/kernel_contrib/kernel_contrib_00.png)
 
-*Figure: Z trace, ρ(t), P/S envelopes, **|K| row at GT P index** (causal contributions), and pick curves. Kernel energy peaks near the P onset window.*
-
 ![ρ S-window vs noise](docs/figures/interpret/kernel_contrib/rho_s_over_noise_hist.png)
-
-*Figure: ratio of mean ρ in S window vs pre-event noise; values > 1 indicate ρ tracks energetic phases.*
 
 ![Counterfactual response panel](docs/figures/interpret/counterfactual_response_panel.png)
 
-*Figure: counterfactual perturbations on the same event. Pure amplitude scaling mostly lowers mean `rho` without moving the peak times, while time shifting carries `rho(t)` and pick peaks together; heavy smoothing can distort S behavior much more strongly than P (`counterfactual_response_panel.png`).*
-
 ![Temporal lag statistics](docs/figures/interpret/temporal_lag_statistics.png)
-
-*Figure: peak-lag histograms relative to GT arrivals. `p_prob` and `s_prob` stay closest to the catalog onsets, while `rho(t)` and branch envelopes peak in broader windows around them; in this run `p_prob` mean lag is about `+0.11s`, `s_prob` about `-0.03s` (`temporal_lag_statistics.png`).*
 
 ![Branch parameter ablation](docs/figures/interpret/branch_parameter_ablation.png)
 
-*Figure: local scans of `p_branch_0` / `s_branch_0` kernel parameters. Each row perturbs one `gamma` or `omega` while tracking pick lag, bridge `vp/vs` mean response, and the normalized kernel row. After fixing the perturbed-bridge path, the main conclusion still holds: these branch-local kernel knobs clearly move pick timing and kernel concentration, but only weakly propagate into downstream `vp/vs` in the current architecture (`branch_parameter_ablation.png`).*
-
-### C. Bridge latents (macro head)
+### Bridge latents & init→refine
 
 ![Bridge latent panel](docs/figures/interpret/bridge_latent/bridge_latent_00.png)
 
-*Figure: frozen run20 features through the Physics Decoder — ρ(t), envelope, P/S logits vs GT onsets.*
-
-![Bridge ρ vs distance](docs/figures/interpret/bridge_latent/bridge_rho_vs_distance.png)
-
 ![Joint latent physics summary](docs/figures/interpret/joint_latent_physics_summary.png)
-
-*Figure: joint view from geometry and latent variables to recovered physical outputs. The scatter panels connect `rho(t)`, kernel soft scales, and recovered `vp/vs`, while the correlation panel summarizes which quantities move together across STEAD cases (`joint_latent_physics_summary.png`).*
-
-### D. Init → wave refine (Route A2)
 
 ![Inversion init vs refine](docs/figures/interpret/inversion_init_refine.png)
 
-*Left: one-shot init VpRMSE vs after waveform refine (points below diagonal = refine helps). Right: paired zhizi−perturb wave delta (negative = Zhizi better).*
-
-![Vp Vs TT sensitivity](docs/figures/interpret/vp_vs_tt_sensitivity.png)
-
-*Figure: finite-difference travel-time sensitivity heatmaps. `dTp/dVp` and `dTs/dVs` dominate as expected, while cross-sensitivities remain weaker; this helps explain which layers and offsets mainly constrain `vp` versus `vs` (`vp_vs_tt_sensitivity.png`).*
-
-| Quantity | How to read it |
-|----------|----------------|
-| `rho(t)` | Soft latent weight; rises with S / high-energy intervals — **not** crustal density |
-| `gamma` | Kernel locality control; larger values shrink the effective causal support |
-| `omega` | Kernel oscillation / phase sensitivity; larger values increase sign changes along causal rows |
-| χ obliquity | Fresnel aperture; forward lags weighted more than grazing paths |
-| Kernel row | Which past samples causally contribute to a pick index |
-| Counterfactual response | Distinguishes amplitude sensitivity from timing sensitivity |
-| Temporal lag stats | Quantifies whether latent peaks lead, align with, or lag GT arrivals |
-| Branch parameter ablation | Local parameter scan linking one kernel knob to lag, kernel shape, and bridge output |
-| Causal chain visuals | Summarize which links are strongly supported and which remain weak |
-| macro (scale, contrast, ratio) | Low-dim deformation of the reference layered model |
-| `vp` / `vs` sensitivity | Which layer-distance pairs mainly constrain P and S travel times |
-
-### F. Toward statistical knowledge mining
-
-The next step is no longer only visual interpretability, but **statistical
-knowledge mining** over:
-
-- latent quantities: `rho(t)`, `rho_mean`, `rho_peak`, lag statistics
-- kernel quantities: `gamma`, `omega`, `wave_speed`, branch-specific parameters
-- physical outputs: `vp`, `vs`, `vp/vs`
-- geometry / quality variables: distance, depth, support, uncertainty, TT misfit
-
-The new causal-chain views are intended to guide that mining stage: future
-statistical reports should test not only pairwise correlations, but also
-whether discovered regularities remain stable along the mechanism chain
-`gamma/omega -> kernel behavior -> rho/picks -> macro conditioning -> vp/vs`,
-with confidence intervals, p-values, and stability checks.
-
-The first pass of this pipeline is now implemented in
-`run_knowledge_mining.py`. It exports a unified sample-level table plus
-bootstrap/FDR-screened candidate relations. The current initial result is
-deliberately conservative: no stable event-level law has yet been confirmed in
-the screened set, and direct event-wise `gamma/omega -> vp/vs` correlation is
-not appropriate because those kernel parameters are global branch parameters in
-the current model. See `docs/KNOWLEDGE_MINING.md` for the current methodology
-and why future mining should emphasize local sensitivity, mediation, and
-cross-checkpoint comparisons.
-
-The second pass now adds partial correlation, distance/depth bucket summaries,
-and mediation-style chain screening. The current most interesting candidate is
-not a raw `rho_mean` relation, but a weak positive partial link from
-`rho_p_lag` to `refined_tt` after controlling for geometry and `pick_err_p`.
-It is still not FDR-significant, so it should be treated as a **candidate
-causal-chain signal**, not a confirmed law.
-
-The third pass adds robust trimming and a same-sample multi-head comparison.
-After trimming the strongest tail cases, the `rho_p_lag -> refined_tt`
-candidate becomes slightly stronger rather than disappearing, and
-`rho_mean -> vp_mean` also begins to show a weak edge signal. Neither is yet
-FDR-significant, but this shifts the most promising knowledge-mining direction
-from raw geometry or raw `rho_mean` trends toward **timing-aware latent
-features plus cross-head comparison**.
-
-The fourth pass (`run_knowledge_mining_cross.py`,
-`outputs/knowledge_mining_v4`) tests transfer across heads and checkpoints.
-Key result: `rho_p_lag -> refined_tt` is **not head-robust** (sign flips from
-`bridge_macro` to `stead_macro`), while `bridge_macro` and `mixed_geo` remain
-close in Vp/Vs. Branch-0 `gamma/omega` are nearly identical across
-`run19/20/21`, so those checkpoints alone cannot support kernel-parameter
-laws. Live ablation still shows only weak `omega -> pick lag` and near-zero
-local `gamma -> vp/vs` propagation. See `docs/KNOWLEDGE_MINING.md`.
-
-![Cross-head Vp/Vs heatmap](docs/figures/knowledge/cross_head_vpvs_heatmap.png)
-
-*Figure: same-event Vp/Vs across physics heads. `mixed_geo` tracks
-`bridge_macro` most closely; `stead_macro` is the clear outlier
-(`cross_head_vpvs_heatmap.png`).*
-
-![Live ablation sensitivity](docs/figures/knowledge/live_ablation_sensitivity.png)
-
-*Figure: live stronger branch ablation slopes. Only a weak
-`p_omega -> p_lag` effect appears; gamma-to-velocity local propagation remains
-near zero (`live_ablation_sensitivity.png`).*
-
-### G. Paper-scale follow-ups (clustering / SNR / attributes / Fig1)
-
-Paper-oriented runs are summarized in `docs/PAPER_ROADMAP.md`.
-
-![Fig1 HNF overview](docs/figures/fig1_hnf_overview.png)
-
-*Figure 1 concept board: Huygens secondary sources, HNF causal kernel formula,
-and end-to-end framework flowchart (`fig1_hnf_overview.png`).*
-
-![Fig5 SNR robustness](docs/figures/fig5_snr_robustness.png)
-
-*Figure 5 left: STEAD SNR sweep (n_pick=512, n_inv=128). P/S F1 degrade with
-noise; denoise-on helps most in the mid-SNR band (`fig5_snr_robustness.png`).*
-
-![Fig5 Ambon cross-region](docs/figures/fig5_ambon_cross_region.png)
-
-*Figure 5 middle: Ambon (Indonesia) catalog geometry + VELEST TT inversion
-(n=64). Gauss-Newton is most stable (100%); HNF-Adam succeeds on 50% but has
-the best median Vp RMSE when it converges (`fig5_ambon_cross_region.png`).*
-
-![Fig5 OBS picking compare](docs/figures/fig5_obs_picking_compare.png)
-
-*Figure 5 right: OBS picking compare (n=400, protocol v2). Fair zero-shot:
-EQT(STEAD) leads P-F1; PhaseNet(STEAD) matches on S; HNF trails both.
-OBS-pretrained EQT/PhaseNet (~0.66–0.68) are 4C domain references, not
-zero-shot (`fig5_obs_picking_compare.png`).*
-
-![Scene clustering](docs/figures/scene_clustering_robust.png)
-
-*Scene clustering after robust TT trim (n=380). Some relations are global
-(`noise_ratio -> pick_err_p`), others strengthen only inside specific clusters
-(`scene_clustering_robust.png`).*
-
-![Cluster rediscovery](docs/figures/cluster_rediscovery_summary.png)
-
-*Full cluster-conditioned rediscovery (35 candidates on n=380): 26 global /
-6 scene-specific / 3 rejected under CI+FDR (`cluster_rediscovery_summary.png`).*
-
-![Cross-head transfer](docs/figures/cross_head_transfer_summary.png)
-
-*Cross-head transfer (n=200 × 4 heads): `rho_p_lag→init_tt` is head-robust;
-`rho_mean→vp_mean` sign-flips across heads; `noise_ratio→pick_err_p` is
-head-independent (`cross_head_transfer_summary.png`).*
-
-![Fig4 method comparison](docs/figures/fig4_method_comparison.png)
-
-*Figure 4 board packaged from inv_full_compare + proof_suite assets
-(`fig4_method_comparison.png`).*
-
-![rho vs attributes](docs/figures/rho_vs_attributes_summary.png)
-
-*rho(t) vs classical attributes (n=300): strong window correlation with
-envelope / STA/LTA around P, and high peak-lag agreement with envelope
-(`rho_vs_attributes_summary.png`).*
-
-### H. Absolute-geography rediscovery (confirmed)
-
-Prior mining used only `distance_km` / `source_depth_km`. Attaching STEAD
-source/receiver lat–lon (`run_paper_geo_rediscovery.py`, then
-`run_paper_geo_confirm.py`) shows that **absolute geography carries signal**,
-but most of that signal is **regional/network structure** (sample is
-ZQ-dominated: 310/380), not a universal “latitude physics” law.
-
-![Geo cluster map](docs/figures/geo_cluster_map.png)
-
-*Source locations by geo-kmeans cluster (n=380). C3 dominates (n=309) and
-aligns with the ZQ lobe (`geo_cluster_map.png`).*
-
-![Geo QC spatial map](docs/figures/geo_qc_spatial_map.png)
-
-*Strong claim visual: `pick_err_p` and `noise_ratio` vary spatially; crimson
-rings mark non-ZQ events (`geo_qc_spatial_map.png`).*
-
-![Geo priority controls](docs/figures/geo_priority_controls.png)
-
-*Priority latent/QC laws remain after controlling lat/lon **and** `is_ZQ`
-(`geo_priority_controls.png`).*
-
-![Geo absolute vs network](docs/figures/geo_absolute_vs_network.png)
-
-*Absolute-geo edges often collapse after network control; `is_ZQ` itself
-predicts pick error / noise (`geo_absolute_vs_network.png`).*
-
-![Geo sensitivity heatmap](docs/figures/geo_sensitivity_heatmap.png)
-
-*Sensitivity across leave-C3 / non-ZQ / lon tertiles / ZQ-only
-(`geo_sensitivity_heatmap.png`). Small non-ZQ slices are underpowered.*
-
-Confirmed (strong):
-
-- `noise_ratio → pick_err_p` partial ≈ +0.16 after lat/lon **and** after
-  `is_ZQ`; also holds inside ZQ-only (n=310). Not a geography artifact.
-- `rho_p_lag → init_tt` partial ≈ −0.38 after lat/lon **and** after `is_ZQ`;
-  also holds inside ZQ-only. Remains the main causal-chain keeper.
-
-Confirmed (moderate / secondary):
-
-- `rho_mean → vp_mean` survives lat/lon and `is_ZQ` here, but earlier
-  cross-head transfer still shows sign instability — keep descriptive.
-
-Reinterpreted (do not overclaim):
-
-- Pairwise `source_lat → pick_err_p` (ρ≈0.18) / lat→`init_tt` look global,
-  but **collapse after `is_ZQ`**. Explanation: mining sample mixes ZQ
-  (southern-Africa lobe) with TA/other networks; lat/lon mostly tag that
-  regional split (site/path/instrument family), not a physical latitude law.
-- Within ZQ, `source_lon → pick_err_p` remains supported (ρ≈0.15) — a
-  **local** geographic structure inside the dominant network, consistent
-  with the earlier C3 geo-specific lon edge.
-
-Key paper-scale findings:
-
-- `noise_ratio` from the Huygens noise-cancel branch is a useful QC latent
-  (global partial ≈ +0.17 to P pick error; CI excludes 0; head-independent;
-  **geo-confirmed** under lat/lon and network controls)
-- `rho_p_lag -> init_tt` is supported after robust trim **and** transfers
-  across 4 physics heads (partial ≈ −0.42 to −0.47); **geo-confirmed**
-- `rho_mean -> vp_mean` does **not** transfer (sign flips across heads)
-- absolute lat/lon add mining signal, but mainly as **network/region
-  proxies**; control `is_ZQ` (or equivalent) before claiming geo laws
-- full rediscovery on clusters was required (35-edge screen vs earlier 4)
-- Fig4 method board packaged; Q head train flag `--predict-q` wired
-- Ambon Indonesia catalog used for Fig5 cross-region TT (no waveforms)
-- OBS SeisBench chunk used for picking zero-shot vs EQT/PhaseNet; physical
-  density remains deferred
-
-### E. Principle ablation: Huygens–Fresnel (completed)
-
-`python run_huygens_fresnel_iterate.py` replayed picking + macro inversion with `--principle huygens_fresnel`.
-
-![Picking principle compare](docs/figures/interpret/picking_principle_compare.png)
+### Principle ablation (completed)
 
 | Task | Huygens (run20) | Fresnel | Verdict |
 |------|-----------------|---------|---------|
@@ -661,50 +337,218 @@ Key paper-scale findings:
 | Route A2 win-rate | **93.8%** | 90.6% | still PASS |
 | STEAD refine win-rate | **77.1%** | 77.1% | tie |
 
-**Conclusion:** Fresnel does **not** replace the frozen run20 backbone (P/S regression). It remains an optional `--principle` for ablation; production path stays **run20 + macro**.
+**Conclusion (updated):** picking **production** is **run28 (Fresnel kitchen-sink)**.
+run20 Huygens remains the legacy A2 wave-win reference backbone. Early Fresnel
+ablation on a short recipe underperformed run20 on P/S; the long run28 schedule
+reversed that for picking metrics.
 
----
+| Quantity | How to read it |
+|----------|----------------|
+| `rho(t)` | Soft latent weight; rises with energetic / S intervals — **not** crustal density |
+| `gamma` / `omega` | Locality vs oscillation of the causal kernel |
+| χ obliquity | Fresnel aperture; forward lags weighted more |
+| Kernel row | Which past samples causally contribute to a pick index |
+| Counterfactual waveform edits | Amplitude vs timing sensitivity |
+| Branch ablation | Local γ/ω → pick lag / kernel shape / weak bridge coupling |
 
-## 9. Repository layout
+## II.2 Probing “physical neurons”
 
-```
-HNF/
-├── hnf/                         # kernel, layers, field, picking, inversion, Physics Decoder
-│   ├── kernel.py density.py layers.py fmm.py field.py ...
-│   ├── picking_model.py noise_cancel.py multiscale.py
-│   ├── inversion_1d.py inversion_baselines.py acoustic_fwi_1d.py ray_paths.py
-│   ├── zhizi_*.py
-│   └── tests/
-├── docs/figures/                # figures embedded in this README
-│   └── interpret/               # interpretability suite mirrors
-├── train_stead_picking.py
-├── run11 … run20_stead_picking.py
-├── train_zhizi_inversion.py
-├── run_route_a2_waveform.py / run_zhizi_inv05_real.py / run_proof_suite.py
-├── run_interpret_suite.py / run_huygens_fresnel_iterate.py
-├── run_inv*.py
-├── example_2d_reconstruction.py / train_stead.py
-├── explain_stead_picking.py
-├── scripts/reproduce_macro_route.sh
-└── README_ZHIZI_INVERSION.md
-```
+Script: `run_probing_suite.py` → `outputs/probing_suite_run28/` (+
+`docs/figures/probing/`).
 
----
+### (1) Causal-chain tracking **[done — first pass]**
 
-## 10. Short reproduce path
+Layer-wise wavefield energy + ρ panels for known events
+(`docs/figures/probing/causal_chain/`). Peak-width “sharpening” metric is still
+coarse (embed energy is already sparse); qualitative ladders are the keepers.
+
+### (2) Counterfactual ρ scrubbing **[done — first pass]**
+
+Zero / damp ρ near S onset through the forward path. On n=24: **ΔP/ΔS ≈ 0** —
+under the current architecture ρ behaves as a **weak conditioner**, not a strong
+causal pick switch. Waveform-level counterfactuals in the interpret suite remain
+the stronger timing/amplitude evidence.
+
+### (3) Anomaly detection & attribution **[partial]**
+
+False-P-on-noise K-row gallery is implemented; first pass found few high-confidence
+false P after thresholding. Re-run with relaxed thresholds when packaging Part II.
 
 ```bash
-# Picking (skip if run20 checkpoint exists)
-python run20_stead_picking.py
-
-# Macro head (skip if best_physics_head.pt exists)
-python train_zhizi_inversion.py --head-mode macro --epochs 8 ...
-
-# Performance proof (metrics + figures)
-python run_proof_suite.py --device cuda --max-events 48 --n-synth 32
-
-# Interpretability proof (kernel χ, contrib, ablations → docs/figures/interpret/)
-python run_interpret_suite.py --device cuda --copy-to-docs
+python run_probing_suite.py --device cuda --copy-to-docs \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
+  --output-dir outputs/probing_suite_run28
 ```
 
-Open `outputs/proof_suite/proof_report.json`, `outputs/interpret_suite/interpret_report.json`, and `docs/figures/`.
+---
+
+# III. Physics discovery
+
+After interpretability establishes *what internals mean*, discovery asks
+*what regularities and transferable physics the trained stack implies*—still
+using seismology as the worked example—and how to turn pieces of the network
+back into equations / tables.
+
+## III.1 Knowledge mining
+
+Statistical mining over latents, kernel knobs, geometry, and physics outputs
+along the mechanism chain
+`gamma/omega → kernel → rho/picks → macro → vp/vs`
+(with bootstrap / FDR / cross-head stability). Methodology:
+[`docs/KNOWLEDGE_MINING.md`](docs/KNOWLEDGE_MINING.md).
+
+```bash
+python run_knowledge_mining.py
+python run_knowledge_mining_cross.py   # outputs/knowledge_mining_v4
+```
+
+Key keepers / cautions:
+
+- `noise_ratio → pick_err_p` is global, head-independent, and geo-confirmed
+- `rho_p_lag → init_tt` transfers across physics heads and survives geo controls
+- `rho_mean → vp_mean` is descriptive only (sign flips across heads)
+- Direct event-wise `gamma/omega → vp/vs` is **not** appropriate: those knobs
+  are global branch parameters in the current model
+
+![Cross-head Vp/Vs heatmap](docs/figures/knowledge/cross_head_vpvs_heatmap.png)
+
+![Live ablation sensitivity](docs/figures/knowledge/live_ablation_sensitivity.png)
+
+![Scene clustering](docs/figures/scene_clustering_robust.png)
+
+![Cluster rediscovery](docs/figures/cluster_rediscovery_summary.png)
+
+Paper-scale boards (SNR / Ambon / OBS / Fig1 / Fig4 / attributes) are summarized
+in [`docs/PAPER_ROADMAP.md`](docs/PAPER_ROADMAP.md) with figures under
+`docs/figures/`.
+
+STEAD in-domain picking baselines (subset protocol):
+
+| Model | det_f1 | P-F1 | S-F1 |
+|-------|-------:|-----:|-----:|
+| **HNF(run28-50ep)** | **0.998** | **0.980** | **0.965** |
+| HNF(run28-20ep local) | 0.998 | 0.978 | 0.955 |
+| HNF(run20) full test | 0.994 | 0.959 | 0.949 |
+| EQT(STEAD) subset | **0.999** | **0.989** | **0.971** |
+| PhaseNet(STEAD) subset | 0.997 | 0.949 | 0.959 |
+
+Note: EQT/PhaseNet numbers are the paper subset protocol; HNF rows are full-test
+(or declared schedule). run28 closes most of the PhaseNet gap and narrows EQT.
+
+## III.2 Absolute-geography rediscovery
+
+Attaching source/receiver lat–lon (`run_paper_geo_rediscovery.py`,
+`run_paper_geo_confirm.py`) shows absolute geography carries signal, but mostly
+as **regional / network structure** (ZQ-dominated sample), not a universal
+latitude law.
+
+![Geo cluster map](docs/figures/geo_cluster_map.png)
+
+![Geo absolute vs network](docs/figures/geo_absolute_vs_network.png)
+
+Confirmed (strong): `noise_ratio → pick_err_p` and `rho_p_lag → init_tt`
+survive lat/lon **and** `is_ZQ`. Pairwise latitude→error edges often **collapse**
+after network control—control `is_ZQ` (or equivalent) before claiming geo laws.
+
+## III.3 Reparameterization → physical equations
+
+Discovery is not only correlation tables. A parallel track **reparameterizes**
+trained internals into analytic or classical forms that can be compared to
+textbook Earth / wave models. Status: mostly **planned**, building on existing
+exports.
+
+### (1) Analytic medium parameters **[planned]**
+
+Fit learned ρ-field summaries or γ-like behavior with spatial analytic
+functions (e.g. polynomials in epicentral distance). A smooth
+`γ(distance)` or `ρ_peak(distance)` would suggest a **describable attenuation /
+focusing law** rather than opaque coordinates.
+
+Hook: extend knowledge-mining distance buckets + kernel semantics panels into
+explicit curve fits with residual reports.
+
+### (2) Reverse-engineer empirical velocity models **[partial]**
+
+From the trained Physics Head, extract the implied `vp/vs` deformation of the
+reference layered model and compare to classical models (e.g. **AK135** /
+local 1D tables). Systematic residuals can flag **regional corrections** or
+dataset bias implicit in STEAD geometry.
+
+Exists today: macro scale/contrast/ratio → `vp0/vs0`, latent diagnostics, TT
+sensitivity heatmaps. Planned: published AK135-residual panels on geo clusters.
+
+### (3) Operator simplification (low-rank K) **[planned]**
+
+Analyze the rank structure of kernel matrices. If \(K\) is approximately
+low-rank, SVD / leading components can approximate causal propagation with
+fewer bases—cutting inference cost while testing how much “wave physics”
+lives in a compact operator subspace.
+
+```bash
+# planned
+python run_reparam_suite.py --checkpoint ... --compare ak135 --svd-ranks 1,2,4,8
+```
+
+---
+
+# IV. Generalization
+
+Parts I–III define a reusable research pattern on seismology. Domain transfer
+asks whether the **same pattern**—sparse observation → HNF encoder → task head
+/ Physics Decoder → interpretability → mining—holds outside earthquakes.
+
+| Pattern step | Seismology (Domain I) | EEG (Domain II) | Fluid (Domain III) |
+|--------------|----------------------|-----------------|--------------------|
+| Sparse observation | 3C waveforms | multi-channel EEG | sparse 4D-flow voxels |
+| Encoder | HNF picking backbone | HNF EEG encoder | HNF flow encoder |
+| Physics / task head | picks + vp/vs | disease / state head | constitutive (η, λ, …) |
+| Interpretable unit | ρ(t), γ, ω, K rows | ρ(t) / spectral proxies | kernel ↔ shear-rate |
+| Discovery | geo + velocity residuals | group contrasts / ROC | residual vs base rheology |
+
+## IV.1 Domain II — AD/FTD EEG
+
+**Status:** code scaffolding in place; full train/eval after STEAD GPU bandwidth.
+
+| Piece | Location |
+|-------|----------|
+| Dataset | `hnf/eeg_dataset.py` (OpenNeuro ds004504 / ADFTD) |
+| Model | `hnf/eeg_model.py` |
+| Train / eval | `train_eeg.py`, `eval_eeg.py`, `run_eeg_analysis.py`, `transfer_eeg.py` |
+| Download | `download_eeg_adftd.py` → `external_data/eeg_adftd/` |
+
+Reuse from Domain I: multi-scale HNF blocks, ρ probing narrative, optional
+frozen-backbone transfer. Claims stay at **classification / transfer metrics +
+ρ group contrasts**, not overclaimed “EEG physics laws” until mining replicates
+the FDR discipline from Part III.
+
+## IV.2 Domain III — sparse flow → constitutive discovery
+
+**Status:** design frozen in
+[`docs/DOMAIN_III_FLUID_RHEOLOGY.md`](docs/DOMAIN_III_FLUID_RHEOLOGY.md);
+GPU work after EEG Stage-1 (or explicit reprioritization).
+
+Target loop: sparse velocity observations → denser flow reconstruction →
+constitutive parameters → knowledge-mining residuals vs a base rheology family.
+**RACLETTE** provides CFD-enhanced synthetic aortic 4D/5D flow for Stage 0–1
+reconstruction realism—**not** constitutive GT by default.
+
+```bash
+python download_raclette.py \
+  --out-dir external_data/raclette/Tutorials/DataDownload/Downloaded
+```
+
+Planned modules (see Domain III doc): `hnf/fluid_dataset.py`, Physics Decoder
+branch for (η, λ, …), momentum / constitutive residual losses.
+
+## IV.3 Cross-domain checklist
+
+For each new domain, repeat:
+
+1. **Model** — freeze a competent encoder / head recipe (Part I)
+2. **Interpretability** — parameter semantics + ρ/K probing (Part II)
+3. **Discovery** — FDR-aware mining + optional reparameterization (Part III)
+4. **Transfer report** — what ports, what breaks, what becomes domain-specific
+
+Observational-system transfer inside seismology (OBS zero-shot vs
+EQT/PhaseNet) remains a sibling stress test; see paper Fig5 and
+`run_paper_obs_picking_compare.py`.

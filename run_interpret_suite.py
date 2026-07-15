@@ -829,7 +829,10 @@ def run_branch_parameter_ablation(
                 out = pert_bridge.backbone.forward_explain(
                     x, t, include_kernel_row=True, kernel_row_idx=p_idx, kernel_branch="p"
                 )
-                t_event = t[0] if t.dim() == 3 else t
+                # forward_event expects shared t as (T,1) or batched (1,T,1)
+                t_event = t[0] if t.dim() == 3 and t.shape[0] == 1 else t
+                if t_event.dim() == 3:
+                    t_event = t_event[0]
                 bout, _ = pert_bridge.forward_event(x, t_event, include_picks=True, geo=geo)
             p_prob = torch.sigmoid(out["p"][0]).detach().cpu().numpy()
             s_prob = torch.sigmoid(out["s"][0]).detach().cpu().numpy()

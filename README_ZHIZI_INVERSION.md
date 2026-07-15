@@ -1,61 +1,48 @@
-# Physics Decoder (Zhizi inversion, macro head)
+# Physics Decoder (Zhizi / macro head)
 
-Frozen run20 picking backbone + macro Physics Head (`scale` / `contrast` / `Vs ratio`) → `vp0/vs0`, then short waveform refinement. Goal: a **better FWI-lite initializer**.
+Maps frozen HNF picking latents → layered `vp/vs` (FWI-lite **initializer**).
 
-See the full HNF write-up and embedded figures in [`README.md`](README.md).
+**Current preferred stack (2026-07):**
 
-## Results
+| Piece | Path |
+|-------|------|
+| Picking | `outputs/run28/28_ms_fresnel_phys_20ep/best.pt` |
+| Decoder | `outputs/physics_decoder_run28_macro/best_physics_head.pt` |
+| Large-N A2 | `outputs/route_a2_run28_macro_n256/` (**judge on init**) |
+| Legacy run20-macro | `outputs/zhizi_inversion_bridge_macro/` (strong **wave**-win, weak init) |
 
-| Experiment | Outcome |
-|------------|---------|
-| Route A2, 32 events | Win-rate **≈0.94**; VpRMSE Zhizi **0.924** vs perturb **0.982** |
-| Route A2, 64 events | Win-rate **≈0.875**; **0.935** vs **0.977** |
-| STEAD geom-aware refine, 48 events | Win-rate **77.1%**; TT mean **3.08** vs **11.22** |
-| Macro short train | Best Val Vp RMSE **≈0.277** (~epoch 4) |
+See master write-up: [`README.md`](README.md). Plan: [`docs/EXPERIMENT_PLAN.md`](docs/EXPERIMENT_PLAN.md).
 
-## Assets
+## Results (large-N)
 
-- Picking: `outputs/run20/20_wrongpeak_sharp/best.pt`
-- Physics head: `outputs/zhizi_inversion_bridge_macro/best_physics_head.pt`
-- Mode: `--head-mode macro`
+| Setting | Outcome |
+|---------|---------|
+| run28 macro val | Vp RMSE ≈ **0.136** |
+| A2 n=256 init | Zhizi **0.173** vs perturb 0.146 (init-win **41%**); run20-macro init 0.304 |
+| A2 n=256 wave-win | run28 ~**53%**; run20-macro **91%** — do not overclaim wave-win for run28 |
+| STEAD refine n=500 | win **69.6%** (`proof_suite_run28_n500`) |
 
-## Reproduce
+## Train (run28)
 
 ```bash
 python train_zhizi_inversion.py \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
   --head-mode macro --epochs 8 --n-train 96 --n-val 16 \
   --unrolled-weight 0.5 --unrolled-steps 5 \
   --vp-sup-weight 0.05 --lr 3e-3 \
-  --output-dir outputs/zhizi_inversion_bridge_macro
+  --output-dir outputs/physics_decoder_run28_macro
+```
 
+Optional: `--kernel-summary --mid-tt-weight 0.08` → `physics_decoder_run28_macro_ks`.
+
+## Eval
+
+```bash
 python run_route_a2_waveform.py \
-  --head-mode macro \
-  --physics-head outputs/zhizi_inversion_bridge_macro/best_physics_head.pt \
-  --n-test 32 --fwi-steps 60 --device cuda
-
-python run_proof_suite.py --device cuda --max-events 48 --n-synth 32 \
-  --output-dir outputs/proof_suite
-
-bash scripts/reproduce_macro_route.sh
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
+  --physics-head outputs/physics_decoder_run28_macro/best_physics_head.pt \
+  --head-mode macro --n-test 256 --fwi-steps 60 --device cuda \
+  --output-dir outputs/route_a2_run28_macro_n256
 ```
 
-## Pipeline
-
-```
-waveform → frozen Zhizi features (rho / envelope / kernel / picks)
-        → macro head → vp0/vs0
-        → short waveform / TT refine → m*
-```
-
-## Figures
-
-| Path | Content |
-|------|---------|
-| `docs/figures/training_curves.png` | Macro-head training |
-| `docs/figures/stead_refine_scatter.png` | STEAD refine scatter |
-| `docs/figures/synth_full_compare_bars.png` | Synthetic baselines |
-| `docs/figures/example_paths.png` | Ray paths |
-| `docs/figures/latent_case_00.png` | ρ(t) / envelope / picks |
-| `docs/figures/macro_latent_diagnostics.png` | Macro & latent diagnostics |
-
-Interpretability (kernel χ, contrib rows, Fresnel ablation): `python run_interpret_suite.py --device cuda --copy-to-docs` → `docs/figures/interpret/`.
+Code: `hnf/physics_decoder.py` (shim `zhizi_inversion_bridge.py`).

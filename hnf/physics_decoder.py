@@ -2,7 +2,7 @@
 """Physics Decoder: frozen picking backbone + trainable Physics Head.
 
 Formerly called the "Zhizi inversion bridge". The decoder maps HNF latents
-(rho, envelope, kernel speeds, picks) to layered vp/vs.
+(rho, envelope, kernel speeds, picks, optional kernel γ/ω summary) to layered vp/vs.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def features_to_head_inputs(
     n_layers: int,
     window_sec: float = 60.0,
     pick_times: torch.Tensor | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
     wave_stats = pool_wavefield_features(feat["h_real"], feat["h_imag"])
     rho_layers = bucket_rho_to_layers(feat["rho"], n_layers, window_sec=window_sec)
     v_latent = torch.stack([feat["kernel_vp"], feat["kernel_vs"]], dim=-1)
@@ -55,7 +55,8 @@ def features_to_head_inputs(
         pick_times = pick_times_from_logits(
             feat["p_logits"], feat["s_logits"], window_sec=window_sec, seq_len=feat["rho"].shape[-1]
         )
-    return wave_stats, rho_layers, v_latent, pick_times
+    ksum = feat.get("kernel_summary")
+    return wave_stats, rho_layers, v_latent, pick_times, ksum
 
 
 def load_physics_head_state(
@@ -90,11 +91,13 @@ class PhysicsDecoder(nn.Module):
         head_mode: str = "residual",
         geo_condition: bool = False,
         predict_q: bool = False,
+        kernel_summary_dim: int = 0,
     ):
         super().__init__()
         self.backbone = backbone
         self.geo_condition = geo_condition
         self.predict_q = bool(predict_q)
+        self.kernel_summary_dim = int(kernel_summary_dim)
         self.physics_head = ZhiziPhysicsHead(
             embed_dim=embed_dim,
             n_layers=n_layers,
@@ -102,6 +105,7 @@ class PhysicsDecoder(nn.Module):
             mode=head_mode,
             geo_dim=2 if geo_condition else 0,
             predict_q=self.predict_q,
+            kernel_summary_dim=self.kernel_summary_dim,
         )
         self.n_layers = n_layers
         self.infer_seq_len = infer_seq_len
@@ -135,34 +139,47 @@ class PhysicsDecoder(nn.Module):
         x: torch.Tensor,
         t: torch.Tensor,
         include_picks: bool = True,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor]:
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor | None,
+        torch.Tensor,
+        torch.Tensor | None,
+    ]:
         """
         Multi-station event x: (N, T, 3) -> pooled head inputs + rho_layers for loss.
 
         Processes one station at a time to limit memory.
         """
-        wave_list, rho_list, v_list, pick_list = [], [], [], []
+        wave_list, rho_list, v_list, pick_list, ksum_list = [], [], [], [], []
         for i in range(x.shape[0]):
             xi = x[i : i + 1]
             feat = self.extract_station_features(xi, t, include_picks=include_picks)
-            ws, rl, vl, pt = features_to_head_inputs(feat, self.n_layers)
+            ws, rl, vl, pt, ksum = features_to_head_inputs(feat, self.n_layers)
             wave_list.append(ws[0])
             rho_list.append(rl[0])
             v_list.append(vl[0])
             if pt is not None:
                 pick_list.append(pt[0])
+            if ksum is not None:
+                ksum_list.append(ksum[0] if ksum.dim() > 1 else ksum)
             del feat
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
         pick_times = pick_list if pick_list else None
-        ws, rl, vl, pt = stack_pooled_features(wave_list, rho_list, v_list, pick_times)
+        ksums = ksum_list if ksum_list else None
+        ws, rl, vl, pt, ksum = stack_pooled_features(
+            wave_list, rho_list, v_list, pick_times, ksums
+        )
         return (
             ws.unsqueeze(0),
             rl.unsqueeze(0),
             vl.unsqueeze(0),
             pt.unsqueeze(0) if pt is not None else None,
             rl.unsqueeze(0),
+            ksum.unsqueeze(0) if ksum is not None else None,
         )
 
     def forward_event(
@@ -173,10 +190,10 @@ class PhysicsDecoder(nn.Module):
         geo: torch.Tensor | None = None,
     ):
         """x: (N, T, 3) -> PhysicsHeadOutput with batch dim 1."""
-        ws, rl, vl, pt, rho_layers = self.extract_event_features(x, t, include_picks)
+        ws, rl, vl, pt, rho_layers, ksum = self.extract_event_features(x, t, include_picks)
         if geo is not None and geo.dim() == 1:
             geo = geo.unsqueeze(0)
-        out = self.physics_head(ws, rl, vl, pt, geo=geo)
+        out = self.physics_head(ws, rl, vl, pt, geo=geo, kernel_summary=ksum)
         return out, rho_layers
 
     def trainable_parameter_count(self) -> int:
@@ -204,9 +221,13 @@ def load_physics_decoder_from_checkpoint(
         geo_condition = bool(head_state["args"].get("geo_condition", False))
     ckpt_mode = head_mode
     predict_q = bool(head_state.get("predict_q", False))
+    kernel_summary_dim = int(head_state.get("kernel_summary_dim", 0) or 0)
     if isinstance(head_state.get("args"), dict):
         ckpt_mode = head_state["args"].get("head_mode", head_mode)
         predict_q = bool(head_state["args"].get("predict_q", predict_q))
+        kernel_summary_dim = int(
+            head_state["args"].get("kernel_summary_dim", kernel_summary_dim) or 0
+        )
     decoder = PhysicsDecoder(
         backbone=backbone,
         n_layers=n_layers,
@@ -217,6 +238,7 @@ def load_physics_decoder_from_checkpoint(
         head_mode=ckpt_mode,
         geo_condition=geo_condition,
         predict_q=predict_q,
+        kernel_summary_dim=kernel_summary_dim,
     ).to(device)
     load_physics_head_state(decoder.physics_head, head_state["physics_head"])
     decoder.eval()

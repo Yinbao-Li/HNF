@@ -1,1 +1,0 @@
-epoch,train_loss,val_loss,det_f1,p_f1,s_f1,p_mae_sec,s_mae_sec,score,lr

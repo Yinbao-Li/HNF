@@ -184,6 +184,11 @@ class MultiScaleHuygensEncoder(nn.Module):
             return h_real, h_imag, t, rho
 
         b, _, d = h_real.shape
+        # Accept (B,T,1) or legacy shared (T,1) time / rho from Physics Decoder paths.
+        if t.dim() == 2:
+            t = t.unsqueeze(0).expand(b, -1, -1)
+        if rho.dim() == 2:
+            rho = rho.unsqueeze(0).expand(b, -1, -1)
         h_real_rs = F.interpolate(
             h_real.transpose(1, 2),
             size=target_len,

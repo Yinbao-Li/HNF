@@ -1,8 +1,0 @@
-{
-  "runs": [
-    {
-      "name": "21_s_only_refine",
-      "best": "/media/bob/Work/TRELLIS/HNF/outputs/run21/21_s_only_refine/best.pt"
-    }
-  ]
-}

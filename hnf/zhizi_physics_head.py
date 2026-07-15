@@ -59,6 +59,53 @@ def pool_wavefield_features(
     return torch.cat([mean_c, std_c], dim=-1)
 
 
+KERNEL_SUMMARY_DIM = 8
+
+
+def kernel_summary_from_params(
+    kparams: dict[str, dict[str, float]],
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Pack branch γ/ω/c into a fixed-length latent summary (KERNEL_SUMMARY_DIM,).
+
+    Layout:
+      [0] mean γ (P branches)   [1] mean ω (P)   [2] mean c (P)
+      [3] mean γ (S branches)   [4] mean ω (S)   [5] mean c (S)
+      [6] γ_P − γ_S             [7] ω_P − ω_S
+    Missing branches fall back to shared / neutral defaults.
+    """
+    def _means(prefix: str) -> tuple[float, float, float]:
+        gs, os_, cs = [], [], []
+        for key, vals in kparams.items():
+            if not key.startswith(prefix):
+                continue
+            gs.append(float(vals.get("gamma", 0.5)))
+            os_.append(float(vals.get("omega", 1.0)))
+            cs.append(float(vals.get("wave_speed", 6.0)))
+        if not gs:
+            # shared / multi-scale fallback
+            for key, vals in kparams.items():
+                if key.startswith("p_") or key.startswith("s_"):
+                    continue
+                gs.append(float(vals.get("gamma", 0.5)))
+                os_.append(float(vals.get("omega", 1.0)))
+                cs.append(float(vals.get("wave_speed", 6.0)))
+        if not gs:
+            return 0.5, 1.0, 6.0
+        return sum(gs) / len(gs), sum(os_) / len(os_), sum(cs) / len(cs)
+
+    pg, po, pc = _means("p_branch_")
+    sg, so, sc = _means("s_branch_")
+    vec = torch.tensor(
+        [pg, po, pc, sg, so, sc, pg - sg, po - so],
+        device=device,
+        dtype=dtype,
+    )
+    assert vec.numel() == KERNEL_SUMMARY_DIM
+    return vec
+
+
 def latent_velocity_prior(
     kernel_vp: torch.Tensor,
     kernel_vs: torch.Tensor,
@@ -130,6 +177,7 @@ class ZhiziPhysicsHead(nn.Module):
         mode: str = "residual",
         geo_dim: int = 0,
         predict_q: bool = False,
+        kernel_summary_dim: int = 0,
     ):
         super().__init__()
         if mode not in {"residual", "macro"}:
@@ -139,7 +187,15 @@ class ZhiziPhysicsHead(nn.Module):
         self.mode = mode
         self.geo_dim = int(geo_dim)
         self.predict_q = bool(predict_q)
-        in_dim = 2 * embed_dim + n_layers + 2 + (2 if use_pick_times else 0) + self.geo_dim
+        self.kernel_summary_dim = int(kernel_summary_dim)
+        in_dim = (
+            2 * embed_dim
+            + n_layers
+            + 2
+            + (2 if use_pick_times else 0)
+            + self.geo_dim
+            + self.kernel_summary_dim
+        )
         self.base_shift_max = 0.75
         self.inc_shift_max = 0.40
         self.ratio_shift_max = 0.10
@@ -170,6 +226,7 @@ class ZhiziPhysicsHead(nn.Module):
         v_latent: torch.Tensor,
         pick_times: torch.Tensor | None = None,
         geo: torch.Tensor | None = None,
+        kernel_summary: torch.Tensor | None = None,
     ) -> PhysicsHeadOutput:
         parts = [wave_stats, rho_layers, v_latent]
         if self.use_pick_times:
@@ -180,6 +237,17 @@ class ZhiziPhysicsHead(nn.Module):
             if geo is None:
                 geo = torch.zeros(wave_stats.shape[0], self.geo_dim, device=wave_stats.device)
             parts.append(geo)
+        if self.kernel_summary_dim > 0:
+            if kernel_summary is None:
+                kernel_summary = torch.zeros(
+                    wave_stats.shape[0],
+                    self.kernel_summary_dim,
+                    device=wave_stats.device,
+                    dtype=wave_stats.dtype,
+                )
+            elif kernel_summary.dim() == 1:
+                kernel_summary = kernel_summary.unsqueeze(0).expand(wave_stats.shape[0], -1)
+            parts.append(kernel_summary)
         h = self.trunk(torch.cat(parts, dim=-1))
         raw = self.out(h)
 
@@ -267,7 +335,8 @@ def stack_pooled_features(
     rho_layers_list: list[torch.Tensor],
     v_latent_list: list[torch.Tensor],
     pick_times_list: list[torch.Tensor] | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    kernel_summary_list: list[torch.Tensor] | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
     """Mean-pool features from multiple stations of one event."""
     wave_stats = torch.stack(wave_stats_list, dim=0).mean(dim=0)
     rho_layers = torch.stack(rho_layers_list, dim=0).mean(dim=0)
@@ -275,7 +344,10 @@ def stack_pooled_features(
     pick_times = None
     if pick_times_list is not None:
         pick_times = torch.stack(pick_times_list, dim=0).mean(dim=0)
-    return wave_stats, rho_layers, v_latent, pick_times
+    kernel_summary = None
+    if kernel_summary_list is not None and len(kernel_summary_list) > 0:
+        kernel_summary = torch.stack(kernel_summary_list, dim=0).mean(dim=0)
+    return wave_stats, rho_layers, v_latent, pick_times, kernel_summary
 
 
 def count_physics_head_params(head: ZhiziPhysicsHead) -> int:

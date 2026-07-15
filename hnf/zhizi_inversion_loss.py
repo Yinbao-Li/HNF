@@ -49,6 +49,54 @@ def soft_anchor_loss(
     }
 
 
+def kernel_mid_tt_coupling_loss(
+    output: PhysicsHeadOutput,
+    depths: torch.Tensor,
+    q: torch.Tensor,
+    source_depth: float,
+    receiver_distances: torch.Tensor,
+    obs_tp: torch.Tensor,
+    obs_ts: torch.Tensor,
+    weight: float = 0.05,
+) -> tuple[torch.Tensor, dict[str, float]]:
+    """Weak mid-TT coupling: keep head TT near kernel-prior TT (γ/ω soft channel).
+
+    Builds a stop-grad Earth from ``vp_prior/vs_prior`` (kernel-conditioned) and
+    pulls the trainable head travel times toward that mid structure while still
+    fitting observations through the main TT term elsewhere.
+    """
+    if weight <= 0:
+        z = torch.tensor(0.0, device=output.vp.device)
+        return z, {"loss_mid_tt": 0.0}
+
+    earth_head = LayeredEarth1D(
+        depths=depths,
+        vp=output.vp[0],
+        vs=output.vs[0],
+        q=q,
+    )
+    earth_mid = LayeredEarth1D(
+        depths=depths,
+        vp=output.vp_prior[0].detach(),
+        vs=output.vs_prior[0].detach(),
+        q=q,
+    )
+    src = torch.tensor(source_depth, dtype=output.vp.dtype, device=output.vp.device)
+    tp_h = travel_time_phase(earth_head, "P", src, receiver_distances)
+    ts_h = travel_time_phase(earth_head, "S", src, receiver_distances)
+    tp_m = travel_time_phase(earth_mid, "P", src, receiver_distances)
+    ts_m = travel_time_phase(earth_mid, "S", src, receiver_distances)
+    # Prefer matching mid structure on the same receivers; blend with obs soft pull
+    loss_struct = torch.mean((tp_h - tp_m) ** 2 + (ts_h - ts_m) ** 2)
+    loss_obs = torch.mean((tp_h - obs_tp) ** 2 + (ts_h - obs_ts) ** 2)
+    loss = weight * (0.5 * loss_struct + 0.5 * loss_obs)
+    return loss, {
+        "loss_mid_tt": float(loss.detach()),
+        "loss_mid_tt_struct": float(loss_struct.detach()),
+        "loss_mid_tt_obs": float(loss_obs.detach()),
+    }
+
+
 def rho_weighted_smoothness(
     vp: torch.Tensor,
     rho_layers: torch.Tensor,
@@ -99,6 +147,7 @@ def zhizi_inversion_loss(
     anchor_weight: float = 0.01,
     rho_smooth_weight: float = 0.05,
     vp_sup_weight: float = 0.0,
+    mid_tt_weight: float = 0.0,
 ) -> tuple[torch.Tensor, dict[str, float]]:
     earth = LayeredEarth1D(
         depths=depths,
@@ -120,6 +169,20 @@ def zhizi_inversion_loss(
     l_r, m_r = rho_weighted_smoothness(output.vp, rho_layers, weight=rho_smooth_weight)
     total = total + l_r
     metrics.update(m_r)
+
+    if mid_tt_weight > 0:
+        l_m, m_m = kernel_mid_tt_coupling_loss(
+            output,
+            depths=depths,
+            q=q,
+            source_depth=source_depth,
+            receiver_distances=receiver_distances,
+            obs_tp=obs_tp,
+            obs_ts=obs_ts,
+            weight=mid_tt_weight,
+        )
+        total = total + l_m
+        metrics.update(m_m)
 
     if vp_sup_weight > 0 and true_vp is not None:
         l_v, m_v = supervised_vp_loss(output.vp, true_vp, weight=vp_sup_weight)

@@ -81,17 +81,17 @@ def main() -> None:
     backbone, ckpt_args = load_model(ckpt, device, bypass_noise_cancel=True)
     embed_dim = int(ckpt_args.get("embed_dim", 64))
     n_layers = default_synth_model(device).n_layers
-    bridge = PhysicsDecoder(
+    from hnf.physics_decoder import load_physics_decoder_from_checkpoint
+
+    bridge = load_physics_decoder_from_checkpoint(
         backbone=backbone,
-        n_layers=n_layers,
-        embed_dim=embed_dim,
-        hidden=48,
-        freeze_backbone=True,
-        infer_seq_len=args.infer_seq_len,
+        physics_head_path=head_ckpt,
+        device=device,
         head_mode=args.head_mode,
-    ).to(device)
-    state = torch.load(head_ckpt, map_location=device, weights_only=False)
-    bridge.physics_head.load_state_dict(state["physics_head"])
+        embed_dim=embed_dim,
+        n_layers=n_layers,
+        infer_seq_len=args.infer_seq_len,
+    )
     bridge.eval()
 
     ds = ZhiziInversionDataset(n_samples=args.n_test, seq_len=args.infer_seq_len, seed=args.seed, device=device)

@@ -139,6 +139,7 @@ diverges on half the events. Report success rate, not raw mean RMSE.
 
 | Model | det_f1 | P-F1 | S-F1 |
 |------|-------:|-----:|-----:|
+| HNF(run28-50ep) | **0.998** | **0.980** | **0.965** |
 | HNF(run20) full test | 0.994 | 0.959 | 0.949 |
 | HNF(run20) subset | 0.996 | 0.962 | 0.954 |
 | EQT(STEAD) subset | **0.999** | **0.989** | **0.971** |
