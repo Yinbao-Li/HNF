@@ -1,7 +1,15 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Figures for Domain II EEG analysis (omega / ROC / CM / rho)."""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
 import json
@@ -27,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--device", default="")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--synthetic-if-missing", action="store_true", default=True)
+    p.add_argument("--no-synthetic", action="store_false", dest="synthetic_if_missing")
     return p.parse_args()
 
 

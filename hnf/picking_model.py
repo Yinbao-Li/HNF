@@ -11,6 +11,11 @@ import torch.nn.functional as F
 
 from hnf.layers import HuygensWaveBlock
 from hnf.multiscale import MultiScaleHuygensEncoder, ScaleSpec, default_scale_specs
+from hnf.learnable_sampler import (
+    LearnableTemporalSampler,
+    remap_index,
+    remap_sequence,
+)
 from hnf.noise_cancel import HuygensNoiseCancelBranch
 
 
@@ -359,6 +364,12 @@ class STEADHNFPickingModel(nn.Module):
         ps_gap_hidden: int = 64,
         peak_rerank: bool = False,
         peak_rerank_hidden: int = 16,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
+        learnable_sampler: bool = False,
+        sampler_out_len: int = 800,
+        sampler_hidden: int = 32,
+        sampler_temperature: float = 0.05,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -371,6 +382,10 @@ class STEADHNFPickingModel(nn.Module):
         self.peak_rerank = peak_rerank
         self.multi_scale = multi_scale
         self.num_anchors = max(0, int(num_anchors))
+        self.bayesian_mc = bool(bayesian_mc)
+        self.n_samples = max(1, int(n_samples))
+        self.learnable_sampler = bool(learnable_sampler)
+        self.sampler_out_len = int(sampler_out_len)
         # Legacy single principle; obliquity_mode overrides per-block routing.
         if obliquity_mode == "none" and principle == "huygens_fresnel":
             obliquity_mode = "full_fresnel"
@@ -382,6 +397,14 @@ class STEADHNFPickingModel(nn.Module):
         self.source_embed = ComponentSecondarySources(embed_dim)
         self.medium_net = TemporalMediumDensity(channels=input_dim)
         self.dropout = nn.Dropout(dropout)
+        self.temporal_sampler: Optional[LearnableTemporalSampler] = None
+        if self.learnable_sampler:
+            self.temporal_sampler = LearnableTemporalSampler(
+                channels=input_dim,
+                hidden=sampler_hidden,
+                out_len=self.sampler_out_len,
+                temperature=sampler_temperature,
+            )
 
         if multi_scale:
             specs = scale_specs or default_scale_specs(
@@ -398,6 +421,8 @@ class STEADHNFPickingModel(nn.Module):
                 sparse_band=sparse_band,
                 principle=principle,
                 obliquity_scale=obliquity_scale,
+                bayesian_mc=self.bayesian_mc,
+                n_samples=self.n_samples,
             )
             self.shared_layers = None
         else:
@@ -418,6 +443,8 @@ class STEADHNFPickingModel(nn.Module):
                         principle=sh_pr,
                         obliquity_scale=obliquity_scale,
                         obliquity_mix=sh_mix,
+                        bayesian_mc=self.bayesian_mc,
+                        n_samples=self.n_samples,
                     )
                     for i in range(num_shared_layers)
                 ]
@@ -441,6 +468,8 @@ class STEADHNFPickingModel(nn.Module):
                             principle=det_pr,
                             obliquity_scale=obliquity_scale,
                             obliquity_mix=det_mix,
+                            bayesian_mc=self.bayesian_mc,
+                            n_samples=self.n_samples,
                         )
                         for i in range(num_shared_layers)
                     ]
@@ -464,6 +493,8 @@ class STEADHNFPickingModel(nn.Module):
                     principle=pk_pr,
                     obliquity_scale=obliquity_scale,
                     obliquity_mix=pk_mix,
+                    bayesian_mc=self.bayesian_mc,
+                    n_samples=self.n_samples,
                 )
                 for i in range(num_branch_layers)
             ]
@@ -483,6 +514,8 @@ class STEADHNFPickingModel(nn.Module):
                     principle=pk_pr,
                     obliquity_scale=obliquity_scale,
                     obliquity_mix=pk_mix,
+                    bayesian_mc=self.bayesian_mc,
+                    n_samples=self.n_samples,
                 )
                 for i in range(num_branch_layers)
             ]
@@ -538,6 +571,8 @@ class STEADHNFPickingModel(nn.Module):
                 principle=nc_pr,
                 obliquity_scale=obliquity_scale,
                 obliquity_mix=nc_mix,
+                bayesian_mc=self.bayesian_mc,
+                n_samples=self.n_samples,
             )
             if noise_pick_cues:
                 self.noise_cue_adapter = NoiseCueAdapter(
@@ -711,7 +746,36 @@ class STEADHNFPickingModel(nn.Module):
         x_pick = x if self.noise_det_pick_split else x_det
         return x_det, x_pick, nc_out
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        t: torch.Tensor,
+        p_target: Optional[torch.Tensor] = None,
+        s_target: Optional[torch.Tensor] = None,
+        p_idx: Optional[torch.Tensor] = None,
+        s_idx: Optional[torch.Tensor] = None,
+    ) -> dict[str, torch.Tensor]:
+        sampler_w = None
+        sampler_attn = None
+        p_target_fine = p_target
+        s_target_fine = s_target
+        if self.temporal_sampler is not None:
+            # Learnable equal-mass resample to sampler_out_len; keep sparse_band
+            # on a uniform warped-time axis.
+            samp = self.temporal_sampler(x)
+            x = samp["x"]
+            t = samp["t"]
+            sampler_w = samp["w"]
+            sampler_attn = samp["attn"]
+            if p_target is not None:
+                p_target = remap_sequence(sampler_attn, p_target)
+            if s_target is not None:
+                s_target = remap_sequence(sampler_attn, s_target)
+            if p_idx is not None:
+                p_idx = remap_index(sampler_attn, p_idx)
+            if s_idx is not None:
+                s_idx = remap_index(sampler_attn, s_idx)
+
         nc_out: Optional[dict[str, torch.Tensor]] = None
         x_det, x_pick, nc_out = self._apply_noise_cancel(x, t)
 
@@ -747,6 +811,23 @@ class STEADHNFPickingModel(nn.Module):
         if self.s_peak_rerank is not None:
             s = self.s_peak_rerank(s)
         out: dict[str, torch.Tensor] = {"det": det, "p": p, "s": s, "rho": rho.squeeze(-1)}
+        if sampler_w is not None:
+            out["sampler_w"] = sampler_w
+            out["sampler_attn"] = sampler_attn
+            out["x_sampled"] = x
+            out["t_sampled"] = t
+            if p_target_fine is not None:
+                out["p_target_fine"] = p_target_fine
+            if s_target_fine is not None:
+                out["s_target_fine"] = s_target_fine
+        if p_target is not None:
+            out["p_target"] = p_target
+        if s_target is not None:
+            out["s_target"] = s_target
+        if p_idx is not None:
+            out["p_idx"] = p_idx
+        if s_idx is not None:
+            out["s_idx"] = s_idx
         if self.ps_gap_head is not None:
             gap_sec, gap_log_sigma = self.ps_gap_head(h_real, h_imag, rho)
             out["ps_gap_sec"] = gap_sec
@@ -758,6 +839,10 @@ class STEADHNFPickingModel(nn.Module):
 
     def forward_pick_only(self, x: torch.Tensor, t: torch.Tensor) -> dict[str, torch.Tensor]:
         """P/S + rho only — skips detection branch to save memory at inference."""
+        if self.temporal_sampler is not None:
+            samp = self.temporal_sampler(x)
+            x = samp["x"]
+            t = samp["t"]
         _x_det, x_pick, nc_out = self._apply_noise_cancel(x, t)
         rho = self.medium_net(x_pick)
         h_real = self.source_embed(x_pick)
@@ -944,9 +1029,15 @@ def build_picking_model(
     obliquity_mix: float = 0.0,
     predict_ps_gap: bool = False,
     ps_gap_hidden: int = 64,
-    peak_rerank: bool = False,
-    peak_rerank_hidden: int = 16,
-) -> STEADHNFPickingModel:
+        peak_rerank: bool = False,
+        peak_rerank_hidden: int = 16,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
+        learnable_sampler: bool = False,
+        sampler_out_len: int = 800,
+        sampler_hidden: int = 32,
+        sampler_temperature: float = 0.05,
+    ) -> STEADHNFPickingModel:
     """Factory for STEAD HNF picking models."""
     return STEADHNFPickingModel(
         embed_dim=embed_dim,
@@ -981,6 +1072,12 @@ def build_picking_model(
         ps_gap_hidden=ps_gap_hidden,
         peak_rerank=peak_rerank,
         peak_rerank_hidden=peak_rerank_hidden,
+        bayesian_mc=bayesian_mc,
+        n_samples=n_samples,
+        learnable_sampler=learnable_sampler,
+        sampler_out_len=sampler_out_len,
+        sampler_hidden=sampler_hidden,
+        sampler_temperature=sampler_temperature,
     )
 
 

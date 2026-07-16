@@ -12,6 +12,68 @@ import torch.nn.functional as F
 from hnf.kernel import HuygensKernel
 
 
+def build_huygens_kernel(
+    *,
+    gamma: float = 1.0,
+    omega: float = 1.0,
+    causal: bool = True,
+    wave_speed: float = 1.0,
+    learnable_kernel_params: bool = False,
+    learnable_wave_speed: Optional[bool] = None,
+    use_complex: bool = True,
+    distance_mode: str = "feature",
+    local_window_sec: Optional[float] = None,
+    sparse_band: bool = False,
+    principle: str = "huygens",
+    obliquity_scale: float = 1.0,
+    obliquity_mix: float = 0.0,
+    bayesian_mc: bool = False,
+    n_samples: int = 32,
+):
+    """Factory: deterministic HuygensKernel or Bayesian–MC Causal Kernel."""
+    learnable_obliquity = learnable_kernel_params and (
+        principle == "huygens_fresnel" or obliquity_mix > 0.0
+    )
+    if learnable_wave_speed is None:
+        learnable_wave_speed = bool(learnable_kernel_params)
+    if bayesian_mc:
+        from hnf.bayesian_kernel import BayesianHuygensKernel
+
+        return BayesianHuygensKernel(
+            gamma=gamma,
+            omega=omega,
+            causal=causal,
+            wave_speed=wave_speed,
+            learnable_wave_speed=learnable_wave_speed,
+            use_complex=use_complex,
+            distance_mode=distance_mode,
+            local_window_sec=local_window_sec,
+            sparse_band=sparse_band,
+            principle=principle,
+            obliquity_scale=obliquity_scale,
+            obliquity_mix=obliquity_mix,
+            learnable_obliquity=learnable_obliquity,
+            n_samples=n_samples,
+        )
+    return HuygensKernel(
+        gamma=gamma,
+        omega=omega,
+        causal=causal,
+        wave_speed=wave_speed,
+        learnable_gamma=learnable_kernel_params,
+        learnable_omega=learnable_kernel_params,
+        learnable_wave_speed=learnable_wave_speed,
+        use_complex=use_complex,
+        distance_mode=distance_mode,
+        local_window_sec=local_window_sec,
+        sparse_band=sparse_band,
+        principle=principle,
+        obliquity_scale=obliquity_scale,
+        obliquity_mix=obliquity_mix,
+        learnable_obliquity=learnable_obliquity,
+    )
+
+
 class HuygensWaveLayer(nn.Module):
     """惠更斯波传播层: X_out = K @ X_in"""
 
@@ -29,23 +91,25 @@ class HuygensWaveLayer(nn.Module):
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
         obliquity_mix: float = 0.0,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features if out_features is not None else in_features
 
-        self.kernel = HuygensKernel(
+        self.kernel = build_huygens_kernel(
             gamma=gamma,
             omega=omega,
             causal=causal,
             wave_speed=wave_speed,
-            learnable_gamma=learnable_kernel_params,
-            learnable_omega=learnable_kernel_params,
+            learnable_kernel_params=learnable_kernel_params,
+            learnable_wave_speed=False,
             principle=principle,
             obliquity_scale=obliquity_scale,
             obliquity_mix=obliquity_mix,
-            learnable_obliquity=learnable_kernel_params
-            and (principle == "huygens_fresnel" or obliquity_mix > 0.0),
+            bayesian_mc=bayesian_mc,
+            n_samples=n_samples,
         )
 
         self.proj = (
@@ -149,15 +213,16 @@ class HuygensWaveBlock(nn.Module):
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
         obliquity_mix: float = 0.0,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
     ):
         super().__init__()
-        self.kernel = HuygensKernel(
+        self.kernel = build_huygens_kernel(
             gamma=gamma,
             omega=omega,
             causal=causal,
             wave_speed=wave_speed,
-            learnable_gamma=learnable_kernel_params,
-            learnable_omega=learnable_kernel_params,
+            learnable_kernel_params=learnable_kernel_params,
             learnable_wave_speed=learnable_kernel_params,
             distance_mode=distance_mode,
             local_window_sec=local_window_sec,
@@ -165,8 +230,8 @@ class HuygensWaveBlock(nn.Module):
             principle=principle,
             obliquity_scale=obliquity_scale,
             obliquity_mix=obliquity_mix,
-            learnable_obliquity=learnable_kernel_params
-            and (principle == "huygens_fresnel" or obliquity_mix > 0.0),
+            bayesian_mc=bayesian_mc,
+            n_samples=n_samples,
         )
         self.proj_real = nn.Linear(dim, dim, bias=False)
         self.proj_imag = nn.Linear(dim, dim, bias=False)
@@ -181,10 +246,17 @@ class HuygensWaveBlock(nn.Module):
         t: Optional[torch.Tensor] = None,
         rho: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        h_c = torch.complex(h_real, h_imag)
-        out_c = self.kernel.forward_apply(h_c, h_real, t=t, rho=rho)
-        out_real = self.dropout(self.proj_real(out_c.real))
-        out_imag = self.dropout(self.proj_imag(out_c.imag))
-        h_real = self.norm_real(h_real + out_real)
-        h_imag = self.norm_imag(h_imag + out_imag)
+        # Complex gather/matmul is unsupported under CUDA autocast (ComplexHalf).
+        device_type = "cuda" if h_real.is_cuda else "cpu"
+        with torch.amp.autocast(device_type=device_type, enabled=False):
+            h_r = h_real.float()
+            h_i = h_imag.float()
+            t_f = t.float() if t is not None else None
+            rho_f = rho.float() if rho is not None else None
+            h_c = torch.complex(h_r, h_i)
+            out_c = self.kernel.forward_apply(h_c, h_r, t=t_f, rho=rho_f)
+            out_real = self.dropout(self.proj_real(out_c.real))
+            out_imag = self.dropout(self.proj_imag(out_c.imag))
+            h_real = self.norm_real(h_r + out_real)
+            h_imag = self.norm_imag(h_i + out_imag)
         return h_real, h_imag

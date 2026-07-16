@@ -2,6 +2,7 @@
 """Huygens Neural Field (HNF) v2.0 — user's complete framework."""
 
 from hnf.kernel import HuygensKernel
+from hnf.bayesian_kernel import BayesianHuygensKernel
 from hnf.layers import HuygensWaveLayer, HuygensAttention
 from hnf.fmm import FastMultipoleMethod, DirectPropagation
 from hnf.density import DensityNet
@@ -30,6 +31,7 @@ from hnf.visualize import plot_reconstruction, plot_field_comparison, plot_obser
 
 __all__ = [
     "HuygensKernel",
+    "BayesianHuygensKernel",
     "HuygensWaveLayer",
     "HuygensAttention",
     "FastMultipoleMethod",

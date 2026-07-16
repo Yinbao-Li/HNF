@@ -1,7 +1,10 @@
 # Domain III: Sparse Flow → Constitutive Discovery
 
-**Status:** design only (no GPU work yet).  
-**Priority:** after Domain II (EEG) and OBS transfer pilots.  
+**Status:** Stage-0 + Stage-1 + RACLETTE Stage-0b **done** (2026-07-16).
+Stage-1 test: family_acc≈0.80, η_rel≈0.27. RACLETTE Stage-0b inside-vessel
+vel_rel≈0.79 @10% keep (weak). `.pv` via `/usr/bin/python3` + pyvista_zstd
+(anaconda 3.8 incompatible).
+**Priority:** improve RACLETTE recon or Stage-3 mining.  
 **Working name:** HNF Fluid / Rheology track.
 
 ## Goal
@@ -164,4 +167,4 @@ Do not start these while GPU is dedicated to STEAD run27 / OBS download / EEG fi
 
 ---
 
-*Last updated: 2026-07-12. Design-only; no training launched.*
+*Last updated: 2026-07-16. Stage-0 synthetic training launched; RACLETTE I/O pending pyvista.*

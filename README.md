@@ -24,7 +24,7 @@ IV. Generalization      Domains II (EEG) / III (fluid rheology)
 Figures: [`docs/figures/`](docs/figures/). Outputs index: [`outputs/CURRENT.md`](outputs/CURRENT.md).
 Inversion notes: [`README_ZHIZI_INVERSION.md`](README_ZHIZI_INVERSION.md).
 Plan: [`docs/EXPERIMENT_PLAN.md`](docs/EXPERIMENT_PLAN.md) —
-**next = Step 4 OBS multi-chunk** → mining/reparam → EEG → fluid.
+**Step 4–6 done** → **Step 7 Fluid done** (synth Stage-0/1 OK; RACLETTE Stage-0b hard: inside-vessel vel_rel 0.79).
 
 > **Parts I–III use seismology as the running example.** Part IV reuses the
 > same four-step pattern on other sparse-observation domains.
@@ -460,36 +460,28 @@ trained internals into analytic or classical forms that can be compared to
 textbook Earth / wave models. Status: mostly **planned**, building on existing
 exports.
 
-### (1) Analytic medium parameters **[planned]**
+### (1) Analytic medium parameters **[done — first pass]**
 
-Fit learned ρ-field summaries or γ-like behavior with spatial analytic
-functions (e.g. polynomials in epicentral distance). A smooth
-`γ(distance)` or `ρ_peak(distance)` would suggest a **describable attenuation /
-focusing law** rather than opaque coordinates.
+Fit learned ρ-field summaries with spatial analytic functions (polynomials in
+epicentral distance). Hook: `scripts/interpret/run_reparam_suite.py`
+→ `outputs/reparam_suite_run28/analytic_medium_distance_fits.png`.
 
-Hook: extend knowledge-mining distance buckets + kernel semantics panels into
-explicit curve fits with residual reports.
+### (2) Reverse-engineer empirical velocity models **[done — first pass]**
 
-### (2) Reverse-engineer empirical velocity models **[partial]**
+Compare Physics Decoder layered `vp/vs` to classical **AK135** (Ambon table).
+Artifact: `outputs/reparam_suite_run28/velocity_residual_vs_classical.png`.
 
-From the trained Physics Head, extract the implied `vp/vs` deformation of the
-reference layered model and compare to classical models (e.g. **AK135** /
-local 1D tables). Systematic residuals can flag **regional corrections** or
-dataset bias implicit in STEAD geometry.
+### (3) Operator simplification (low-rank K) **[done — first pass]**
 
-Exists today: macro scale/contrast/ratio → `vp0/vs0`, latent diagnostics, TT
-sensitivity heatmaps. Planned: published AK135-residual panels on geo clusters.
-
-### (3) Operator simplification (low-rank K) **[planned]**
-
-Analyze the rank structure of kernel matrices. If \(K\) is approximately
-low-rank, SVD / leading components can approximate causal propagation with
-fewer bases—cutting inference cost while testing how much “wave physics”
-lives in a compact operator subspace.
+SVD of causal kernel magnitude matrices; report cumulative energy and
+reconstruction error at ranks 1/2/4/8.
 
 ```bash
-# planned
-python run_reparam_suite.py --checkpoint ... --compare ak135 --svd-ranks 1,2,4,8
+PYTHONPATH=. python scripts/interpret/run_reparam_suite.py \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt \
+  --physics-head outputs/physics_decoder_run28_macro/best_physics_head.pt \
+  --compare ak135 --svd-ranks 1,2,4,8 \
+  --output-dir outputs/reparam_suite_run28
 ```
 
 ---
@@ -510,38 +502,62 @@ asks whether the **same pattern**—sparse observation → HNF encoder → task 
 
 ## IV.1 Domain II — AD/FTD EEG
 
-**Status:** code scaffolding in place; full train/eval after STEAD GPU bandwidth.
+**Status:** Stage-1 + baselines **done** (2026-07-16). Not a SOTA claim —
+pattern-port smoke test with a first-pass ρ/ω group contrast.
 
 | Piece | Location |
 |-------|----------|
 | Dataset | `hnf/eeg_dataset.py` (OpenNeuro ds004504 / ADFTD) |
-| Model | `hnf/eeg_model.py` |
-| Train / eval | `tools/train_eeg.py`, `tools/eval_eeg.py`, `scripts/domain/run_eeg_analysis.py`, `tools/transfer_eeg.py` |
+| Model | `hnf/eeg_model.py`; baselines `hnf/eeg_baselines.py` |
+| Train / eval | `tools/train_eeg.py`, `tools/eval_eeg.py`, `tools/train_eeg_baseline.py`, `tools/eval_eeg_baseline.py` |
+| Analysis / compare | `scripts/domain/run_eeg_analysis.py`, `scripts/experiments/run_eeg_baseline_compare.py` |
 | Download | `tools/download_eeg_adftd.py` → `external_data/eeg_adftd/` |
+| Artifacts | `outputs/eeg/adftd_hnf_stage1/`, `outputs/eeg/adftd_baseline_compare/`, `docs/figures/eeg/` |
 
-Reuse from Domain I: multi-scale HNF blocks, ρ probing narrative, optional
-frozen-backbone transfer. Claims stay at **classification / transfer metrics +
-ρ group contrasts**, not overclaimed “EEG physics laws” until mining replicates
-the FDR discipline from Part III.
+Same-protocol test (18 subjects, non-overlap 10 s @ 128 Hz):
+
+| Model | subject_acc | macro-AUC | epoch_acc | macro-F1 |
+|-------|------------:|----------:|----------:|---------:|
+| **HNF** | **0.778** | **0.841** | 0.675 | **0.647** |
+| EEGNet | 0.722 | 0.818 | 0.695 | 0.613 |
+| Shallow1D | 0.500 | 0.840 | 0.565 | 0.459 |
+
+**Takeaways (conservative):**
+- HNF ports to EEG classification and edges EEGNet on **subject-level** acc / F1;
+  delta is modest, test-N is small → **not** a breakthrough.
+- First-pass interpretability: learned kernel ω ∈ ~0.77–0.98; ω·⟨ρ⟩ HC vs AD
+  ANOVA *p*≈0.0018 — **group contrast signal**, not a validated EEG physics law.
+- Mean ρ(t) curves for HC vs AD largely **overlap** → ρ alone is not a clean
+  disease marker here; no FDR mining / transfer few-shot yet
+  (`tools/transfer_eeg.py` still pending).
+
+Claims stay at **classification + ρ/ω contrasts**, not “EEG physics laws”, until
+mining replicates the FDR discipline from Part III.
+
 
 ## IV.2 Domain III — sparse flow → constitutive discovery
 
-**Status:** design frozen in
-[`docs/DOMAIN_III_FLUID_RHEOLOGY.md`](docs/DOMAIN_III_FLUID_RHEOLOGY.md);
-GPU work after EEG Stage-1 (or explicit reprioritization).
+**Status:** Stage-0 + Stage-1 + RACLETTE Stage-0b **done** (2026-07-16).
 
-Target loop: sparse velocity observations → denser flow reconstruction →
-constitutive parameters → knowledge-mining residuals vs a base rheology family.
-**RACLETTE** provides CFD-enhanced synthetic aortic 4D/5D flow for Stage 0–1
-reconstruction realism—**not** constitutive GT by default.
+| Stage | Result |
+|-------|--------|
+| 0 sparse→dense (synth) | vel_rel **0.330** @10% keep (channel easy; vortex hard) |
+| 1 constitutive | Newtonian/Carreau **fam_acc 0.799**, **η_rel 0.267**, vel_rel 0.109 |
+| 0b RACLETTE GT slices | inside-vessel vel_rel **0.793** @10% keep — **hard / weak first pass** |
 
-```bash
-python tools/download_raclette.py \
-  --out-dir external_data/raclette/Tutorials/DataDownload/Downloaded
-```
+| Piece | Location |
+|-------|----------|
+| Stage-0 | `hnf/fluid_{synth,dataset,model}.py`, `tools/train_fluid.py` |
+| Stage-1 | `hnf/fluid_constitutive*.py`, `tools/train_fluid_constitutive.py` |
+| RACLETTE I/O | `tools/preprocess_raclette_slices.py` (needs `/usr/bin/python3` + pyvista_zstd) |
+| Stage-0b | `hnf/raclette_dataset.py`, `tools/train_raclette_stage0b.py` |
+| Launchers | `scripts/experiments/run_fluid_stage{0,1}.py`, `run_fluid_stage0b_raclette.py` |
+| Artifacts | `outputs/fluid/stage0_synth/`, `stage1_constitutive/`, `stage0b_raclette/` |
 
-Planned modules (see Domain III doc): `hnf/fluid_dataset.py`, Physics Decoder
-branch for (η, λ, …), momentum / constitutive residual losses.
+**Takeaways:** family ID well above chance; η recovery improved vs Stage-0 (0.59→0.27)
+but not yet &lt;10%. RACLETTE sparse recon not yet competitive — do not overclaim.
+Synthetic GT only for constitutive; no “new rheology” claim.
+
 
 ## IV.3 Cross-domain checklist
 

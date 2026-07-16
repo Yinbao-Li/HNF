@@ -503,3 +503,13 @@ class HuygensKernel(nn.Module):
                 k_real = k_real + (-min_eig + 1e-3) * torch.eye(K.size(-1), device=K.device)
             return k_real
         raise ValueError(f"Unknown method: {method}")
+
+
+# Re-export for callers that import BayesianHuygensKernel from hnf.kernel
+# (implementation lives in hnf.bayesian_kernel).
+def __getattr__(name: str):
+    if name == "BayesianHuygensKernel":
+        from hnf.bayesian_kernel import BayesianHuygensKernel as _BK
+
+        return _BK
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from hnf.kernel import HuygensKernel
+from hnf.layers import build_huygens_kernel
 
 
 class NoiseSourceInverter(nn.Module):
@@ -83,6 +83,8 @@ class HuygensNoiseCancelBranch(nn.Module):
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
         obliquity_mix: float = 0.0,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
     ):
         super().__init__()
         self.source_dim = source_dim
@@ -93,13 +95,12 @@ class HuygensNoiseCancelBranch(nn.Module):
             nn.Conv1d(8, 1, kernel_size=3, padding=1),
             nn.Softplus(),
         )
-        self.prop_kernel = HuygensKernel(
+        self.prop_kernel = build_huygens_kernel(
             gamma=gamma,
             omega=omega,
             causal=True,
             wave_speed=wave_speed,
-            learnable_gamma=learnable_kernel_params,
-            learnable_omega=learnable_kernel_params,
+            learnable_kernel_params=learnable_kernel_params,
             learnable_wave_speed=learnable_kernel_params,
             distance_mode="time",
             local_window_sec=local_window_sec,
@@ -107,8 +108,8 @@ class HuygensNoiseCancelBranch(nn.Module):
             principle=principle,
             obliquity_scale=obliquity_scale,
             obliquity_mix=obliquity_mix,
-            learnable_obliquity=learnable_kernel_params
-            and (principle == "huygens_fresnel" or obliquity_mix > 0.0),
+            bayesian_mc=bayesian_mc,
+            n_samples=n_samples,
         )
         self.to_noise = nn.Conv1d(source_dim, channels, kernel_size=1, bias=False)
         self.enhancer = CoherentTriaxialEnhancer(channels=channels, hidden=hidden)

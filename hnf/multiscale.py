@@ -67,6 +67,8 @@ class DeepHuygensStack(nn.Module):
         sparse_band: bool = False,
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
     ):
         super().__init__()
         self.layers = nn.ModuleList(
@@ -83,6 +85,8 @@ class DeepHuygensStack(nn.Module):
                     sparse_band=sparse_band,
                     principle=principle,
                     obliquity_scale=obliquity_scale,
+                    bayesian_mc=bayesian_mc,
+                    n_samples=n_samples,
                 )
                 for i in range(num_layers)
             ]
@@ -119,6 +123,8 @@ class MultiScaleHuygensEncoder(nn.Module):
         sparse_band: bool = False,
         principle: str = "huygens",
         obliquity_scale: float = 1.0,
+        bayesian_mc: bool = False,
+        n_samples: int = 32,
     ):
         super().__init__()
         if not scale_specs:
@@ -161,6 +167,8 @@ class MultiScaleHuygensEncoder(nn.Module):
                     sparse_band=sparse_band,
                     principle=principle,
                     obliquity_scale=obliquity_scale,
+                    bayesian_mc=bayesian_mc,
+                    n_samples=n_samples,
                 )
             )
 

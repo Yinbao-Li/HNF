@@ -150,30 +150,16 @@ Script/figure: `run_paper_stead_baseline_compare.py`,
 OBS low scores do **not** contradict this — they are cross-domain
 (land STEAD → ocean OBS).
 
-Picking zero-shot on SeisBench OBS (`run_paper_obs_picking_compare.py`, chunk
-`201805`, n=400, **protocol v3** = v2 + HNF logits→sigmoid):
+Canonical OBS Step 4 (p_offset=8, multi-chunk, **disjoint** holdout) lives in
+[`EXPERIMENT_PLAN.md`](EXPERIMENT_PLAN.md). Fairness:
 
-| Model | role | P-F1 | S-F1 |
-|------|------|-----:|-----:|
-| HNF(run20/STEAD) | zero-shot | 0.086 | 0.212 |
-| EQT(STEAD) | zero-shot baseline | **0.273** | 0.588 |
-| PhaseNet(STEAD) | zero-shot baseline | 0.095 | **0.591** |
-| EQT(OBS) | domain reference (4C) | 0.680 | 0.689 |
-| PhaseNet(OBS) | domain reference (4C) | 0.656 | 0.658 |
+- **All eval on OBS**
+- **A = all ZS** (STEAD→OBS)
+- **B = matched light-adapt** (HNF / EQT / PhaseNet, same split & head-only budget)
+- **C = full OBS-pretrained** reference only
+- Do not mix A vs B in one claim
 
-Protocol fixes:
-- PhaseNet labels are `PSN` (earlier wrongly decoded as `NPS`)
-- STEAD models use `peak` norm; OBS models use `std` norm
-- HNF uses per-channel demean+std (matches STEAD training)
-- HNF forward returns **logits**; must `sigmoid` before threshold (matches
-  `tools/train_stead_picking.py`) — fixing this barely changes OBS F1
-- Drop incomplete 3C traces (ZH / Z1H)
-
-OBS failure mode for HNF: det head often NaN; P argmax median error ~10–14 s
-(domain shift), while S is relatively better. Fair comparison is the
-STEAD-trained trio; OBS-pretrained models are upper-bound references.
-
-Figure: `docs/figures/fig5_obs_picking_compare.png`.
+Older seed42 / p_offset=15 / non-disjoint adapt tables are superseded.
 
 STEAD SNR table:
 

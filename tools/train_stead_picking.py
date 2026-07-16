@@ -154,6 +154,38 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--freeze-all-but-gap-epochs", type=int, default=0, help="Train only ps_gap_head")
     p.add_argument("--multi-scale", action="store_true", help="Use multi-scale DeepHuygens encoder")
     p.add_argument("--sparse-band", action="store_true", help="Banded sparse light-cone matmul")
+    p.add_argument(
+        "--bayesian-mc-kernel",
+        action="store_true",
+        help="Use Bayesian–Monte Carlo Causal Kernel (LogNormal VI on γ/ω + MC path sampling)",
+    )
+    p.add_argument(
+        "--mc-n-samples",
+        type=int,
+        default=32,
+        help="Number of causal mid-path Monte Carlo samples (Bayesian–MC kernel)",
+    )
+    p.add_argument(
+        "--learnable-sampler",
+        action="store_true",
+        help="Learnable importance sampler: input_seq_len -> seq_len soft inverse-CDF",
+    )
+    p.add_argument(
+        "--input-seq-len",
+        type=int,
+        default=0,
+        help="Fine-grid length into learnable sampler (0=seq_len; typically 1600/2400)",
+    )
+    p.add_argument("--sampler-hidden", type=int, default=32)
+    p.add_argument("--sampler-temperature", type=float, default=0.05)
+    p.add_argument(
+        "--sampler-align-weight",
+        type=float,
+        default=0.2,
+        help="Weight for sampler↔pick alignment (+entropy/energy) loss",
+    )
+    p.add_argument("--sampler-entropy-weight", type=float, default=0.02)
+    p.add_argument("--sampler-energy-weight", type=float, default=0.05)
     p.add_argument("--num-anchors", type=int, default=0, help="Low-rank anchor count for shared propagation (0=off)")
     p.add_argument(
         "--principle",
@@ -481,9 +513,22 @@ def compute_loss(
     nc_preserve_weight: float = 0.3,
     nc_energy_weight: float = 0.05,
     nc_noise_suppress_weight: float = 0.2,
+    sampler_align_weight: float = 0.0,
+    sampler_entropy_weight: float = 0.02,
+    sampler_energy_weight: float = 0.05,
 ) -> torch.Tensor:
     det_target = batch["det"]
     det_logits = outputs["det"]
+    p_target = outputs.get("p_target", batch["p_target"])
+    s_target = outputs.get("s_target", batch["s_target"])
+    # Keep batch indices in sync when sampler remapped them in outputs.
+    if "p_idx" in outputs:
+        batch = dict(batch)
+        batch["p_idx"] = outputs["p_idx"]
+        batch["s_idx"] = outputs.get("s_idx", batch["s_idx"])
+        batch["p_target"] = p_target
+        batch["s_target"] = s_target
+
     if det_logits.dim() == 1:
         det_w = torch.where(det_target > 0.5, det_event_weight, 1.0)
         det_loss = F.binary_cross_entropy_with_logits(
@@ -616,6 +661,27 @@ def compute_loss(
             noise_suppress_weight=nc_noise_suppress_weight,
         )
 
+    sampler_loss = torch.tensor(0.0, device=det_target.device)
+    if sampler_align_weight > 0 and "sampler_w" in outputs:
+        from hnf.learnable_sampler import sampler_alignment_loss
+
+        fine_p = outputs.get("p_target_fine")
+        fine_s = outputs.get("s_target_fine")
+        if (
+            fine_p is not None
+            and fine_s is not None
+            and fine_p.size(-1) == outputs["sampler_w"].size(-1)
+        ):
+            sampler_loss = sampler_alignment_loss(
+                outputs["sampler_w"],
+                fine_p,
+                fine_s,
+                det_target,
+                entropy_weight=sampler_entropy_weight,
+                energy_x=batch["x"],
+                energy_weight=sampler_energy_weight,
+            )
+
     return (
         det_loss_weight * det_loss
         + pick_loss_weight * pick_loss
@@ -626,6 +692,7 @@ def compute_loss(
         + rho_sparsity_weight * rho_loss
         + kernel_phys_prior_weight * prior_loss
         + noise_cancel_weight * nc_loss
+        + sampler_align_weight * sampler_loss
     )
 
 
@@ -634,6 +701,20 @@ def compute_prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     recall = tp / max(tp + fn, 1)
     f1 = 2 * precision * recall / max(precision + recall, 1e-8)
     return precision, recall, f1
+
+
+def _model_forward(model: nn.Module, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Forward with optional learnable-sampler label remapping."""
+    if getattr(model, "temporal_sampler", None) is not None:
+        return model(
+            batch["x"],
+            batch["t"],
+            p_target=batch["p_target"],
+            s_target=batch["s_target"],
+            p_idx=batch["p_idx"],
+            s_idx=batch["s_idx"],
+        )
+    return model(batch["x"], batch["t"])
 
 
 @torch.no_grad()
@@ -685,7 +766,7 @@ def evaluate(
 
     for batch in loader:
         batch = move_batch_to_device(batch, device)
-        outputs = model(batch["x"], batch["t"])
+        outputs = _model_forward(model, batch)
         loss = compute_loss(
             outputs,
             batch,
@@ -721,6 +802,7 @@ def evaluate(
             nc_preserve_weight=nc_preserve_weight,
             nc_energy_weight=nc_energy_weight,
             nc_noise_suppress_weight=nc_noise_suppress_weight,
+            sampler_align_weight=0.0,
         )
         if not torch.isfinite(loss):
             skipped += batch["x"].size(0)
@@ -744,13 +826,14 @@ def evaluate(
             ("s", "s_idx", "s_valid", acc.s),
         ]:
             probs = p_probs if head_name == "p" else s_probs
+            gt_idx = outputs.get(idx_name, batch[idx_name])
             update_picking_counts(
                 counts,
                 probs,
                 det_pred,
                 det_true,
                 batch[valid_name] > 0,
-                batch[idx_name],
+                gt_idx,
                 pick_threshold,
                 tol,
                 seq_len,
@@ -850,9 +933,21 @@ def train() -> None:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    input_seq_len = int(args.input_seq_len) if int(args.input_seq_len) > 0 else int(args.seq_len)
+    if args.learnable_sampler and input_seq_len < args.seq_len:
+        raise ValueError(
+            f"--input-seq-len ({input_seq_len}) must be >= --seq-len ({args.seq_len}) with learnable sampler"
+        )
+    if args.learnable_sampler and input_seq_len == args.seq_len:
+        input_seq_len = max(args.seq_len * 2, 1600)
+        print(
+            f"[warn] learnable-sampler: input_seq_len defaulted to {input_seq_len}",
+            flush=True,
+        )
+
     train_ds = STEADPickingDataset(
         "train",
-        seq_len=args.seq_len,
+        seq_len=input_seq_len,
         max_event_traces=args.max_event_train,
         max_noise_traces=args.max_noise_train,
         label_sigma_sec=args.label_sigma_sec,
@@ -864,7 +959,7 @@ def train() -> None:
     )
     val_ds = STEADPickingDataset(
         "val",
-        seq_len=args.seq_len,
+        seq_len=input_seq_len,
         max_event_traces=args.max_val // 2,
         max_noise_traces=args.max_val // 2,
         label_sigma_sec=args.label_sigma_sec,
@@ -872,7 +967,7 @@ def train() -> None:
     )
     test_ds = STEADPickingDataset(
         "test",
-        seq_len=args.seq_len,
+        seq_len=input_seq_len,
         label_sigma_sec=args.label_sigma_sec,
         seed=args.seed,
     )
@@ -937,6 +1032,12 @@ def train() -> None:
         ps_gap_hidden=args.ps_gap_hidden,
         peak_rerank=args.peak_rerank,
         peak_rerank_hidden=args.peak_rerank_hidden,
+        bayesian_mc=args.bayesian_mc_kernel,
+        n_samples=args.mc_n_samples,
+        learnable_sampler=args.learnable_sampler,
+        sampler_out_len=args.seq_len,
+        sampler_hidden=args.sampler_hidden,
+        sampler_temperature=args.sampler_temperature,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -1009,6 +1110,8 @@ def train() -> None:
         f"lr={args.lr} per_time_det={args.per_time_det} focal={args.focal_gamma} "
         f"ps_order_w={args.ps_order_loss_weight} multi_scale={args.multi_scale} "
         f"sparse_band={args.sparse_band} num_anchors={args.num_anchors} "
+        f"bayesian_mc={args.bayesian_mc_kernel} mc_n_samples={args.mc_n_samples} "
+        f"learnable_sampler={args.learnable_sampler} input_seq_len={input_seq_len} "
         f"principle={args.principle} obliquity_mode={args.obliquity_mode} "
         f"obliquity_mix={args.obliquity_mix} obliquity_scale={args.obliquity_scale} "
         f"res_pick={args.residual_pick_head} res_det={args.residual_det_head} augment={args.augment} "
@@ -1068,7 +1171,7 @@ def train() -> None:
                 and args.predict_ps_gap
             )
             with torch.amp.autocast("cuda", enabled=amp_enabled):
-                outputs = model(batch["x"], batch["t"])
+                outputs = _model_forward(model, batch)
                 loss = compute_loss(
                     outputs,
                     batch,
@@ -1104,6 +1207,11 @@ def train() -> None:
                     nc_preserve_weight=args.nc_preserve_weight,
                     nc_energy_weight=args.nc_energy_weight,
                     nc_noise_suppress_weight=args.nc_noise_suppress_weight,
+                    sampler_align_weight=0.0
+                    if gap_only or not args.learnable_sampler
+                    else args.sampler_align_weight,
+                    sampler_entropy_weight=args.sampler_entropy_weight,
+                    sampler_energy_weight=args.sampler_energy_weight,
                 )
                 scaled_loss = loss / args.grad_accum_steps
 

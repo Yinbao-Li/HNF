@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Fig5 picking cross-dataset: OBS (SeisBench) zero-shot compare.
+Fig5 / Step-4 picking cross-dataset: OBS (SeisBench) zero-shot compare.
 
 Models:
-  - HNF run20 (STEAD-trained)
+  - HNF STEAD-trained (run28 primary; run20 legacy optional)
   - EQTransformer / PhaseNet pretrained on STEAD  (fair zero-shot)
   - EQTransformer / PhaseNet pretrained on OBS   (domain-matched reference)
 
-Uses OBS chunk 201805 (local SeisBench cache). Same 0.5 s tolerance protocol
-as STEAD picking metrics.
+Multi-chunk OBS (201805–201808 by default). Protocol: pick-only F1, 0.5 s tol,
+sigmoid on HNF logits, PhaseNet PSN, drop incomplete 3C.
 """
 
 from __future__ import annotations
@@ -37,21 +37,66 @@ from hnf.picking_metrics import (
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="OBS picking cross-dataset compare")
-    p.add_argument("--checkpoint", default="outputs/run20/20_wrongpeak_sharp/best.pt")
-    p.add_argument("--output-dir", default="outputs/paper_obs_picking_compare")
+    p.add_argument(
+        "--checkpoint",
+        default="outputs/run28/28_ms_fresnel_phys_20ep/best.pt",
+    )
+    p.add_argument("--hnf-label", default="", help="Result key for HNF (default inferred)")
+    p.add_argument("--output-dir", default="outputs/obs_step4_run28_multichunk")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    p.add_argument("--chunk", default="201805")
-    p.add_argument("--max-events", type=int, default=400)
+    p.add_argument(
+        "--chunks",
+        default="201805,201806,201807,201808",
+        help="Comma-separated OBS chunk ids (multi-chunk Step 4)",
+    )
+    p.add_argument(
+        "--chunk",
+        default="",
+        help="Deprecated single-chunk alias; overrides --chunks if set",
+    )
+    p.add_argument("--max-events", type=int, default=800)
     p.add_argument("--seq-len", type=int, default=800, help="HNF resampled length over 60 s")
     p.add_argument("--window-sec", type=float, default=60.0)
-    p.add_argument("--p-offset-sec", type=float, default=15.0, help="P arrival target offset in window")
+    p.add_argument(
+        "--p-offset-sec",
+        type=float,
+        default=8.0,
+        help="P arrival target offset in the 60s window. STEAD-trained HNF sees P near ~6–8s; "
+        "15s (old default) collapses P zero-shot via absolute-time prior mismatch.",
+    )
     p.add_argument("--pick-threshold", type=float, default=0.3)
     p.add_argument("--det-threshold", type=float, default=0.5)
+    p.add_argument(
+        "--threshold-sweep",
+        default="",
+        help="Comma pick thresholds for HNF-only sweep after main eval (e.g. 0.15,0.2,0.3,0.4)",
+    )
+    p.add_argument("--skip-obs-pretrained", action="store_true",
+                   help="Only fair zero-shot (HNF + EQT/PN STEAD)")
+    p.add_argument("--skip-stead-pretrained", action="store_true",
+                   help="Skip EQT(STEAD)/PhaseNet(STEAD) zero-shot baselines")
+    p.add_argument(
+        "--eqt-adapt-checkpoint",
+        default="",
+        help="Matched OBS light-adapt EQT ckpt (tools/train_obs_sb_light_adapt.py)",
+    )
+    p.add_argument(
+        "--phasenet-adapt-checkpoint",
+        default="",
+        help="Matched OBS light-adapt PhaseNet ckpt",
+    )
+    p.add_argument("--eqt-adapt-label", default="EQT(STEAD+OBS-adapt)")
+    p.add_argument("--phasenet-adapt-label", default="PhaseNet(STEAD+OBS-adapt)")
     p.add_argument("--tol-sec", type=float, default=0.5)
     p.add_argument("--require-full-3c", action="store_true", default=True,
                    help="Keep only traces with energetic Z/1/2 (drop ZH/Z1H incomplete)")
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--seed", type=int, default=11)
+    p.add_argument(
+        "--split-json",
+        default="",
+        help="If set, evaluate ONLY on disjoint holdout keys from tools/obs_matched_split.py",
+    )
     return p.parse_args()
 
 
@@ -74,36 +119,65 @@ def normalize_wave(wave: np.ndarray, mode: str) -> np.ndarray:
 
 
 def load_obs_windows(
-    chunk: str,
+    chunks: list[str],
     max_events: int,
     window_sec: float,
     p_offset_sec: float,
     seed: int,
     require_full_3c: bool = True,
+    p_offset_min: float | None = None,
+    p_offset_max: float | None = None,
 ):
+    """Load OBS event windows.
+
+    If p_offset_min < p_offset_max, each event gets a deterministic random
+    offset in [min, max] (seeded) to kill the absolute-time prior shortcut.
+    Otherwise all events use fixed ``p_offset_sec``.
+    """
     import seisbench.data as sbd
 
+    off_min = float(p_offset_sec if p_offset_min is None else p_offset_min)
+    off_max = float(p_offset_sec if p_offset_max is None else p_offset_max)
+    if off_max < off_min:
+        off_min, off_max = off_max, off_min
+    randomize_offset = (off_max - off_min) > 1e-8
+
     # Keep hydrophone so OBS-pretrained 4-channel models can run; land models use first 3.
-    ds = sbd.OBS(chunks=[chunk], download_if_missing=False, component_order="Z12H")
-    meta = ds.metadata
-    idxs = []
-    for i in range(len(ds)):
-        row = meta.iloc[i]
-        p = row.get("trace_p_arrival_sample")
-        if p is None or (isinstance(p, float) and not np.isfinite(p)):
-            continue
-        # Prefer complete horizontal components for fair 3C land-model transfer.
-        order = str(row.get("trace_component_order", ""))
-        if require_full_3c and ("2" not in order):
-            continue
-        idxs.append(i)
+    candidates: list[tuple[str, int]] = []
+    per_chunk_cand: dict[str, int] = {}
+    for chunk in chunks:
+        ds = sbd.OBS(chunks=[chunk], download_if_missing=False, component_order="Z12H")
+        meta = ds.metadata
+        n_c = 0
+        for i in range(len(ds)):
+            row = meta.iloc[i]
+            p = row.get("trace_p_arrival_sample")
+            if p is None or (isinstance(p, float) and not np.isfinite(p)):
+                continue
+            # Prefer complete horizontal components for fair 3C land-model transfer.
+            order = str(row.get("trace_component_order", ""))
+            if require_full_3c and ("2" not in order):
+                continue
+            candidates.append((chunk, i))
+            n_c += 1
+        per_chunk_cand[chunk] = n_c
+
     rng = np.random.default_rng(seed)
-    if len(idxs) > max_events:
-        idxs = sorted(rng.choice(idxs, size=max_events, replace=False).tolist())
+    if len(candidates) > max_events:
+        pick = rng.choice(len(candidates), size=max_events, replace=False)
+        candidates = [candidates[int(i)] for i in sorted(pick.tolist())]
+
+    # Cache dataset handles per chunk while materializing windows.
+    ds_by_chunk = {
+        c: sbd.OBS(chunks=[c], download_if_missing=False, component_order="Z12H")
+        for c in chunks
+    }
 
     samples = []
     n_drop_energy = 0
-    for i in idxs:
+    per_chunk_kept: dict[str, int] = {c: 0 for c in chunks}
+    for j, (chunk, i) in enumerate(candidates):
+        ds = ds_by_chunk[chunk]
         wave, row = ds.get_sample(i)  # (4, npts) Z12H layout
         wave = np.asarray(wave, dtype=np.float32)
         sr = float(row.get("trace_sampling_rate_hz", 100.0))
@@ -112,8 +186,15 @@ def load_obs_windows(
         s_raw = row.get("trace_s_arrival_sample")
         s_abs = float(s_raw) if s_raw is not None and np.isfinite(float(s_raw)) else float("nan")
 
+        if randomize_offset:
+            # Independent of candidate list order: hash by (chunk, i).
+            local = np.random.default_rng(seed + (hash((chunk, int(i))) % 1_000_000_007))
+            this_offset = float(local.uniform(off_min, off_max))
+        else:
+            this_offset = float(off_min)
+
         win = int(round(window_sec * sr))
-        start = int(round(p_abs - p_offset_sec * sr))
+        start = int(round(p_abs - this_offset * sr))
         start = max(0, min(start, max(0, npts - win)))
         end = start + win
         if end > npts:
@@ -134,6 +215,7 @@ def load_obs_windows(
             n_drop_energy += 1
             continue
 
+        event_key = f"{chunk}|{int(i)}"
         # Store RAW window; apply model-specific normalization at eval time.
         samples.append({
             "wave_4_raw": seg.copy(),
@@ -143,12 +225,94 @@ def load_obs_windows(
             "s_idx_native": int(round(s_rel)) if s_valid else -1,
             "p_valid": True,
             "s_valid": bool(s_valid),
+            "p_offset_sec": this_offset,
+            "ds_index": int(i),
+            "event_key": event_key,
             "trace_name": str(row.get("trace_name_original", row.get("trace_name", i))),
             "station": str(row.get("station_code", "")),
             "component_order": str(row.get("trace_component_order", "")),
             "split": str(row.get("split", "")),
+            "chunk": chunk,
         })
-    return samples, {"n_drop_energy": n_drop_energy, "n_candidate_idxs": len(idxs)}
+        per_chunk_kept[chunk] = per_chunk_kept.get(chunk, 0) + 1
+    return samples, {
+        "n_drop_energy": n_drop_energy,
+        "n_candidate_idxs": len(candidates),
+        "chunks": chunks,
+        "per_chunk_candidates": per_chunk_cand,
+        "per_chunk_kept": per_chunk_kept,
+        "p_offset_min": off_min,
+        "p_offset_max": off_max,
+        "randomize_offset": randomize_offset,
+    }
+
+
+def load_obs_windows_from_entries(
+    entries: list[dict],
+    window_sec: float,
+    require_full_3c: bool = True,
+):
+    """Rematerialize windows for a fixed list of {chunk, ds_index, p_offset_sec}."""
+    import seisbench.data as sbd
+
+    chunks = sorted({str(e["chunk"]) for e in entries})
+    ds_by_chunk = {
+        c: sbd.OBS(chunks=[c], download_if_missing=False, component_order="Z12H")
+        for c in chunks
+    }
+    samples = []
+    n_drop_energy = 0
+    for e in entries:
+        chunk = str(e["chunk"])
+        i = int(e["ds_index"])
+        this_offset = float(e["p_offset_sec"])
+        ds = ds_by_chunk[chunk]
+        wave, row = ds.get_sample(i)
+        wave = np.asarray(wave, dtype=np.float32)
+        sr = float(row.get("trace_sampling_rate_hz", 100.0))
+        npts = wave.shape[-1]
+        p_abs = float(row["trace_p_arrival_sample"])
+        s_raw = row.get("trace_s_arrival_sample")
+        s_abs = float(s_raw) if s_raw is not None and np.isfinite(float(s_raw)) else float("nan")
+        win = int(round(window_sec * sr))
+        start = int(round(p_abs - this_offset * sr))
+        start = max(0, min(start, max(0, npts - win)))
+        end = start + win
+        if end > npts:
+            pad = end - npts
+            seg = np.pad(wave[:, start:npts], ((0, 0), (0, pad)), mode="constant")
+        else:
+            seg = wave[:, start:end]
+        p_rel = p_abs - start
+        s_rel = s_abs - start if np.isfinite(s_abs) else float("nan")
+        p_valid = 0.0 <= p_rel < win
+        s_valid = np.isfinite(s_rel) and 0.0 <= s_rel < win
+        if not p_valid:
+            continue
+        alive = _channel_alive(seg)
+        if require_full_3c and not bool(alive[:3].all()):
+            n_drop_energy += 1
+            continue
+        event_key = f"{chunk}|{i}"
+        samples.append({
+            "wave_4_raw": seg.copy(),
+            "wave_3_raw": seg[:3].copy(),
+            "sr": sr,
+            "p_idx_native": int(round(p_rel)),
+            "s_idx_native": int(round(s_rel)) if s_valid else -1,
+            "p_valid": True,
+            "s_valid": bool(s_valid),
+            "p_offset_sec": this_offset,
+            "ds_index": i,
+            "event_key": event_key,
+            "trace_name": str(row.get("trace_name_original", row.get("trace_name", i))),
+            "station": str(row.get("station_code", "")),
+            "component_order": str(row.get("trace_component_order", "")),
+            "split": str(row.get("split", "")),
+            "chunk": chunk,
+        })
+    return samples, {"n_drop_energy": n_drop_energy, "n_entries": len(entries), "n_kept": len(samples)}
+
 
 
 def to_hnf_batch(samples: list[dict], seq_len: int, window_sec: float, device: torch.device):
@@ -378,7 +542,7 @@ def plot_compare(results: dict, out_dir: Path) -> str:
     axes[1].legend(fontsize=8)
     axes[1].grid(True, axis="y", alpha=0.3)
 
-    fig.suptitle("Fig5 picking cross-dataset: OBS 201805 (HNF vs EQT vs PhaseNet)", fontsize=12)
+    fig.suptitle("OBS multi-chunk picking: HNF vs EQT vs PhaseNet (pick-only)", fontsize=12)
     p = out_dir / "obs_picking_compare.png"
     fig.savefig(p, dpi=170)
     plt.close(fig)
@@ -391,16 +555,66 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device)
+    if args.chunk.strip():
+        chunks = [args.chunk.strip()]
+    else:
+        chunks = [c.strip() for c in args.chunks.split(",") if c.strip()]
+    ckpt_path = Path(args.checkpoint)
+    if args.hnf_label:
+        hnf_key = args.hnf_label
+    elif "run28" in str(ckpt_path):
+        hnf_key = "HNF(run28/STEAD)"
+    elif "run20" in str(ckpt_path):
+        hnf_key = "HNF(run20/STEAD)"
+    else:
+        hnf_key = f"HNF({ckpt_path.parent.name})"
 
-    print(f"[obs-compare] loading OBS chunk={args.chunk}", flush=True)
-    samples, load_info = load_obs_windows(
-        args.chunk, args.max_events, args.window_sec, args.p_offset_sec, args.seed,
-        require_full_3c=args.require_full_3c,
-    )
+    print(f"[obs-compare] loading OBS chunks={chunks}", flush=True)
+    if args.split_json.strip():
+        from tools.obs_matched_split import load_split, load_split_samples
+
+        split_meta = load_split(args.split_json.strip())
+        if "holdout_entries" in split_meta:
+            samples, load_info, _ = load_split_samples(args.split_json.strip(), "holdout")
+            load_info = {
+                **load_info,
+                "split_json": args.split_json.strip(),
+                "eval_mode": "disjoint_holdout",
+                "protocol": split_meta.get("protocol"),
+                "p_offset_min": split_meta.get("p_offset_min"),
+                "p_offset_max": split_meta.get("p_offset_max"),
+                "n_holdout": len(samples),
+            }
+        else:
+            from tools.obs_matched_split import filter_by_keys
+
+            pool_n = int(split_meta["train_n"]) + int(split_meta["holdout_n"])
+            samples_all, load_info = load_obs_windows(
+                chunks, pool_n, args.window_sec, args.p_offset_sec,
+                int(split_meta["seed"]), require_full_3c=args.require_full_3c,
+            )
+            samples = filter_by_keys(samples_all, split_meta["holdout_keys"])
+            load_info = {
+                **load_info,
+                "split_json": args.split_json.strip(),
+                "eval_mode": "disjoint_holdout",
+                "n_holdout": len(samples),
+            }
+        print(
+            f"[obs-compare] DISJOINT holdout n={len(samples)} from {args.split_json} "
+            f"protocol={split_meta.get('protocol','fixed')}",
+            flush=True,
+        )
+    else:
+        samples, load_info = load_obs_windows(
+            chunks, args.max_events, args.window_sec, args.p_offset_sec, args.seed,
+            require_full_3c=args.require_full_3c,
+        )
     n_s = sum(1 for s in samples if s["s_valid"])
     print(
         f"[obs-compare] n={len(samples)} with_S={n_s} device={device} "
-        f"drop_energy={load_info['n_drop_energy']} candidates={load_info['n_candidate_idxs']}",
+        f"drop_energy={load_info.get('n_drop_energy')} "
+        f"candidates={load_info.get('n_candidate_idxs', load_info.get('n_entries'))}",
         flush=True,
     )
     if len(samples) < 10:
@@ -408,21 +622,51 @@ def main() -> None:
 
     results = {}
 
-    print("[obs-compare] HNF run20...", flush=True)
-    hnf, _ = load_model(Path(args.checkpoint), device, bypass_noise_cancel=False)
-    results["HNF(run20/STEAD)"] = eval_hnf(
+    print(f"[obs-compare] {hnf_key} ckpt={ckpt_path}...", flush=True)
+    hnf, _ = load_model(ckpt_path, device, bypass_noise_cancel=False)
+    # Match EQT-like long sequences: sparse band + capped light-cone if requested / stored.
+    try:
+        raw = torch.load(ckpt_path, map_location="cpu")
+        aa = raw.get("adapt_args") or {}
+        force_sparse = bool(aa.get("force_sparse_band")) or args.seq_len >= 3000
+        cap_local = float(aa.get("cap_local_window_sec") or (3.0 if args.seq_len >= 3000 else 0.0))
+        if force_sparse or cap_local > 0:
+            n_sp = n_cap = 0
+            for mod in hnf.modules():
+                if force_sparse and hasattr(mod, "sparse_band"):
+                    mod.sparse_band = True
+                    n_sp += 1
+                if cap_local > 0 and hasattr(mod, "local_window_sec") and mod.local_window_sec is not None:
+                    before = float(mod.local_window_sec)
+                    mod.local_window_sec = min(before, cap_local)
+                    if mod.local_window_sec < before:
+                        n_cap += 1
+            print(
+                f"[obs-compare] long-seq cfg sparse={force_sparse}({n_sp}) "
+                f"cap_local={cap_local}(capped={n_cap}) seq_len={args.seq_len}",
+                flush=True,
+            )
+    except Exception as e:
+        print(f"[obs-compare] long-seq cfg skip: {e}", flush=True)
+    results[hnf_key] = eval_hnf(
         hnf, samples, device, args.seq_len, args.window_sec,
         args.pick_threshold, args.det_threshold, args.tol_sec, args.batch_size,
     )
-    print(results["HNF(run20/STEAD)"]["pick_only"], flush=True)
+    print(results[hnf_key]["pick_only"], flush=True)
 
     # STEAD land models: SeisBench default norm=peak; OBS models: norm=std.
-    for label, name, weights, kind, nch, norm_mode in [
-        ("EQT(STEAD)", "EQTransformer", "stead", "eqt", 3, "peak"),
-        ("PhaseNet(STEAD)", "PhaseNet", "stead", "phasenet", 3, "peak"),
-        ("EQT(OBS)", "EQTransformer", "obs", "eqt", 4, "std"),
-        ("PhaseNet(OBS)", "PhaseNet", "obs", "phasenet", 4, "std"),
-    ]:
+    sb_specs = []
+    if not args.skip_stead_pretrained:
+        sb_specs += [
+            ("EQT(STEAD)", "EQTransformer", "stead", "eqt", 3, "peak"),
+            ("PhaseNet(STEAD)", "PhaseNet", "stead", "phasenet", 3, "peak"),
+        ]
+    if not args.skip_obs_pretrained:
+        sb_specs += [
+            ("EQT(OBS)", "EQTransformer", "obs", "eqt", 4, "std"),
+            ("PhaseNet(OBS)", "PhaseNet", "obs", "phasenet", 4, "std"),
+        ]
+    for label, name, weights, kind, nch, norm_mode in sb_specs:
         print(f"[obs-compare] {label} (norm={norm_mode})...", flush=True)
         try:
             m = load_sb_model(name, weights)
@@ -440,11 +684,80 @@ def main() -> None:
             results[label] = {"error": f"{type(e).__name__}: {e}"}
             print("  failed:", e, flush=True)
 
+    def _eval_sb_adapt(label: str, ckpt_path: str, name: str, kind: str) -> None:
+        print(f"[obs-compare] {label} ckpt={ckpt_path}...", flush=True)
+        try:
+            ckpt = torch.load(ckpt_path, map_location=device)
+            m = load_sb_model(name, ckpt.get("weights_init", "stead"))
+            m.load_state_dict(ckpt["state_dict"])
+            nch = int(ckpt.get("n_channels", 3))
+            norm_mode = ckpt.get("norm_mode") or getattr(m, "norm", None) or "peak"
+            results[label] = eval_seisbench(
+                m, samples, device, args.pick_threshold, args.det_threshold,
+                args.tol_sec, args.batch_size, kind=kind, n_channels=nch,
+                norm_mode=norm_mode,
+            )
+            print(results[label]["pick_only"], flush=True)
+        except Exception as e:
+            results[label] = {"error": f"{type(e).__name__}: {e}"}
+            print("  failed:", e, flush=True)
+
+    if args.eqt_adapt_checkpoint.strip():
+        _eval_sb_adapt(
+            args.eqt_adapt_label, args.eqt_adapt_checkpoint.strip(),
+            "EQTransformer", "eqt",
+        )
+    if args.phasenet_adapt_checkpoint.strip():
+        _eval_sb_adapt(
+            args.phasenet_adapt_label, args.phasenet_adapt_checkpoint.strip(),
+            "PhaseNet", "phasenet",
+        )
+
+    thr_sweep = {}
+    if args.threshold_sweep.strip():
+        thr_list = [float(x) for x in args.threshold_sweep.split(",") if x.strip()]
+        print(f"[obs-compare] HNF threshold sweep {thr_list}...", flush=True)
+        for thr in thr_list:
+            thr_sweep[f"{thr:.3f}"] = eval_hnf(
+                hnf, samples, device, args.seq_len, args.window_sec,
+                thr, args.det_threshold, args.tol_sec, args.batch_size,
+            )["pick_only"]
+            print(f"  thr={thr:.3f}", thr_sweep[f"{thr:.3f}"], flush=True)
+
     ok = {k: v for k, v in results.items() if "error" not in v}
     fig = plot_compare(ok, out_dir)
+    hnf_is_adapt = "adapt" in hnf_key.lower()
+    zs_keys = [k for k in ("EQT(STEAD)", "PhaseNet(STEAD)") if k in results]
+    if not hnf_is_adapt:
+        zs_keys = [hnf_key] + zs_keys
+    # Matched light-adapt cohort (same STEAD→OBS head-adapt budget).
+    matched_adapt_keys = [
+        k for k in (
+            hnf_key if hnf_is_adapt else None,
+            args.eqt_adapt_label if args.eqt_adapt_checkpoint.strip() else None,
+            args.phasenet_adapt_label if args.phasenet_adapt_checkpoint.strip() else None,
+        ) if k and k in results
+    ]
+    domain_keys = [k for k in ("EQT(OBS)", "PhaseNet(OBS)") if k in results]
+    if hnf_is_adapt and hnf_key not in matched_adapt_keys:
+        domain_keys = [hnf_key] + domain_keys
+
+    def _row(k: str) -> str:
+        v = results.get(k)
+        if v is None:
+            return ""
+        if "error" in v:
+            return f"| `{k}` | ERR | | | |"
+        po = v["pick_only"]
+        return (
+            f"| `{k}` | {po['p_f1']:.3f} | {po['s_f1']:.3f} | "
+            f"{po['p_mae_sec']:.3f} | {po['s_mae_sec']:.3f} |"
+        )
+
     report = {
         "dataset": "SeisBench OBS",
-        "chunk": args.chunk,
+        "eval_domain": "OBS",
+        "chunks": chunks,
         "n_events": len(samples),
         "n_with_s": n_s,
         "load_info": load_info,
@@ -453,7 +766,11 @@ def main() -> None:
         "pick_threshold": args.pick_threshold,
         "det_threshold": args.det_threshold,
         "window_sec": args.window_sec,
+        "hnf_checkpoint": str(ckpt_path),
+        "hnf_treatment": "obs-adapt" if hnf_is_adapt else "zero-shot",
+        "device": str(device),
         "results": results,
+        "hnf_threshold_sweep": thr_sweep,
         "figure": fig,
         "protocol_fixes": [
             "PhaseNet labels are PSN (was wrongly decoded as NPS)",
@@ -462,10 +779,17 @@ def main() -> None:
             "Drop incomplete 3C traces (ZH/Z1H) for fair land-model transfer",
             "HNF forward returns logits; must sigmoid before threshold (matches train_stead_picking.py)",
             "Primary metric: pick-only F1 on event windows",
+            "Step 4: multi-chunk sample pool before capped max-events",
+            "Fairness: compare only within same treatment on OBS (all ZS or all OBS-exposed)",
         ],
         "notes": {
-            "fair_zero_shot": ["HNF(run20/STEAD)", "EQT(STEAD)", "PhaseNet(STEAD)"],
-            "domain_matched_reference": ["EQT(OBS)", "PhaseNet(OBS)"],
+            "fair_zero_shot_obs_eval": zs_keys,
+            "fair_matched_light_adapt": matched_adapt_keys,
+            "obs_pretrained_reference": domain_keys,
+            "do_not_cross_compare": (
+                "Compare only within A (all ZS) or B (matched light-adapt). "
+                "EQT(OBS)/PhaseNet(OBS) are full OBS-pretrained refs (4C), not same-budget adapt."
+            ),
             "primary_metric": "pick_only on event windows (detection gate disabled)",
             "secondary_metric": "coupled EQT-style detection+picking",
             "channels": "land/HNF/STEAD models use Z12; OBS-pretrained use Z12H",
@@ -473,46 +797,89 @@ def main() -> None:
     }
     (out_dir / "obs_picking_compare_report.json").write_text(json.dumps(report, indent=2))
     md = [
-        "# OBS Picking Cross-Dataset Compare",
+        "# OBS Picking Cross-Dataset Compare (Step 4)",
         "",
-        f"- chunk: `{args.chunk}`",
+        f"- eval domain: **OBS** (all rows below)",
+        f"- chunks: `{','.join(chunks)}`",
         f"- n: {len(samples)} (with S: {n_s})",
+        f"- HNF ckpt: `{ckpt_path}`",
+        f"- HNF treatment: `{'OBS-adapt' if hnf_is_adapt else 'zero-shot'}`",
+        f"- device: `{device}`",
         f"- tolerance: {args.tol_sec} s",
         "- primary: **pick-only** F1 on event windows",
         "",
-        "| Model | P-F1 | S-F1 | P-MAE | S-MAE | role |",
+        "## Fairness rule",
+        "- Compare only **same treatment** on OBS: all ZS, or all OBS-exposed.",
+        "- Do **not** claim adapt-HNF vs STEAD→OBS ZS in one leaderboard.",
+        "",
+        "## A. Zero-shot (train=STEAD → eval=OBS)",
+        "",
+        "| Model | P-F1 | S-F1 | P-MAE | S-MAE |",
+        "|------|-----:|-----:|------:|------:|",
+    ]
+    for k in zs_keys:
+        row = _row(k)
+        if row:
+            md.append(row)
+    if hnf_is_adapt:
+        md.append("")
+        md.append(f"_HNF treatment is OBS-adapt (`{hnf_key}`); excluded from table A — see B._")
+    md += [
+        "",
+        "## B. Matched light-adapt (STEAD init → OBS heads; eval=OBS)",
+        "",
+        "| Model | P-F1 | S-F1 | P-MAE | S-MAE |",
+        "|------|-----:|-----:|------:|------:|",
+    ]
+    for k in matched_adapt_keys:
+        row = _row(k)
+        if row:
+            md.append(row)
+    if not matched_adapt_keys:
+        md.append("_No matched adapt checkpoints provided._")
+    md += [
+        "",
+        "## C. Full OBS-pretrained reference (not same-budget)",
+        "",
+        "| Model | P-F1 | S-F1 | P-MAE | S-MAE | note |",
         "|------|-----:|-----:|------:|------:|------|",
     ]
-    roles = {
-        "HNF(run20/STEAD)": "zero-shot",
-        "EQT(STEAD)": "zero-shot baseline",
-        "PhaseNet(STEAD)": "zero-shot baseline",
-        "EQT(OBS)": "domain reference",
-        "PhaseNet(OBS)": "domain reference",
+    domain_notes = {
+        "EQT(OBS)": "full OBS-pretrained (4C) reference",
+        "PhaseNet(OBS)": "full OBS-pretrained (4C) reference",
     }
-    for k, v in results.items():
+    for k in domain_keys:
+        v = results.get(k)
+        if v is None:
+            continue
         if "error" in v:
             md.append(f"| `{k}` | ERR | | | | |")
         else:
             po = v["pick_only"]
             md.append(
                 f"| `{k}` | {po['p_f1']:.3f} | {po['s_f1']:.3f} | "
-                f"{po['p_mae_sec']:.3f} | {po['s_mae_sec']:.3f} | {roles.get(k,'')} |"
+                f"{po['p_mae_sec']:.3f} | {po['s_mae_sec']:.3f} | "
+                f"{domain_notes.get(k, '')} |"
             )
+    if thr_sweep:
+        md += ["", "## HNF pick-threshold sweep", "", "| thr | P-F1 | S-F1 |", "|----:|-----:|-----:|"]
+        for thr, po in thr_sweep.items():
+            md.append(f"| {thr} | {po['p_f1']:.3f} | {po['s_f1']:.3f} |")
     md += [
         "",
-        "## Protocol fixes (v2)",
-        "- PhaseNet channel order: **PSN** (previous run wrongly used NPS)",
+        "## Protocol",
+        "- PhaseNet channel order: **PSN**",
         "- Normalization: STEAD models `peak`, OBS models `std`, HNF per-channel `std`",
         "- Sample filter: require full energetic Z/1/2 (drop ZH/Z1H incompletes)",
+        "- Multi-chunk pool then capped sampling for Step 4",
         "",
         "## Interpretation",
-        "- Fair zero-shot: HNF / EQT / PhaseNet all STEAD-trained on 3C",
-        "- EQT(OBS) / PhaseNet(OBS) use 4C hydrophone and are **not** zero-shot",
-        "- Coupled detection metrics are secondary (OBS windows are already events)",
+        "- Table A: fair land→OBS zero-shot.",
+        "- Table B: matched light-adapt (same OBS split/budget; head-only).",
+        "- Table C: full OBS-pretrained upper reference (different training budget/channels).",
         "",
-        f"## Figure",
-        f"- `{Path(fig).name}` → `docs/figures/fig5_obs_picking_compare.png`",
+        "## Figure",
+        f"- `{Path(fig).name}`",
     ]
     (out_dir / "obs_picking_compare_report.md").write_text("\n".join(md))
     slim = {}
@@ -521,7 +888,15 @@ def main() -> None:
             slim[k] = v
         else:
             slim[k] = {kk: v["pick_only"][kk] for kk in ("p_f1", "s_f1", "p_mae_sec", "s_mae_sec")}
-    print(json.dumps({"n": len(samples), "results_pick_only": slim, "figure": fig}, indent=2))
+    print(json.dumps({
+        "n": len(samples),
+        "chunks": chunks,
+        "results_pick_only": slim,
+        "hnf_threshold_sweep": {
+            k: {kk: v[kk] for kk in ("p_f1", "s_f1")} for k, v in thr_sweep.items()
+        },
+        "figure": fig,
+    }, indent=2))
 
 
 if __name__ == "__main__":
