@@ -17,7 +17,11 @@ def test_noise_cancel_branch_shapes():
     assert out["s_noise"].shape == (2, 64, 8)
     assert out["n_sim"].shape == (2, 64, 3)
     assert out["u_final"].shape == (2, 64, 3)
+    assert out["u_pick"].shape == (2, 64, 3)
+    assert out["preserve_gate"].shape == (2, 64)
     assert (out["s_noise"] >= 0).all()
+    assert torch.all(out["preserve_gate"] >= 0.0)
+    assert torch.all(out["preserve_gate"] <= 1.0)
 
 
 def test_noise_cancel_losses_finite():

@@ -15,7 +15,7 @@ IV. Generalization      Domains II (EEG) / III (fluid rheology)
 
 | Stage | Artifact | Result |
 |-------|----------|--------|
-| Picking (primary) | `outputs/run28/28_ms_fresnel_phys_20ep/best.pt` | det **0.998** / P **0.980** / S **0.965** (~192k; 50ep weights) |
+| Picking (primary) | `outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt` | STEAD full test: det **0.9986** / P **0.9842** / S **0.9756** (MAE 0.021/0.088 s; ~192k; best ep37) |
 | Picking (legacy) | `outputs/run20/20_wrongpeak_sharp/best.pt` | det 0.994 / P 0.959 / S 0.949 (~139k) |
 | Decoder (preferred) | `outputs/physics_decoder_run28_macro/best_physics_head.pt` | val VpRMSE **0.136**; A2 n=256 **init** 0.173 (vs perturb 0.146; init-win 41%) |
 | Decoder (ks variant) | `outputs/physics_decoder_run28_macro_ks/` | +kernel_summary + mid-TT; A2 wave-win 56% (still soft) |
@@ -24,7 +24,7 @@ IV. Generalization      Domains II (EEG) / III (fluid rheology)
 Figures: [`docs/figures/`](docs/figures/). Outputs index: [`outputs/CURRENT.md`](outputs/CURRENT.md).
 Inversion notes: [`README_ZHIZI_INVERSION.md`](README_ZHIZI_INVERSION.md).
 Plan: [`docs/EXPERIMENT_PLAN.md`](docs/EXPERIMENT_PLAN.md) —
-**Step 4–6 done** → **Step 7 Fluid done** (synth Stage-0/1 OK; RACLETTE Stage-0b hard: inside-vessel vel_rel 0.79).
+**Step 4–8 done** → Foveated first board complete (test P/S 0.917/0.940 @7.4 gazes).
 
 > **Parts I–III use seismology as the running example.** Part IV reuses the
 > same four-step pattern on other sparse-observation domains.
@@ -130,17 +130,24 @@ Design choices in **run28** (multi-scale + Huygens–Fresnel + weak phys regs):
 - From-scratch long cosine schedule (**50 epochs**; local 20ep pilot was strong
   but inferior)
 
-**Primary checkpoint** (50ep weights on this box)
+**Primary checkpoint** (local 50ep from-scratch; best val @ ep37 → full STEAD test)
 
 ```text
-outputs/run28/28_ms_fresnel_phys_20ep/best.pt
-  (= outputs/run28/28_ms_fresnel_phys_50ep/best.pt via symlink)
-  det_f1 ≈ 0.998   p_f1 ≈ 0.980   s_f1 ≈ 0.965   n_params ≈ 191724
+outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
+  n_params ≈ 192493   seq_len=800   tol=0.5 s
+
+  Hard metrics only (seconds / event F1; comparable to EQT/PhaseNet):
+    det  P=0.9995  R=0.9977  F1=0.9986
+    P    P=0.9949  R=0.9738  F1=0.9842   MAE=0.021 s
+    S    P=0.9892  R=0.9624  F1=0.9756   MAE=0.088 s
+
+  Artifact: outputs/run28/28_ms_fresnel_phys_50ep_local/test_metrics.json
+  Prior 20ep sibling: outputs/run28/28_ms_fresnel_phys_20ep/ (det/P/S ≈ 0.998/0.978/0.955)
 ```
 
 ```bash
-python tools/eval_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
-python tools/explain_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_20ep/best.pt
+python tools/eval_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
+python tools/explain_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
 ```
 
 Dataset: `hnf/stead_picking_dataset.py` (includes geometry fields for later mining).
@@ -148,6 +155,102 @@ Dataset: `hnf/stead_picking_dataset.py` (includes geometry fields for later mini
 ![Picking threshold sweep](docs/figures/picking_threshold_sweep.png)
 
 *Figure: historical threshold sweep (run20-era figure; re-sweep on run28 optional).*
+
+### OBS transfer (Step 4 + P–S grid)
+
+Protocol (fairness):
+- same disjoint holdout (`obs_matched_adapt_split_randoffset`, n=800)
+- **separate** zero-shot vs matched light-adapt tables (never mix treatments)
+- light-adapt peers share **8 epochs** + same OBS train pool
+- pick-only F1, tol=0.5 s, random `p_offset∈[4,12]`
+- HNF `seq_len` = resampling of the same 60 s window (disclosed); EQT/PN use native SB length
+
+#### A. Zero-shot (STEAD → OBS)
+
+| Model | P-F1 | S-F1 |
+|-------|-----:|-----:|
+| HNF(run28/STEAD) | 0.201 | 0.453 |
+| EQT(STEAD) | **0.543** | **0.660** |
+| PhaseNet(STEAD) | 0.417 | 0.563 |
+
+#### B. Matched light-adapt (same split/epochs → OBS holdout)
+
+| Model | seq_len | P-F1 | S-F1 | score† |
+|-------|--------:|-----:|-----:|-------:|
+| **HNF(trunk-tail/L1200)** ★ | 1200 | **0.374** | 0.649 | **0.484** |
+| HNF(heads+onset/L800) | 800 | 0.302 | **0.702** | 0.462 |
+| HNF(trunk-tail/L1600) | 1600 | 0.370 | 0.609 | 0.466 |
+| EQT(STEAD+OBS-adapt) | — | **0.589** | **0.745** | 0.651 |
+| PhaseNet(STEAD+OBS-adapt) | — | 0.457 | 0.625 | 0.524 |
+
+† score = 0.6·P + 0.4·S with soft floor S≥0.60. ★ = selected HNF under this score.
+
+#### C. Reference only (different budget — do not mix into B)
+
+| Model | P-F1 | S-F1 |
+|-------|-----:|-----:|
+| HNF(run28/OBS-full) | 0.303 | 0.711 |
+| EQT(OBS) / PhaseNet(OBS) full-pretrained | ~0.78 | ~0.49–0.59 |
+
+**Takeaways:** under matched adapt, HNF best **P** is trunk-tail@1200 (0.374) while best **S** remains heads+onset@800 (0.702). EQT still leads the adapt board. Canonical selected ckpt: `outputs/obs_ps_tradeoff_grid/selected_hnf/best.pt`.
+
+![OBS P–S Pareto](docs/figures/obs_ps_pareto.png)
+
+```bash
+PYTHONPATH=. python scripts/experiments/run_obs_ps_tradeoff_grid.py --epochs 8 --device cuda
+```
+
+### Foveated active perception (Step 8 — archived / not in main story)
+
+`hnf/foveated/` implements **智子双中央凹** active perception on 60 s windows:
+
+```
+PeripheralScanner → Scheduler → FoveaProcessor(run28) → CausalMemory → fuse P/S
+```
+
+**STEAD test board** (n=800 events, tol=0.5 s, frozen run28, `shift_downsample`):
+
+| Model | P-F1 | S-F1 | P-MAE | S-MAE | gazes | sec/trace |
+|-------|-----:|-----:|------:|------:|------:|----------:|
+| Dense run28 (`seq=800`) | **0.954** | **0.955** | 0.074 | 0.095 | — | **0.006** |
+| Foveated ZS (≤8) | 0.917 | 0.940 | 0.072 | 0.098 | **7.44** | 0.097 |
+
+Coverage mean ≈0.89. Report: `outputs/foveated/test_board/`.
+
+![Foveated gaze trajectories](docs/figures/foveated_gaze_trajectory_panel.png)
+
+*Figure: gaze centers (red) vs GT P/S (green/blue dashed) and predictions (orange/purple dotted).*
+
+**Gaze budget ablation** (val n=200): early-stop saturates at **~7.5 gazes**; P plateaus by budget=8.
+Figure: `docs/figures/foveated_gaze_ablation.png`.
+
+```bash
+PYTHONPATH=. python scripts/experiments/run_foveated_test_board.py --max-events 800 --device cuda
+PYTHONPATH=. python tools/eval_foveated_gaze_ablation.py --max-val 200 --device cuda
+```
+
+**Notes / pitfalls fixed:** use `shift_downsample` (not native 8 s crops); keep Stage2 backbone frozen
+(unfreezing heads collapsed P 0.79→0.01); restore run28-compatible `NoiseCueAdapter` (10-ch).
+
+**OBS zero-shot board** (holdout n=800, same Step-4 split; primary = ZS only):
+
+| Model | P-F1 | S-F1 |
+|-------|-----:|-----:|
+| HNF(run28/STEAD)-dense | 0.201 | 0.453 |
+| HNF(run28/STEAD)-foveated | **0.064** | **0.339** |
+| EQT(STEAD) | **0.543** | **0.660** |
+| PhaseNet(STEAD) | 0.417 | 0.563 |
+| HNF(run28/OBS-full)-dense *(ref)* | 0.302 | 0.711 |
+| HNF(run28/OBS-full)-foveated *(ref)* | 0.105 | 0.416 |
+
+**OBS takeaway:** foveated **does not** transfer for free — energy peripheral scan + multi-gaze
+fusion underperforms dense HNF on OBS (and trails EQT/PN ZS). OBS-full weights inside fovea
+still lose to dense OBS-full. Report: `outputs/foveated/obs_zs_board/`.
+Figure: `docs/figures/foveated_obs_zs_board.png`.
+
+```bash
+PYTHONPATH=. python scripts/experiments/run_foveated_obs_zs_board.py --device cuda
+```
 
 ### 1D inversion baselines
 
@@ -425,18 +528,20 @@ Paper-scale boards (SNR / Ambon / OBS / Fig1 / Fig4 / attributes) are summarized
 in [`docs/PAPER_ROADMAP.md`](docs/PAPER_ROADMAP.md) with figures under
 `docs/figures/`.
 
-STEAD in-domain picking baselines (subset protocol):
+STEAD in-domain picking — **hard metrics only** (det/P/S F1, precision/recall, MAE in seconds).
+MAD/σ omitted (HNF `seq_len=800` bin≈75 ms vs EQT/PN 10 ms; not like-for-like).
 
-| Model | det_f1 | P-F1 | S-F1 |
-|-------|-------:|-----:|-----:|
-| **HNF(run28-50ep)** | **0.998** | **0.980** | **0.965** |
-| HNF(run28-20ep local) | 0.998 | 0.978 | 0.955 |
-| HNF(run20) full test | 0.994 | 0.959 | 0.949 |
-| EQT(STEAD) subset | **0.999** | **0.989** | **0.971** |
-| PhaseNet(STEAD) subset | 0.997 | 0.949 | 0.959 |
+| Model | det F1 (P/R) | P F1 (P/R) | S F1 (P/R) | P MAE | S MAE |
+|-------|-------------:|-----------:|-----------:|------:|------:|
+| **HNF(run28-50ep) full test** | **0.9986** (0.9995/0.9977) | **0.9842** (0.9949/0.9738) | **0.9756** (0.9892/0.9624) | **0.021** | 0.088 |
+| HNF(run28-20ep local) full test | 0.9977 | 0.9778 | 0.9545 | 0.055 | 0.090 |
+| HNF(run20) full test | 0.994 | 0.959 | 0.949 | — | — |
+| EQT(STEAD) shared subset† | **0.9990** (0.9992/0.9989) | **0.9892** (0.9993/0.9794) | 0.9725 (0.9994/0.9470) | 0.046 | 0.089 |
+| PhaseNet(STEAD) shared subset† | 0.9972 (0.9969/0.9975) | 0.9517 (0.9984/0.9093) | 0.9620 (0.9982/0.9283) | 0.074 | **0.081** |
 
-Note: EQT/PhaseNet numbers are the paper subset protocol; HNF rows are full-test
-(or declared schedule). run28 closes most of the PhaseNet gap and narrows EQT.
+† Same 10k-event + 2k-noise STEAD test subset (`outputs/paper_stead_triple_compare_50ep/`).
+HNF full-test row is the primary report; on that subset HNF was det/P/S ≈ 0.999/0.984/0.974.
+Takeaway: HNF matches EQT on det, slightly trails on P-F1, slightly leads on S-F1, best P-MAE.
 
 ## III.2 Absolute-geography rediscovery
 
@@ -568,6 +673,5 @@ For each new domain, repeat:
 3. **Discovery** — FDR-aware mining + optional reparameterization (Part III)
 4. **Transfer report** — what ports, what breaks, what becomes domain-specific
 
-Observational-system transfer inside seismology (OBS zero-shot vs
-EQT/PhaseNet) remains a sibling stress test; see paper Fig5 and
-`run_paper_obs_picking_compare.py`.
+OBS transfer (Step 4) and foveated long-window picking (Step 8) are **complete** for the
+first boards — see §I.3 and `outputs/foveated/test_board/`.

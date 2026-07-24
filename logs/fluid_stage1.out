@@ -1,0 +1,1 @@
+[fluid-stage1] /home/bob/anaconda3/bin/python tools/train_fluid_constitutive.py --output-dir outputs/fluid/stage1_constitutive --epochs 50 --batch-size 16 --keep-frac 0.1 --device cuda

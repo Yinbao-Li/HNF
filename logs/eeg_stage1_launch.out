@@ -1,0 +1,2 @@
+[eeg-stage1] /home/bob/anaconda3/bin/python tools/train_eeg.py --data-dir external_data/eeg_adftd --output-dir outputs/eeg/adftd_hnf_stage1 --epochs 50 --batch-size 16 --device cuda --multi-scale --principle huygens_fresnel --no-synthetic --num-workers 2
+[eeg-stage1] logging to outputs/eeg/adftd_hnf_stage1/train.log

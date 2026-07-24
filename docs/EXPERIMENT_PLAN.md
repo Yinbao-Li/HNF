@@ -14,16 +14,18 @@ Outputs index: [`../outputs/CURRENT.md`](../outputs/CURRENT.md),
 | 1 README Part I metrics | DONE (refreshed 2026-07-15) |
 | 2 Interpret + probing | DONE first pass; fold figures ongoing |
 | 3 Decoder upgrade + large-N | DONE; **claim = init** |
-| **4 OBS multi-chunk** | **DONE** (frozen; **no further OBS experiments**) |
+| **4 OBS multi-chunk** | **DONE** + **P–S tradeoff grid** (selected HNF trunk-tail/L1200: P=0.374 S=0.649) |
 | **5 Mining / reparam** | **DONE** mining v1–v4 + `outputs/reparam_suite_run28/` |
 | 6 EEG | **DONE** Stage-1 + baselines (`adftd_hnf_stage1/`, `adftd_baseline_compare/`) |
 | 7 Fluid | Stage-0/1 **DONE**; RACLETTE Stage-0b **DONE** (inside-vessel vel_rel≈0.79 @10% — hard) |
+| **8 Foveated** | **DONE (first board)** — test P=0.917 / S=0.940 @7.44 gazes vs dense 0.954/0.955 |
 
 ### OBS freeze note (2026-07-16)
 
 Step 4 results stand as the final OBS board under random `p_offset`.  
-Do **not** schedule: local 100 Hz refine, more OBS adapt, EQT-grid@6000 follow-ups, or OBS Bayesian adapt.  
-Next bandwidth → **Domain II EEG** (Stage-1: `scripts/experiments/run_eeg_stage1.py` → `outputs/eeg/adftd_hnf_stage1/`).
+**OBS full retrain** (`run28_obs_full_800`, holdout P=0.303 S=0.711) is the canonical HNF OBS checkpoint.  
+Do **not** schedule further OBS structure / noise-branch / adapt experiments.  
+Next bandwidth → **Step 8 Foveated** (`scripts/experiments/run_foveated_stage1.py`).
 
 ### Step 7c RACLETTE Stage-0b (2026-07-16) — DONE
 
@@ -218,3 +220,29 @@ PYTHONPATH=. python scripts/paper/run_paper_obs_picking_compare.py \
   --split-json outputs/obs_matched_adapt_split_randoffset/split.json \
   --output-dir outputs/obs_step4_randoffset_pboost_trunktail
 ```
+
+### Step 8 Foveated active perception (2026-07-16) — DONE (first board)
+
+Dual-fovea engine on 60 s STEAD windows (`seq_len=6000`), frozen run28 via
+`shift_downsample`.
+
+| Piece | Location |
+|-------|----------|
+| Core | `hnf/foveated/` |
+| Test board | `scripts/experiments/run_foveated_test_board.py` → `outputs/foveated/test_board/` |
+| Gaze ablation | `tools/eval_foveated_gaze_ablation.py` → `outputs/foveated/gaze_ablation/` |
+| Figures | `docs/figures/foveated_gaze_{trajectory_panel,ablation}.png` |
+
+**STEAD test (n=800):** dense P/S **0.954 / 0.955**; foveated ZS **0.917 / 0.940** @ **7.44** gazes
+(0.097 s/trace vs dense 0.006). Unlimited budget saturates ~7.5 gazes.
+
+**OBS holdout ZS (n=800):** foveated STEAD **0.064 / 0.339** vs dense STEAD **0.201 / 0.453**
+vs EQT **0.543 / 0.660** — foveated does **not** transfer; OBS-full-in-fovea still < dense OBS-full.
+Board: `outputs/foveated/obs_zs_board/`.
+
+```bash
+PYTHONPATH=. python scripts/experiments/run_foveated_test_board.py --max-events 800 --device cuda
+PYTHONPATH=. python scripts/experiments/run_foveated_obs_zs_board.py --device cuda
+```
+
+Optional next: OBS-aware peripheral scanner / light adapt; or native 100 Hz short-window fovea backbone.

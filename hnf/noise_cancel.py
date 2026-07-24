@@ -61,6 +61,41 @@ class CoherentTriaxialEnhancer(nn.Module):
         return center, u_final
 
 
+class OnsetPreserveGate(nn.Module):
+    """Protect sharp local onsets from over-aggressive denoising.
+
+    OBS P onsets are often weak but impulsive. This gate blends back raw
+    waveform near likely onsets, while leaving low-frequency/noisy regions more
+    denoised.
+    """
+
+    def __init__(self, channels: int = 3, hidden: int = 16):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv1d(channels + 2, hidden, kernel_size=5, padding=2),
+            nn.GELU(),
+            nn.Conv1d(hidden, hidden, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(hidden, 1, kernel_size=1),
+        )
+
+    def forward(
+        self,
+        x_raw: torch.Tensor,
+        u_final: torch.Tensor,
+        n_sim: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # Local onset proxy from positive derivative of channel-mean abs waveform.
+        raw_abs = x_raw.abs().mean(dim=-1, keepdim=True)
+        onset = F.pad(F.relu(raw_abs[:, 1:] - raw_abs[:, :-1]), (0, 0, 0, 1))
+        noise_level = torch.sqrt((n_sim**2).mean(dim=-1, keepdim=True) + 1e-8)
+        gate_in = torch.cat([x_raw, onset, noise_level], dim=-1)
+        preserve_gate = torch.sigmoid(self.net(gate_in.transpose(1, 2)).transpose(1, 2))
+        # Strong onset => preserve more raw waveform for picking.
+        u_pick = preserve_gate * x_raw + (1.0 - preserve_gate) * u_final
+        return u_pick, preserve_gate
+
+
 class HuygensNoiseCancelBranch(nn.Module):
     """
     Three-step HNF noise cancellation adapted to single-station 3C STEAD input.
@@ -112,7 +147,12 @@ class HuygensNoiseCancelBranch(nn.Module):
             n_samples=n_samples,
         )
         self.to_noise = nn.Conv1d(source_dim, channels, kernel_size=1, bias=False)
-        self.enhancer = CoherentTriaxialEnhancer(channels=channels, hidden=hidden)
+        # OBS Z12H: vertical is channel 0; STEAD-style 3C keeps legacy ref=2.
+        ref_ch = 0 if int(channels) >= 4 else 2
+        self.enhancer = CoherentTriaxialEnhancer(
+            channels=channels, hidden=hidden, ref_channel=ref_ch
+        )
+        self.preserve_gate = OnsetPreserveGate(channels=channels, hidden=max(8, hidden // 2))
 
     def propagate_noise(
         self,
@@ -135,12 +175,22 @@ class HuygensNoiseCancelBranch(nn.Module):
         n_sim = self.propagate_noise(s_noise, t=t, rho=rho)
         u_denoised = x - n_sim
         u_center, u_final = self.enhancer(u_denoised)
+        # preserve_gate is an OBS-era add-on; keep u_pick=u_final for run28-compat
+        # unless the gate was actually trained (caller can still read zeros).
+        if getattr(self, "enable_preserve_gate", False):
+            u_pick, preserve_gate = self.preserve_gate(x, u_final, n_sim)
+            preserve = preserve_gate.squeeze(-1)
+        else:
+            u_pick = u_final
+            preserve = torch.zeros(x.size(0), x.size(1), device=x.device, dtype=x.dtype)
         return {
             "s_noise": s_noise,
             "n_sim": n_sim,
             "u_denoised": u_denoised,
             "u_center": u_center,
             "u_final": u_final,
+            "u_pick": u_pick,
+            "preserve_gate": preserve,
             "rho_noise": rho.squeeze(-1),
         }
 

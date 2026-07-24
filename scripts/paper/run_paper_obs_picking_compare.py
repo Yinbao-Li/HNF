@@ -315,14 +315,25 @@ def load_obs_windows_from_entries(
 
 
 
-def to_hnf_batch(samples: list[dict], seq_len: int, window_sec: float, device: torch.device):
+def to_hnf_batch(
+    samples: list[dict],
+    seq_len: int,
+    window_sec: float,
+    device: torch.device,
+    n_channels: int = 3,
+):
     xs, ts, p_idx, s_idx, p_valid, s_valid = [], [], [], [], [], []
+    n_channels = int(n_channels)
     for s in samples:
         # Match STEADPickingDataset: per-channel demean + std, then resample.
-        x = torch.from_numpy(normalize_wave(s["wave_3_raw"], "std")).float()  # (3, Tn)
+        raw = s.get("wave_4_raw") if n_channels >= 4 else None
+        if raw is None:
+            raw = s["wave_3_raw"]
+        wave = np.asarray(raw[:n_channels], dtype=np.float32)
+        x = torch.from_numpy(normalize_wave(wave, "std")).float()  # (C, Tn)
         x = F.interpolate(x.unsqueeze(0), size=seq_len, mode="linear", align_corners=False).squeeze(0)
-        x = x.transpose(0, 1)  # (T,3)
-        scale = seq_len / float(s["wave_3_raw"].shape[-1])
+        x = x.transpose(0, 1)  # (T,C)
+        scale = seq_len / float(wave.shape[-1])
         xs.append(x)
         ts.append(torch.linspace(0.0, window_sec, seq_len).unsqueeze(-1))
         p_idx.append(int(round(s["p_idx_native"] * scale)))
@@ -342,8 +353,10 @@ def to_hnf_batch(samples: list[dict], seq_len: int, window_sec: float, device: t
 def to_sb_batch(samples: list[dict], device: torch.device, n_channels: int, norm_mode: str):
     xs = []
     for s in samples:
-        raw = s["wave_4_raw"] if n_channels >= 4 else s["wave_3_raw"]
-        xs.append(torch.from_numpy(normalize_wave(raw[:n_channels], norm_mode)).float())
+        raw = s.get("wave_4_raw") if n_channels >= 4 else None
+        if raw is None:
+            raw = s["wave_3_raw"]
+        xs.append(torch.from_numpy(normalize_wave(np.asarray(raw[:n_channels], dtype=np.float32), norm_mode)).float())
     tlen = max(x.shape[-1] for x in xs)
     out = []
     for x in xs:
@@ -358,16 +371,85 @@ def to_sb_batch(samples: list[dict], device: torch.device, n_channels: int, norm
     return x, p_idx, s_idx, p_valid, s_valid
 
 
-def _pick_only_counts(probs, valid, gt_idx, pick_th, tol_bins, seq_len, counts):
-    """Event-window pick-only: ignore detection gate; peak>th within tol = TP."""
-    from hnf.picking_metrics import idx_to_sec
+def _pick_only_counts(
+    probs,
+    valid,
+    gt_idx,
+    pick_th,
+    tol_bins,
+    seq_len,
+    counts,
+    exist_prob=None,
+    exist_th: float = 0.5,
+    score_absent: bool = False,
+    gate_mode: str = "hard",
+    soft_th: float = 0.25,
+    decode_mode: str = "argmax",
+    decode_compete_ratio: float = 0.70,
+    decode_late_penalty: float = 0.0,
+    pred_idx=None,
+    peak_score=None,
+    decode_echo_gap_lo_bins: int = 20,
+    decode_echo_gap_hi_bins: int = 300,
+    decode_echo_ratio: float = 0.70,
+    decode_echo_penalty: float = 0.35,
+    decode_onset_bonus: float = 0.10,
+):
+    """Event-window pick-only: peak>th (and optional exist gate) within tol = TP.
 
-    max_prob, pred_idx = probs.max(dim=-1)
+    gate_mode:
+      - hard: peak>=pick_th AND exist>=exist_th
+      - soft: (peak * exist) >= soft_th
+      - soft_floor: soft AND exist>=exist_th
+
+    If score_absent=True, also score windows with valid=False:
+      - pred exists → FP
+      - pred absent → TN (ignored in F1; tracked on counts.tn if present)
+
+    decode_mode: see hnf.pick_decode.decode_pick_index (default argmax).
+    pred_idx / peak_score: optional precomputed (B,) overrides (e.g. after residual).
+    """
+    from hnf.picking_metrics import idx_to_sec
+    from hnf.pick_decode import decode_pick_index
+
     for i in range(probs.size(0)):
-        if not bool(valid[i].item()):
+        if pred_idx is not None:
+            pred_i = int(pred_idx[i].item() if hasattr(pred_idx[i], "item") else pred_idx[i])
+            if peak_score is not None:
+                pk = float(peak_score[i].item() if hasattr(peak_score[i], "item") else peak_score[i])
+            else:
+                pk = float(probs[i, max(0, min(pred_i, probs.size(-1) - 1))].item())
+        else:
+            pred_i, pk = decode_pick_index(
+                probs[i],
+                pick_th=pick_th,
+                mode=decode_mode,
+                compete_ratio=decode_compete_ratio,
+                late_penalty=decode_late_penalty,
+                echo_gap_lo_bins=decode_echo_gap_lo_bins,
+                echo_gap_hi_bins=decode_echo_gap_hi_bins,
+                echo_ratio=decode_echo_ratio,
+                echo_penalty=decode_echo_penalty,
+                onset_bonus=decode_onset_bonus,
+            )
+        if exist_prob is None:
+            pred_exists = pk >= pick_th
+        else:
+            ex = float(exist_prob[i])
+            if gate_mode == "soft":
+                pred_exists = (pk * ex) >= soft_th
+            elif gate_mode == "soft_floor":
+                pred_exists = ((pk * ex) >= soft_th) and (ex >= exist_th)
+            else:
+                pred_exists = (pk >= pick_th) and (ex >= exist_th)
+        has_gt = bool(valid[i].item())
+        if not has_gt:
+            if score_absent:
+                if pred_exists:
+                    counts.fp += 1
+                elif hasattr(counts, "tn"):
+                    counts.tn += 1
             continue
-        pred_exists = float(max_prob[i]) >= pick_th
-        pred_i = int(pred_idx[i])
         gt_i = int(gt_idx[i])
         if pred_exists and abs(pred_i - gt_i) <= tol_bins:
             counts.tp += 1
@@ -380,16 +462,60 @@ def _pick_only_counts(probs, valid, gt_idx, pick_th, tol_bins, seq_len, counts):
 
 
 @torch.no_grad()
-def eval_hnf(model, samples, device, seq_len, window_sec, pick_th, det_th, tol_sec, batch_size):
+def eval_hnf(
+    model,
+    samples,
+    device,
+    seq_len,
+    window_sec,
+    pick_th,
+    det_th,
+    tol_sec,
+    batch_size,
+    n_channels: int = 3,
+    exist_th: float = 0.5,
+    score_absent: bool = False,
+    gate_mode: str = "hard",
+    soft_th: float = 0.25,
+    p_decode_mode: str = "argmax",
+    s_decode_mode: str = "argmax",
+    decode_compete_ratio: float = 0.70,
+    decode_late_penalty: float = 0.0,
+    apply_p_residual: bool = False,
+    apply_causal_peak_rank: bool = False,
+    decode_echo_gap_lo_bins: int = 20,
+    decode_echo_gap_hi_bins: int = 300,
+    decode_echo_ratio: float = 0.70,
+    decode_echo_penalty: float = 0.35,
+    decode_onset_bonus: float = 0.10,
+):
     """HNF forward returns LOGITS in det/p/s — must sigmoid before threshold (STEAD protocol)."""
+    from hnf.pick_decode import decode_pick_indices_batch
+
     acc = EvalAccumulator()
     pick_acc = EvalAccumulator()
     tol = tolerance_bins(seq_len, tol_sec)
     n_det_nan = 0
     n_pick_nan = 0
+    n_channels = int(getattr(model, "input_dim", n_channels) or n_channels)
+    exist_correct = {"p": 0, "s": 0}
+    exist_total = {"p": 0, "s": 0}
+    use_p_res = bool(apply_p_residual) and getattr(model, "p_residual_offset", None) is not None
+    use_causal_rank = bool(apply_causal_peak_rank) and getattr(model, "p_causal_peak_rank", None) is not None
+    decode_kw = dict(
+        compete_ratio=decode_compete_ratio,
+        late_penalty=decode_late_penalty,
+        echo_gap_lo_bins=decode_echo_gap_lo_bins,
+        echo_gap_hi_bins=decode_echo_gap_hi_bins,
+        echo_ratio=decode_echo_ratio,
+        echo_penalty=decode_echo_penalty,
+        onset_bonus=decode_onset_bonus,
+    )
     for start in range(0, len(samples), batch_size):
         chunk = samples[start : start + batch_size]
-        x, t, p_idx, s_idx, p_valid, s_valid = to_hnf_batch(chunk, seq_len, window_sec, device)
+        x, t, p_idx, s_idx, p_valid, s_valid = to_hnf_batch(
+            chunk, seq_len, window_sec, device, n_channels=n_channels
+        )
         out = model(x, t)
         det_true = torch.ones(len(chunk), device=device)
         if "det_logits" in out:
@@ -409,6 +535,19 @@ def eval_hnf(model, samples, device, seq_len, window_sec, pick_th, det_th, tol_s
         p_probs = torch.sigmoid(p_logits)
         s_probs = torch.sigmoid(s_logits)
 
+        p_exist = None
+        s_exist = None
+        if "p_exist" in out and "s_exist" in out:
+            p_exist = torch.sigmoid(torch.nan_to_num(out["p_exist"], nan=-50.0))
+            s_exist = torch.sigmoid(torch.nan_to_num(out["s_exist"], nan=-50.0))
+            for i in range(len(chunk)):
+                exist_total["p"] += 1
+                exist_total["s"] += 1
+                if bool((p_exist[i] >= exist_th) == (p_valid[i] > 0.5)):
+                    exist_correct["p"] += 1
+                if bool((s_exist[i] >= exist_th) == (s_valid[i] > 0.5)):
+                    exist_correct["s"] += 1
+
         if det_logits.dim() == 1:
             det_nan = ~torch.isfinite(det_logits)
             n_det_nan += int(det_nan.sum().item())
@@ -426,17 +565,78 @@ def eval_hnf(model, samples, device, seq_len, window_sec, pick_th, det_th, tol_s
         update_picking_counts(acc.s, s_probs, det_pred, det_true, s_valid, s_idx, pick_th, tol, seq_len)
         # pick-only: ignore detection gate (OBS often NaNs det head)
         force_det = torch.ones_like(det_pred)
-        _pick_only_counts(p_probs, p_valid, p_idx, pick_th, tol, seq_len, pick_acc.p)
-        _pick_only_counts(s_probs, s_valid, s_idx, pick_th, tol, seq_len, pick_acc.s)
+
+        p_pred_idx = None
+        p_peak_sc = None
+        p_field = out.get("p_field_env")
+        if use_causal_rank:
+            rho = out.get("rho")
+            if rho is None:
+                rho = torch.zeros_like(p_probs)
+            p_pred_idx, p_peak_sc = model.p_causal_peak_rank.decode(
+                p_probs,
+                p_field if p_field is not None else p_probs,
+                rho,
+                pick_th=pick_th,
+                compete_ratio=0.0,
+            )
+        elif use_p_res or str(p_decode_mode) != "argmax":
+            p_pred_idx, p_peak_sc = decode_pick_indices_batch(
+                p_probs,
+                pick_th=pick_th,
+                mode=p_decode_mode,
+                field_env=p_field,
+                **decode_kw,
+            )
+            if use_p_res:
+                p_pred_idx = model.refine_p_indices(x, t, p_pred_idx)
+                # Keep gate score from coarse decode peak (existence), not shifted bin.
+        _pick_only_counts(
+            p_probs, p_valid, p_idx, pick_th, tol, seq_len, pick_acc.p,
+            exist_prob=p_exist, exist_th=exist_th, score_absent=score_absent,
+            gate_mode=gate_mode, soft_th=soft_th,
+            decode_mode=p_decode_mode,
+            decode_compete_ratio=decode_compete_ratio,
+            decode_late_penalty=decode_late_penalty,
+            pred_idx=p_pred_idx,
+            peak_score=p_peak_sc,
+            decode_echo_gap_lo_bins=decode_echo_gap_lo_bins,
+            decode_echo_gap_hi_bins=decode_echo_gap_hi_bins,
+            decode_echo_ratio=decode_echo_ratio,
+            decode_echo_penalty=decode_echo_penalty,
+            decode_onset_bonus=decode_onset_bonus,
+        )
+        _pick_only_counts(
+            s_probs, s_valid, s_idx, pick_th, tol, seq_len, pick_acc.s,
+            exist_prob=s_exist, exist_th=exist_th, score_absent=score_absent,
+            gate_mode=gate_mode, soft_th=soft_th,
+            decode_mode=s_decode_mode,
+            decode_compete_ratio=decode_compete_ratio,
+            decode_late_penalty=decode_late_penalty,
+            decode_echo_gap_lo_bins=decode_echo_gap_lo_bins,
+            decode_echo_gap_hi_bins=decode_echo_gap_hi_bins,
+            decode_echo_ratio=decode_echo_ratio,
+            decode_echo_penalty=decode_echo_penalty,
+            decode_onset_bonus=decode_onset_bonus,
+        )
         update_detection_counts(pick_acc, force_det, det_true)
     coupled = finalize_metrics(acc)
     pick_only = finalize_metrics(pick_acc)
+    exist_acc = {
+        "p": exist_correct["p"] / max(exist_total["p"], 1),
+        "s": exist_correct["s"] / max(exist_total["s"], 1),
+        "n": exist_total["p"],
+    }
     return {
         "coupled": coupled,
         "pick_only": pick_only,
+        "exist_acc": exist_acc,
+        "exist_th": exist_th,
+        "gate_mode": gate_mode,
+        "soft_th": soft_th,
         "n_det_nan": n_det_nan,
         "n_pick_nan": n_pick_nan,
-        "note": "sigmoid on logits before threshold; matches train_stead_picking.py",
+        "note": "sigmoid on logits; optional p_exist/s_exist gate when heads present",
     }
 
 
@@ -455,7 +655,9 @@ def eval_seisbench(
 ):
     acc = EvalAccumulator()
     pick_acc = EvalAccumulator()
-    native_len = samples[0]["wave_3_raw"].shape[-1]
+    native_len = (
+        samples[0].get("wave_4_raw", samples[0].get("wave_3_raw"))
+    ).shape[-1]
     tol = max(1, int(round(tol_sec * samples[0]["sr"])))
     model = model.to(device).eval()
     # PhaseNet labels are "PSN" in SeisBench (P, S, Noise) — NOT NPS.

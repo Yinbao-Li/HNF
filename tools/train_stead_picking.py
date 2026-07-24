@@ -367,19 +367,38 @@ def wrong_peak_rank_loss(
     seq_len: int,
     radius_sec: float = 0.5,
     margin: float = 0.2,
+    late_weight: float = 0.0,
+    sample_weight: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    """Encourage the GT neighborhood peak to outrank distant spurious peaks."""
+    """Encourage the GT neighborhood peak to outrank distant spurious peaks.
+
+    late_weight>0: extra penalty when the strongest rival peak is *after* GT
+    (OBS P errors are strongly late-biased).
+    sample_weight: optional (B,) multiplier (e.g. spectral difficulty).
+    """
     if not valid_mask.any():
         return torch.tensor(0.0, device=logits.device)
-    logits = logits[valid_mask]
+    w_all = sample_weight
+    logits_v = logits[valid_mask]
     gt = target_idx[valid_mask]
+    if w_all is not None:
+        w = w_all[valid_mask]
+    else:
+        w = None
     t = torch.arange(seq_len, device=logits.device).view(1, -1)
     radius_bins = max(1, int(round(radius_sec * seq_len / 60.0)))
     local_mask = (t - gt.unsqueeze(1)).abs() <= radius_bins
-    neg_fill = torch.full_like(logits, -1e9)
-    pos_max = torch.where(local_mask, logits, neg_fill).amax(dim=-1)
-    neg_max = torch.where(~local_mask, logits, neg_fill).amax(dim=-1)
-    return F.relu(margin - pos_max + neg_max).mean()
+    neg_fill = torch.full_like(logits_v, -1e9)
+    pos_max = torch.where(local_mask, logits_v, neg_fill).amax(dim=-1)
+    neg_max = torch.where(~local_mask, logits_v, neg_fill).amax(dim=-1)
+    per = F.relu(margin - pos_max + neg_max)
+    if late_weight > 0:
+        late_mask = (t > gt.unsqueeze(1)) & (~local_mask)
+        late_neg = torch.where(late_mask, logits_v, neg_fill).amax(dim=-1)
+        per = per + float(late_weight) * F.relu(margin - pos_max + late_neg)
+    if w is not None:
+        per = per * w
+    return per.mean()
 
 
 def wrong_peak_listwise_loss(

@@ -364,13 +364,13 @@ def main() -> None:
         model, bool(args.force_sparse_band), float(args.cap_local_window_sec)
     )
     trained_names = freeze_for_adapt(model, args.tune)
-    if args.seq_len >= 3000:
-        # Noise-cancel banded kernels dominate VRAM at EQT-grid resolution.
+    if args.seq_len >= 1200:
+        # Noise-cancel banded kernels dominate VRAM at longer resampled windows.
         for name, p in model.named_parameters():
             if name.startswith("noise_"):
                 p.requires_grad = False
         trained_names = [n for n in trained_names if not n.startswith("noise_")]
-        print("[obs-adapt] seq_len>=3000: froze noise_* for VRAM", flush=True)
+        print("[obs-adapt] seq_len>=1200: froze noise_* for VRAM", flush=True)
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_all = sum(p.numel() for p in model.parameters())
     print(

@@ -35,7 +35,14 @@ from tools.train_stead_picking import move_batch_to_device
 def load_model(checkpoint: Path, device: torch.device, bypass_noise_cancel: bool = False):
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
     args = ckpt.get("args", {})
+    input_dim = int(
+        args.get("input_dim")
+        or ckpt.get("input_dim")
+        or ckpt.get("n_channels")
+        or 3
+    )
     model = build_picking_model(
+        input_dim=input_dim,
         embed_dim=args.get("embed_dim", 64),
         num_shared_layers=args.get("num_shared_layers", 2),
         num_branch_layers=args.get("num_branch_layers", 2),
@@ -48,6 +55,7 @@ def load_model(checkpoint: Path, device: torch.device, bypass_noise_cancel: bool
         pick_head_kernel=args.get("pick_head_kernel", 7),
         pick_head_layers=args.get("pick_head_layers", 3),
         multi_scale=args.get("multi_scale", False),
+        sparse_band=bool(args.get("sparse_band", False)),
         num_anchors=int(args.get("num_anchors", 0)),
         residual_pick_head=args.get("residual_pick_head", True),
         residual_det_head=args.get("residual_det_head", False),
@@ -64,9 +72,21 @@ def load_model(checkpoint: Path, device: torch.device, bypass_noise_cancel: bool
         ps_gap_hidden=int(args.get("ps_gap_hidden", 64)),
         peak_rerank=bool(args.get("peak_rerank", False)),
         peak_rerank_hidden=int(args.get("peak_rerank_hidden", 16)),
+        p_residual_offset=bool(args.get("p_residual_offset", False)),
+        p_residual_crop_half_bins=int(args.get("p_residual_crop_half_bins", 30)),
+        p_residual_hidden=int(args.get("p_residual_hidden", 32)),
+        p_residual_max_delta_bins=float(args.get("p_residual_max_delta_bins", 8.0)),
+        causal_peak_rank=bool(args.get("causal_peak_rank", False)),
+        causal_peak_rank_hidden=int(args.get("causal_peak_rank_hidden", 48)),
+        causal_peak_rank_topk=int(args.get("causal_peak_rank_topk", 8)),
+        causal_peak_rank_crop_half=int(args.get("causal_peak_rank_crop_half", 16)),
+        phase_exist=bool(args.get("phase_exist", False) or ckpt.get("phase_exist", False)),
+        phase_exist_hidden=int(args.get("phase_exist_hidden", 64)),
     ).to(device)
     load_picking_model_state(model, ckpt["state_dict"], strict=False)
     model.bypass_noise_cancel = bypass_noise_cancel
+    if bool(args.get("enable_preserve_gate", False)) and getattr(model, "noise_cancel_branch", None) is not None:
+        model.noise_cancel_branch.enable_preserve_gate = True
     model.eval()
     return model, args
 

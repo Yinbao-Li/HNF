@@ -1,0 +1,13 @@
+[eeg-compare] /home/bob/anaconda3/bin/python tools/train_eeg_baseline.py --model eegnet --data-dir external_data/eeg_adftd --output-dir outputs/eeg/adftd_baseline_compare/eegnet --epochs 50 --batch-size 16 --device cuda --no-synthetic
+[eeg-compare] /home/bob/anaconda3/bin/python tools/eval_eeg_baseline.py --checkpoint outputs/eeg/adftd_baseline_compare/eegnet/best.pt --output outputs/eeg/adftd_baseline_compare/eegnet/test_metrics.json --data-dir external_data/eeg_adftd --device cuda --no-synthetic
+[eeg-compare] /home/bob/anaconda3/bin/python tools/train_eeg_baseline.py --model shallow1d --data-dir external_data/eeg_adftd --output-dir outputs/eeg/adftd_baseline_compare/shallow1d --epochs 50 --batch-size 16 --device cuda --no-synthetic
+[eeg-compare] /home/bob/anaconda3/bin/python tools/eval_eeg_baseline.py --checkpoint outputs/eeg/adftd_baseline_compare/shallow1d/best.pt --output outputs/eeg/adftd_baseline_compare/shallow1d/test_metrics.json --data-dir external_data/eeg_adftd --device cuda --no-synthetic
+# EEG Stage-1 vs baselines (same protocol)
+
+| Model | subject_acc | macro-AUC | epoch_acc | macro-F1 | params |
+|-------|------------:|----------:|----------:|---------:|-------:|
+| HNF(stage1) | 0.778 | 0.841 | 0.675 | 0.647 | 89442 |
+| eegnet | 0.722 | 0.818 | 0.695 | 0.613 | 3331 |
+| shallow1d | 0.500 | 0.840 | 0.565 | 0.459 | 125443 |
+
+[eeg-compare] wrote outputs/eeg/adftd_baseline_compare/compare_summary.json and outputs/eeg/adftd_baseline_compare/compare_summary.md

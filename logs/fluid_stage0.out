@@ -1,0 +1,1 @@
+[fluid-stage0] /home/bob/anaconda3/bin/python tools/train_fluid.py --output-dir outputs/fluid/stage0_synth --epochs 40 --batch-size 16 --keep-frac 0.1 --device cuda
