@@ -48,13 +48,15 @@ class CoherentTriaxialEnhancer(nn.Module):
 
     def forward(self, u_denoised: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (u_enhanced_center, u_final) with shape (B,T,1) and (B,T,C)."""
-        spec = torch.fft.rfft(u_denoised, dim=1)
+        # cuFFT half-precision only allows power-of-two lengths; keep FFT in fp32.
+        x32 = u_denoised.float()
+        spec = torch.fft.rfft(x32, dim=1)
         ref_phase = torch.angle(spec[..., self.ref_channel : self.ref_channel + 1])
         aligned = torch.abs(spec) * torch.exp(
             1j * (torch.angle(spec) - torch.angle(spec[..., self.ref_channel : self.ref_channel + 1]) + ref_phase)
         )
         center_spec = aligned.mean(dim=-1, keepdim=True)
-        center = torch.fft.irfft(center_spec, n=u_denoised.size(1), dim=1)
+        center = torch.fft.irfft(center_spec, n=u_denoised.size(1), dim=1).to(dtype=u_denoised.dtype)
         delta = self.backscatter(center.transpose(1, 2)).transpose(1, 2)
         mix = torch.sigmoid(self.mix)
         u_final = mix * (u_denoised + delta) + (1.0 - mix) * u_denoised
@@ -197,7 +199,8 @@ class HuygensNoiseCancelBranch(nn.Module):
 
 def phase_smoothness_loss(field: torch.Tensor) -> torch.Tensor:
     """Penalize non-physical rapid phase jumps along time."""
-    spec = torch.fft.rfft(field, dim=1)
+    # cuFFT half-precision only allows power-of-two lengths (e.g. not 6000).
+    spec = torch.fft.rfft(field.float(), dim=1)
     phase = torch.angle(spec)
     dphase = phase[:, 1:, :] - phase[:, :-1, :]
     dphase = torch.atan2(torch.sin(dphase), torch.cos(dphase))
@@ -215,15 +218,32 @@ def noise_cancel_losses(
     energy_weight: float = 0.05,
     noise_suppress_weight: float = 0.2,
 ) -> tuple[torch.Tensor, dict[str, float]]:
-    x = batch["x"]
+    # With learnable_sampler, noise-cancel runs on the warped grid (e.g. 800);
+    # batch["x"] / fine labels stay at input_seq_len (e.g. 6000). Prefer the
+    # sampled waveform and remapped pick targets when present.
+    x = outputs.get("x_sampled", batch["x"])
     u_final = nc_out["u_final"]
     n_sim = nc_out["n_sim"]
     det = batch["det"]
+    if x.size(1) != u_final.size(1):
+        raise RuntimeError(
+            f"noise_cancel recon length mismatch: x={tuple(x.shape)} "
+            f"u_final={tuple(u_final.shape)}; pass outputs['x_sampled'] when using sampler"
+        )
 
     recon = F.mse_loss(u_final + n_sim, x)
     phase_loss = phase_smoothness_loss(n_sim)
 
-    pick_weight = (batch["p_target"] + batch["s_target"]).clamp_max(1.0)
+    p_target = outputs.get("p_target", batch["p_target"])
+    s_target = outputs.get("s_target", batch["s_target"])
+    if p_target.size(-1) != x.size(1):
+        p_target = F.interpolate(
+            p_target.unsqueeze(1), size=x.size(1), mode="linear", align_corners=False
+        ).squeeze(1)
+        s_target = F.interpolate(
+            s_target.unsqueeze(1), size=x.size(1), mode="linear", align_corners=False
+        ).squeeze(1)
+    pick_weight = (p_target + s_target).clamp_max(1.0)
     event_mask = det > 0.5
     preserve = torch.tensor(0.0, device=x.device)
     if event_mask.any():

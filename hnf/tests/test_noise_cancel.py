@@ -40,6 +40,28 @@ def test_noise_cancel_losses_finite():
     assert "nc_recon" in parts
 
 
+def test_noise_cancel_losses_uses_x_sampled_when_present():
+    """Sampler warps 6000→800; recon must compare against x_sampled, not batch x."""
+    x_fine = torch.randn(2, 96, 3)
+    x_sampled = torch.randn(2, 32, 3)
+    t = torch.linspace(0, 60, 32).view(1, 32, 1).expand(2, -1, -1)
+    branch = HuygensNoiseCancelBranch(channels=3, source_dim=8, hidden=16)
+    nc_out = branch(x_sampled, t)
+    batch = {
+        "x": x_fine,
+        "det": torch.tensor([1.0, 0.0]),
+        "p_target": torch.zeros(2, 96),
+        "s_target": torch.zeros(2, 96),
+    }
+    outputs = {
+        "x_sampled": x_sampled,
+        "p_target": torch.zeros(2, 32),
+        "s_target": torch.zeros(2, 32),
+    }
+    loss, _ = noise_cancel_losses(outputs, nc_out, batch)
+    assert torch.isfinite(loss)
+
+
 def test_picking_model_with_noise_cancel():
     model = build_picking_model(
         embed_dim=32,

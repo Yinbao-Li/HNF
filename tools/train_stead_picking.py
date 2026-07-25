@@ -37,6 +37,11 @@ from hnf.picking_metrics import (
     update_detection_counts,
     update_picking_counts,
 )
+from hnf.grid_augment import (
+    parse_grid_lens,
+    resample_batch_to_grid,
+    sample_grid_len,
+)
 from hnf.picking_model import build_picking_model, load_picking_model_state
 from hnf.noise_cancel import noise_cancel_losses
 from hnf.stead_picking_dataset import STEADPickingDataset
@@ -177,7 +182,13 @@ def parse_args() -> argparse.Namespace:
         help="Fine-grid length into learnable sampler (0=seq_len; typically 1600/2400)",
     )
     p.add_argument("--sampler-hidden", type=int, default=32)
-    p.add_argument("--sampler-temperature", type=float, default=0.05)
+    p.add_argument("--sampler-temperature", type=float, default=0.25)
+    p.add_argument(
+        "--sampler-mode",
+        choices=["learnable", "linear"],
+        default="learnable",
+        help="learnable=soft inverse-CDF; linear=fixed F.interpolate (stable 6000→800)",
+    )
     p.add_argument(
         "--sampler-align-weight",
         type=float,
@@ -224,6 +235,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--aug-noise-snr-min", type=float, default=5.0)
     p.add_argument("--aug-noise-snr-max", type=float, default=20.0)
     p.add_argument("--aug-time-shift-sec", type=float, default=0.05)
+    p.add_argument(
+        "--grid-aug-lens",
+        default="",
+        help="comma list of grid lengths to train on, e.g. 400,600,800,1200 "
+        "(same 60 s window at different sample rates)",
+    )
+    p.add_argument(
+        "--grid-aug-prob",
+        type=float,
+        default=0.0,
+        help="probability a step is resampled onto one of --grid-aug-lens",
+    )
+    p.add_argument(
+        "--val-grid-lens",
+        default="",
+        help="comma list of extra grid lengths to validate on, to track invariance",
+    )
     return p.parse_args()
 
 
@@ -775,16 +803,24 @@ def evaluate(
     nc_preserve_weight: float = 0.3,
     nc_energy_weight: float = 0.05,
     nc_noise_suppress_weight: float = 0.2,
+    grid_len: Optional[int] = None,
+    label_sigma_sec: float = 0.4,
 ) -> dict[str, float]:
     model.eval()
     total_loss = 0.0
     total = 0
     skipped = 0
     acc = EvalAccumulator()
+    if grid_len is not None:
+        seq_len = grid_len
     tol = tolerance_bins(seq_len, pick_tolerance_sec)
 
     for batch in loader:
         batch = move_batch_to_device(batch, device)
+        if grid_len is not None:
+            batch = resample_batch_to_grid(
+                batch, grid_len, label_sigma_sec=label_sigma_sec
+            )
         outputs = _model_forward(model, batch)
         loss = compute_loss(
             outputs,
@@ -964,6 +1000,19 @@ def train() -> None:
             flush=True,
         )
 
+    grid_aug_lens = parse_grid_lens(args.grid_aug_lens)
+    val_grid_lens = parse_grid_lens(args.val_grid_lens)
+    grid_rng = random.Random(args.seed + 977)
+    if grid_aug_lens and args.learnable_sampler:
+        # The sampler warps everything onto sampler_out_len, so the backbone
+        # would never see the varied grid the augmentation is meant to teach.
+        raise ValueError("--grid-aug-lens cannot be combined with --learnable-sampler")
+    if grid_aug_lens:
+        print(
+            f"[grid-aug] lens={grid_aug_lens} prob={args.grid_aug_prob} base={args.seq_len}",
+            flush=True,
+        )
+
     train_ds = STEADPickingDataset(
         "train",
         seq_len=input_seq_len,
@@ -1057,6 +1106,7 @@ def train() -> None:
         sampler_out_len=args.seq_len,
         sampler_hidden=args.sampler_hidden,
         sampler_temperature=args.sampler_temperature,
+        sampler_mode=args.sampler_mode,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -1184,6 +1234,17 @@ def train() -> None:
         )
         for step, batch in enumerate(pbar, start=1):
             batch = move_batch_to_device(batch, device, non_blocking=True)
+            step_seq_len = args.seq_len
+            if grid_aug_lens:
+                step_seq_len = sample_grid_len(
+                    grid_aug_lens,
+                    prob=args.grid_aug_prob,
+                    base_len=args.seq_len,
+                    rng=grid_rng,
+                )
+                batch = resample_batch_to_grid(
+                    batch, step_seq_len, label_sigma_sec=args.label_sigma_sec
+                )
             gap_only = (
                 args.freeze_all_but_gap_epochs > 0
                 and epoch <= args.freeze_all_but_gap_epochs
@@ -1219,7 +1280,7 @@ def train() -> None:
                     rho_sparsity_radius_sec=args.rho_sparsity_radius_sec,
                     kernel_phys_prior_weight=0.0 if gap_only else args.kernel_phys_prior_weight,
                     model=model,
-                    seq_len=args.seq_len,
+                    seq_len=step_seq_len,
                     noise_cancel_weight=0.0 if gap_only else (args.noise_cancel_weight if args.noise_cancel else 0.0),
                     nc_consistency_weight=args.nc_consistency_weight,
                     nc_phase_weight=args.nc_phase_weight,
@@ -1227,7 +1288,9 @@ def train() -> None:
                     nc_energy_weight=args.nc_energy_weight,
                     nc_noise_suppress_weight=args.nc_noise_suppress_weight,
                     sampler_align_weight=0.0
-                    if gap_only or not args.learnable_sampler
+                    if gap_only
+                    or not args.learnable_sampler
+                    or args.sampler_mode == "linear"
                     else args.sampler_align_weight,
                     sampler_entropy_weight=args.sampler_entropy_weight,
                     sampler_energy_weight=args.sampler_energy_weight,
@@ -1314,6 +1377,21 @@ def train() -> None:
             mode=args.score_mode,
             det_floor=args.det_score_floor,
         )
+        grid_metrics = {}
+        for gl in val_grid_lens:
+            if gl == args.seq_len:
+                continue
+            grid_metrics[gl] = evaluate(
+                model,
+                val_loader,
+                device,
+                seq_len=args.seq_len,
+                pick_threshold=args.pick_threshold,
+                pick_tolerance_sec=args.pick_tolerance_sec,
+                post_process_p_before_s=args.post_process_p_before_s,
+                grid_len=gl,
+                label_sigma_sec=args.label_sigma_sec,
+            )
         ep_sec = time.time() - epoch_t0
 
         with open(history_path, "a", newline="") as f:
@@ -1342,6 +1420,16 @@ def train() -> None:
             + (f"  skipped={skipped}" if skipped else ""),
             flush=True,
         )
+        if grid_metrics:
+            print(
+                "     grids  "
+                + "  ".join(
+                    f"L={gl}: det_f1={m['det_f1']:.3f} p_f1={m['p_f1']:.3f} "
+                    f"s_f1={m['s_f1']:.3f}"
+                    for gl, m in sorted(grid_metrics.items())
+                ),
+                flush=True,
+            )
 
         if score > best_score and torch.isfinite(torch.tensor(score)):
             best_score = score

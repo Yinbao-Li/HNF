@@ -122,6 +122,23 @@ Trainer: `tools/train_stead_picking.py`. Historical launches live under
 `scripts/experiments/run20_stead_picking.py`). Current primary:
 `scripts/experiments/run28_stead_ms_fresnel_phys.py`.
 
+**Grid invariance (run29).** The run28 checkpoint is grid-locked at 800 points /
+60 s: resampling the same window to 400 points collapses event-det median
+(~0.96 → 0.000). run29 fine-tunes with temporal-grid augmentation
+(`--grid-aug-lens`, `--grid-aug-prob`) so the backbone sees mixed sample rates
+on a fixed 60 s window — a prerequisite for coarse-to-fine routing and for
+using 100 Hz / 6000-sample inputs without destroying the causal field.
+
+```bash
+# train (host GPU)
+bash logs/start_grid_invariance_ft.sh
+# or
+python scripts/experiments/run29_grid_invariance_ft.py --device cuda
+```
+
+Related bridges (still experimental): fixed linear / learnable temporal sampler
+6000→800 (`hnf/learnable_sampler.py`, `scripts/experiments/run28_ft_*6000*.py`).
+
 Design choices in **run28** (multi-scale + Huygens–Fresnel + weak phys regs):
 
 - Preserve full temporal resolution and stable detection, then push P/S
@@ -558,7 +575,80 @@ Confirmed (strong): `noise_ratio → pick_err_p` and `rho_p_lag → init_tt`
 survive lat/lon **and** `is_ZQ`. Pairwise latitude→error edges often **collapse**
 after network control—control `is_ZQ` (or equivalent) before claiming geo laws.
 
-## III.3 Reparameterization → physical equations
+## III.3 Causal-chain modes + interpretable magnitude / structure
+
+Scalar summaries (det / P-peak / P–S gap) mostly rediscover distance and SNR.
+The Huygens stack also exposes **time-resolved** observables — `ρ(t)`,
+P/S field envelopes — that can be read in a **causal reference frame**
+(P at τ=0, S at τ=1). Clustering the *shape* of that chain (distance factored
+out) yields mechanism modes that are only partially aligned with distance bins.
+
+| Module / tool | Role |
+|---------------|------|
+| `hnf/causal_chain.py` | Causal-frame resample, shape features, raw-amplitude Richter proxies |
+| `hnf/pattern_library.py` | Summary-feature pattern bank + route policies (skip / crop / bypass NC) |
+| `tools/build_causal_chain_library.py` | Induce causal modes + cross-tab vs summary clusters |
+| `tools/reclassify_causal_physics.py` | Compact interpretable features + named modes |
+| `tools/interpretable_ceiling.py` | Site terms + ml/md models + `shape×strength` taxonomy |
+| `tools/build_pattern_library.py` / `eval_pattern_routed_picking.py` | Pattern-routed picking MVP (speed vs dense) |
+
+```bash
+# causal modes (CPU ok)
+PYTHONPATH=. python tools/build_causal_chain_library.py \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt \
+  --split val --max-event 400 --device cpu \
+  --output-dir outputs/causal_chain_run28_v2
+
+# recoverable amplitude + named reclass
+PYTHONPATH=. python tools/reclassify_causal_physics.py \
+  --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt \
+  --split val --max-event 600 --device cpu \
+  --output-dir outputs/causal_reclass_run28
+
+# interpretable ceiling (no GPU; uses reclass CSV)
+PYTHONPATH=. python tools/interpretable_ceiling.py \
+  --traces outputs/causal_reclass_run28/traces.csv \
+  --output-dir outputs/interpretable_ceiling_run28
+```
+
+**Taxonomy.** Prefer a 2-D label `shape×strength` over a flat k-means id:
+
+- **shape** (path / mechanism): `impulsive_fastQ` / `emergent` / `multipath` /
+  `slow_coda` / `standard` — from coda slope, onset sharpness, ρ secondary peaks
+- **strength** (source): `weak` / `mid` / `strong` — terciles of
+  `reduced_amp = log₁₀A + log₁₀D` on the *unnormalised* STEAD waveform
+  (training mean/std normalisation erases Richter `A`)
+
+**Magnitude (single-station, interpretable).**
+
+\[
+M \approx a\log_{10}A + b\log_{10}(D+1) + c + s_{\text{station}}
+\]
+
+with separate ml/md fits. On a 599-event val slice
+(`outputs/interpretable_ceiling_run28/`):
+
+| Model | R² | MAE |
+|-------|---:|----:|
+| Richter `logA+logD` | 0.705 | 0.40 |
+| + station/network site terms | 0.799 | 0.32 |
+| + ml/md stratified site models | **0.809** | **0.32** |
+
+Site lookup tables: `site_terms.csv` / `network_terms.csv`. Causal shape adds
+little once raw amplitude is restored; it is the right lever for **path /
+structure**, not for chasing R²→0.95 (single-station ceiling ≈0.83–0.85 here).
+
+**Geography / structure.** Shape ↔ path-region Cramér's V ≈ **0.37** and stays
+≈0.37 inside the 0–50 km distance bin. Distance-detrended coda residual
+(Cohen's *d*): `impulsive_fastQ` ≈ −1.0 (faster decay / lower Q), concentrated
+near +35/−125; `slow_coda` ≈ +1.1 (slower decay), enriched near +15/−160.
+
+**Pattern-routed picking (MVP).** Coarse features → nearest prototype → policy
+(skip / crop / bypass NC). Dense coarse grids fail while the backbone is
+grid-locked; use after run29 or with native-grid det-gating
+(`forward_det_only`). Pipeline: `logs/run_pattern_library_pipeline.sh`.
+
+## III.4 Reparameterization → physical equations
 
 Discovery is not only correlation tables. A parallel track **reparameterizes**
 trained internals into analytic or classical forms that can be compared to
