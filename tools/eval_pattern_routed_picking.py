@@ -213,6 +213,17 @@ def main() -> None:
             )
             decision = lib.route(coarse)
             pol = decision.policy
+            # Safety net: never skip when coarse det says "event".
+            if pol.skip_pick and float(coarse.get("det", 0.0)) >= args.det_threshold:
+                pol = PatternPolicy(
+                    name=f"{pol.name}_det_keep",
+                    skip_pick=False,
+                    bypass_noise_cancel=False,
+                    crop_around="none",
+                )
+                decision = RouteDecision(
+                    decision.pattern_id, decision.name, decision.distance, pol, coarse
+                )
         if device.type == "cuda":
             torch.cuda.synchronize()
         coarse_ms = (time.perf_counter() - t1) * 1000.0
@@ -267,11 +278,15 @@ def main() -> None:
         stats["routed"]["n"] += 1
 
         # Feedback is an offline bookkeeping step, so it stays out of the timing.
+        # Only bump confirm/reject counts — do NOT EMA-update centres with fine
+        # features (that drifts prototypes off the coarse routing manifold).
         if args.feedback:
-            feat_fine = extract_pattern_features(
-                model, x, t, pick_threshold=args.pick_threshold, bypass_noise_cancel=False
+            lib.update_from_fine(
+                decision.pattern_id,
+                coarse,
+                confirmed=confirmed,
+                update_center=False,
             )
-            lib.update_from_fine(decision.pattern_id, feat_fine, confirmed=confirmed)
 
         if (bi + 1) % 100 == 0:
             print(f"[pattern-route] {bi+1}/{len(ds)}", flush=True)

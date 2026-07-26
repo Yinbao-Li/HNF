@@ -28,6 +28,8 @@ import torch.nn.functional as F
 
 # Kernel params (gamma/omega/wave_speed) are model-level constants — identical for
 # every trace — so they carry no clustering signal and are deliberately excluded.
+# Per-trace kernel *rows* (ρ-modulated causal support) belong in the interpretability
+# suite (``hnf/kernel_response.py`` + causal chain), not in this cheap router.
 # rho and the energy ratio span many orders of magnitude, hence the log versions.
 FEATURE_NAMES: tuple[str, ...] = (
     "det",
@@ -254,9 +256,24 @@ def _policy_from_cluster_stats(
     mean_det: float,
     mean_p_peak: float,
 ) -> PatternPolicy:
+    """Assign a route policy from labelled cluster stats.
+
+    Critical: never ``noise_skip`` an event-majority cluster. Coarse grids can
+    collapse det/P peaks (especially before grid-invariance FT), and the old
+    ``mean_det < 0.35`` rule then skipped almost every event → F1≈0.
+    """
     n = max(n_event + n_noise, 1)
     noise_frac = n_noise / n
-    if noise_frac >= 0.7 or (mean_det < 0.35 and mean_p_peak < 0.25):
+    event_frac = n_event / n
+    # Only skip when the cluster is clearly noise-dominated.
+    if noise_frac >= 0.7 and event_frac < 0.35:
+        return PatternPolicy(
+            name="noise_skip",
+            skip_pick=True,
+            bypass_noise_cancel=True,
+            crop_around="none",
+        )
+    if event_frac < 0.35 and mean_det < 0.35 and mean_p_peak < 0.25:
         return PatternPolicy(
             name="noise_skip",
             skip_pick=True,
@@ -418,8 +435,18 @@ class PatternLibrary:
         *,
         confirmed: bool,
         ema: float = 0.05,
+        update_center: bool = False,
     ) -> None:
-        """High-precision outcome feeds back into the matched prototype."""
+        """Record a high-precision outcome for the matched prototype.
+
+        By default only confirm/reject counters move. Updating the centre with
+        *fine*-grid features while routing on *coarse*-grid features drifts the
+        prototypes off the routing manifold (observed: after a few hundred
+        updates almost every trace nearest-neighbours the noise_skip prototype
+        and routed F1 collapses to ~0.05). Set ``update_center=True`` only when
+        ``feat_fine`` lives in the same feature space as routing (e.g. both
+        coarse, or both native).
+        """
         proto = None
         for p in self.prototypes:
             if p.pattern_id == pattern_id:
@@ -429,10 +456,11 @@ class PatternLibrary:
             return
         if confirmed:
             proto.n_confirm += 1
-            v = features_to_vector(feat_fine, self.feature_names)
-            c = np.asarray(proto.center, dtype=np.float64)
-            proto.center = ((1.0 - ema) * c + ema * v).tolist()
             proto.count += 1
+            if update_center:
+                v = features_to_vector(feat_fine, self.feature_names)
+                c = np.asarray(proto.center, dtype=np.float64)
+                proto.center = ((1.0 - ema) * c + ema * v).tolist()
         else:
             proto.n_reject += 1
 

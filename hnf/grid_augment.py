@@ -106,3 +106,31 @@ def iter_grid_lens(lens: Iterable[int], base_len: int) -> list[int]:
     """Validation grids, always including the native one for comparison."""
     out = sorted({int(v) for v in lens} | {int(base_len)})
     return out
+
+
+def clamp_kernel_windows_for_grid(
+    model: torch.nn.Module,
+    seq_len: int,
+    *,
+    max_band_bins: int = 200,
+    window_sec: float = 60.0,
+) -> float:
+    """Shrink Huygens ``local_window_sec`` so sparse bands stay ≤ ``max_band_bins``.
+
+    At 800 pts / 15 s the band is ~200 bins; the same *physical* 15–20 s window
+    at 6000 pts is 1500–2000 bins and OOMs an 11 GB card. Clamping keeps compute
+    roughly grid-invariant (physical light-cone shrinks on denser grids).
+
+    Returns the effective max window in seconds applied this call.
+    """
+    if max_band_bins <= 0 or seq_len <= 0:
+        return float("inf")
+    max_sec = float(max_band_bins) * float(window_sec) / float(seq_len)
+    for m in model.modules():
+        lw = getattr(m, "local_window_sec", None)
+        if lw is None:
+            continue
+        if not hasattr(m, "_base_local_window_sec"):
+            m._base_local_window_sec = float(lw)
+        m.local_window_sec = min(float(m._base_local_window_sec), max_sec)
+    return max_sec

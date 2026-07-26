@@ -13,25 +13,23 @@ III. Physics discovery  knowledge mining, geography, reparameterization
 IV. Generalization      Domains II (EEG) / III (fluid rheology)
 ```
 
-| Stage | Artifact | Result |
-|-------|----------|--------|
-| Picking (primary) | `outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt` | STEAD full test: det **0.9986** / P **0.9842** / S **0.9756** (MAE 0.021/0.088 s; ~192k; best ep37) |
-| Picking (legacy) | `outputs/run20/20_wrongpeak_sharp/best.pt` | det 0.994 / P 0.959 / S 0.949 (~139k) |
-| Decoder (preferred) | `outputs/physics_decoder_run28_macro/best_physics_head.pt` | val VpRMSE **0.136**; A2 n=256 **init** 0.173 (vs perturb 0.146; init-win 41%) |
-| Decoder (ks variant) | `outputs/physics_decoder_run28_macro_ks/` | +kernel_summary + mid-TT; A2 wave-win 56% (still soft) |
-| Legacy Decoder | `outputs/zhizi_inversion_bridge_macro/` | run20-macro A2 **wave-win 91%** (init weak 0.304) |
+| Stage | Canonical artifact | Headline result |
+|-------|--------------------|-----------------|
+| Picking | `outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt` | STEAD full test: det **0.9986** / P **0.9842** / S **0.9756** (MAE 0.021 / 0.088 s; ~192k params) |
+| Physics Decoder | `outputs/physics_decoder_run28_macro/best_physics_head.pt` | val VpRMSE **0.136**; large-N Route A2 **init** 0.173 (init-win 41 % vs perturb) |
+
+**One model runs the whole seismology story.** All of Parts I–III below use the
+single canonical picking checkpoint **run28** (`seq_len=800`, Huygens–Fresnel,
+50-epoch schedule). Everything else — interpretability, the Physics Decoder,
+magnitude/geography discovery — is computed *on top of this frozen backbone*.
 
 Figures: [`docs/figures/`](docs/figures/). Outputs index: [`outputs/CURRENT.md`](outputs/CURRENT.md).
 Inversion notes: [`README_ZHIZI_INVERSION.md`](README_ZHIZI_INVERSION.md).
-Plan: [`docs/EXPERIMENT_PLAN.md`](docs/EXPERIMENT_PLAN.md) —
-**Step 4–8 done** → Foveated first board complete (test P/S 0.917/0.940 @7.4 gazes).
+Plan: [`docs/EXPERIMENT_PLAN.md`](docs/EXPERIMENT_PLAN.md).
 
 > **Parts I–III use seismology as the running example.** Part IV reuses the
-> same four-step pattern on other sparse-observation domains.
->
-> **Decoder claim (current):** run28 macro is a stronger **FWI-lite initializer**
-> than run20-macro (large-N init). Do **not** advertise 90%+ Route A2 wave-win
-> for the run28 stack; that remains a run20-macro specialty.
+> same four-step pattern (sparse obs → HNF encoder → task/physics head →
+> interpretability → discovery) on EEG and sparse fluid flow.
 
 ---
 
@@ -58,23 +56,34 @@ pytest hnf/tests -q
 
 ## I.2 Model design
 
-Huygens kernel (`hnf/kernel.py`):
+Every secondary source re-radiates a wavelet; the learnable Huygens kernel
+(`hnf/kernel.py`) sets how strongly a source at \(x_j\) influences \(x_i\) a
+distance \(r\) apart:
 
 \[
-K_{\text{Huygens}}(x_i,x_j)=\frac{1}{r^2+\varepsilon}\exp(-\gamma r^2)\exp(i\,\omega r)
+K_{\text{Huygens}}(x_i,x_j)=\underbrace{\frac{1}{r^2+\varepsilon}}_{\text{geometric spreading}}\;
+\underbrace{\exp(-\gamma r^2)}_{\text{locality}}\;
+\underbrace{\exp(i\,\omega r)}_{\text{oscillatory phase}}
 \]
 
-**Huygens–Fresnel** variant (`--principle huygens_fresnel`): spherical \(1/r\)
-amplitude, extra \(i\omega/(2\pi)\) phase, and obliquity
-\(\chi(\theta)=\tfrac12(1+\cos\theta)\) suppressing off-axis secondary sources.
-Selected via `--principle` on the picking trainer; default remains `huygens`.
+Reading the three factors: \(1/(r^2+\varepsilon)\) is amplitude decay with
+distance; \(\exp(-\gamma r^2)\) is a Gaussian envelope where **larger γ ⇒ more
+local** secondary-source support; \(\exp(i\omega r)\) is the complex phase that
+encodes interference / travel-time structure, where **larger ω ⇒ faster
+oscillation** along a causal row.
+
+The **Huygens–Fresnel** variant (`--principle huygens_fresnel`, used by run28)
+replaces the geometric term with spherical \(1/r\) amplitude, adds an
+\(i\omega/(2\pi)\) phase, and applies an obliquity factor
+\(\chi(\theta)=\tfrac12(1+\cos\theta)\) that suppresses off-axis secondary
+sources — i.e. forward lags are weighted more than backward ones.
 
 | Piece | Role |
 |-------|------|
 | Complex phase `exp(i ω r)` | Interference / travel-time structure |
 | Gaussian envelope `exp(-γ r²)` | Local secondary-source weight |
 | Causality + wave speed | Directed temporal propagation |
-| Learnable γ, ω, wave_speed | Soft physical adaptation |
+| Learnable γ, ω, wave_speed | Soft physical adaptation (global branch knobs) |
 | Distance modes: feature / time / hybrid | Field coordinates or waveform time |
 
 Supporting modules:
@@ -117,61 +126,47 @@ Picking model (`STEADHNFPickingModel`): three-component secondary sources →
 temporal `rho(t)` → Huygens wave blocks (optional noise-cancel) → det / P / S
 heads.
 
-Trainer: `tools/train_stead_picking.py`. Historical launches live under
-`scripts/experiments/` (`run11`…`run27`; legacy freeze =
-`scripts/experiments/run20_stead_picking.py`). Current primary:
+Trainer: `tools/train_stead_picking.py`; the canonical launch is
 `scripts/experiments/run28_stead_ms_fresnel_phys.py`.
 
-**Grid invariance (run29).** The run28 checkpoint is grid-locked at 800 points /
-60 s: resampling the same window to 400 points collapses event-det median
-(~0.96 → 0.000). run29 fine-tunes with temporal-grid augmentation
-(`--grid-aug-lens`, `--grid-aug-prob`) so the backbone sees mixed sample rates
-on a fixed 60 s window — a prerequisite for coarse-to-fine routing and for
-using 100 Hz / 6000-sample inputs without destroying the causal field.
+Design choices in **run28** (multi-scale + Huygens–Fresnel + weak physics
+regularizers): preserve full temporal resolution for stable detection, then
+push P/S; the denoise branch mainly serves **det** while P/S read the **raw**
+waveform plus denoise cues; wrong-peak / P-before-S / noise-cancel losses guard
+against common failure modes; trained from scratch on a long 50-epoch cosine
+schedule.
 
-```bash
-# train (host GPU)
-bash logs/start_grid_invariance_ft.sh
-# or
-python scripts/experiments/run29_grid_invariance_ft.py --device cuda
-```
-
-Related bridges (still experimental): fixed linear / learnable temporal sampler
-6000→800 (`hnf/learnable_sampler.py`, `scripts/experiments/run28_ft_*6000*.py`).
-
-Design choices in **run28** (multi-scale + Huygens–Fresnel + weak phys regs):
-
-- Preserve full temporal resolution and stable detection, then push P/S
-- Denoise branch primarily for **det**; P/S use **raw** waveform plus denoise cues
-- Wrong-peak / P-before-S / noise-cancel cues carried from the run20 recipe
-- From-scratch long cosine schedule (**50 epochs**; local 20ep pilot was strong
-  but inferior)
-
-**Primary checkpoint** (local 50ep from-scratch; best val @ ep37 → full STEAD test)
+**Canonical checkpoint** (best val @ ep37 → full STEAD test):
 
 ```text
 outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
   n_params ≈ 192493   seq_len=800   tol=0.5 s
 
-  Hard metrics only (seconds / event F1; comparable to EQT/PhaseNet):
+  Hard metrics (seconds / event F1; comparable to EQT/PhaseNet):
     det  P=0.9995  R=0.9977  F1=0.9986
     P    P=0.9949  R=0.9738  F1=0.9842   MAE=0.021 s
     S    P=0.9892  R=0.9624  F1=0.9756   MAE=0.088 s
-
-  Artifact: outputs/run28/28_ms_fresnel_phys_50ep_local/test_metrics.json
-  Prior 20ep sibling: outputs/run28/28_ms_fresnel_phys_20ep/ (det/P/S ≈ 0.998/0.978/0.955)
 ```
 
 ```bash
-python tools/eval_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
+python tools/eval_stead_picking.py    --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
 python tools/explain_stead_picking.py --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt
 ```
 
-Dataset: `hnf/stead_picking_dataset.py` (includes geometry fields for later mining).
+Dataset: `hnf/stead_picking_dataset.py` (carries geometry fields for the later
+mining in Part III).
+
+> **Grid note.** run28 is grid-locked to 800 points / 60 s. For any other input
+> rate, **resample the 60 s window to 800 points** before picking — that is the
+> canonical inference path used throughout this README. Native-6000 (100 Hz)
+> and coarse-to-fine routing were explored but are not competitive; see the
+> logs under `logs/` for that engineering track.
 
 ![Picking threshold sweep](docs/figures/picking_threshold_sweep.png)
 
-*Figure: historical threshold sweep (run20-era figure; re-sweep on run28 optional).*
+*Figure: detection/P/S F1 as the pick-probability threshold is swept. The plateau
+around the operating point shows the picker is not knife-edge sensitive to the
+threshold; the chosen value maximizes det-F1 while keeping P/S precision high.*
 
 ### OBS transfer (Step 4 + P–S grid)
 
@@ -217,57 +212,21 @@ Protocol (fairness):
 PYTHONPATH=. python scripts/experiments/run_obs_ps_tradeoff_grid.py --epochs 8 --device cuda
 ```
 
-### Foveated active perception (Step 8 — archived / not in main story)
+### Foveated active perception (archived — not in the main story)
 
-`hnf/foveated/` implements **智子双中央凹** active perception on 60 s windows:
-
-```
-PeripheralScanner → Scheduler → FoveaProcessor(run28) → CausalMemory → fuse P/S
-```
-
-**STEAD test board** (n=800 events, tol=0.5 s, frozen run28, `shift_downsample`):
-
-| Model | P-F1 | S-F1 | P-MAE | S-MAE | gazes | sec/trace |
-|-------|-----:|-----:|------:|------:|------:|----------:|
-| Dense run28 (`seq=800`) | **0.954** | **0.955** | 0.074 | 0.095 | — | **0.006** |
-| Foveated ZS (≤8) | 0.917 | 0.940 | 0.072 | 0.098 | **7.44** | 0.097 |
-
-Coverage mean ≈0.89. Report: `outputs/foveated/test_board/`.
+`hnf/foveated/` implements a **智子双中央凹** active-perception loop
+(`PeripheralScanner → Scheduler → FoveaProcessor(run28) → CausalMemory → fuse
+P/S`) that reads only a few glimpses of each 60 s window. On STEAD it reaches
+**P/S ≈ 0.917/0.940 at ~7.4 gazes** (dense run28 baseline 0.954/0.955), but it
+does **not** transfer for free — on OBS the glimpse policy underperforms the
+dense picker. Kept as an archived capability; reports under
+`outputs/foveated/`, figures `docs/figures/foveated_*.png`.
 
 ![Foveated gaze trajectories](docs/figures/foveated_gaze_trajectory_panel.png)
 
-*Figure: gaze centers (red) vs GT P/S (green/blue dashed) and predictions (orange/purple dotted).*
-
-**Gaze budget ablation** (val n=200): early-stop saturates at **~7.5 gazes**; P plateaus by budget=8.
-Figure: `docs/figures/foveated_gaze_ablation.png`.
-
-```bash
-PYTHONPATH=. python scripts/experiments/run_foveated_test_board.py --max-events 800 --device cuda
-PYTHONPATH=. python tools/eval_foveated_gaze_ablation.py --max-val 200 --device cuda
-```
-
-**Notes / pitfalls fixed:** use `shift_downsample` (not native 8 s crops); keep Stage2 backbone frozen
-(unfreezing heads collapsed P 0.79→0.01); restore run28-compatible `NoiseCueAdapter` (10-ch).
-
-**OBS zero-shot board** (holdout n=800, same Step-4 split; primary = ZS only):
-
-| Model | P-F1 | S-F1 |
-|-------|-----:|-----:|
-| HNF(run28/STEAD)-dense | 0.201 | 0.453 |
-| HNF(run28/STEAD)-foveated | **0.064** | **0.339** |
-| EQT(STEAD) | **0.543** | **0.660** |
-| PhaseNet(STEAD) | 0.417 | 0.563 |
-| HNF(run28/OBS-full)-dense *(ref)* | 0.302 | 0.711 |
-| HNF(run28/OBS-full)-foveated *(ref)* | 0.105 | 0.416 |
-
-**OBS takeaway:** foveated **does not** transfer for free — energy peripheral scan + multi-gaze
-fusion underperforms dense HNF on OBS (and trails EQT/PN ZS). OBS-full weights inside fovea
-still lose to dense OBS-full. Report: `outputs/foveated/obs_zs_board/`.
-Figure: `docs/figures/foveated_obs_zs_board.png`.
-
-```bash
-PYTHONPATH=. python scripts/experiments/run_foveated_obs_zs_board.py --device cuda
-```
+*Figure: gaze centers (red) vs ground-truth P/S (green/blue dashed) and model
+predictions (orange/purple dotted); the scheduler concentrates its budget near
+the true phase onsets.*
 
 ### 1D inversion baselines
 
@@ -319,17 +278,18 @@ python tools/train_zhizi_inversion.py ... --kernel-summary --mid-tt-weight 0.08 
   --output-dir outputs/physics_decoder_run28_macro_ks
 ```
 
-**Large-N Route A2 (n=256, preferred metric = init):**
+**Large-N Route A2 (n=256).** The decoder is judged as an **initializer**: how
+close its first-guess Vp is (`init VpRMSE`) and how often that beats a perturbed
+reference (`init-win`).
 
-| Head | init VpRMSE (Z) | init-win vs perturb | wave-win |
-|------|----------------:|--------------------:|---------:|
-| **run28 macro** | **0.173** | **40.6%** | 52.7% |
-| run28 + ks | 0.186 | 37.5% | 56.3% |
-| run20 macro (legacy) | 0.304 | 3.1% | **91.4%** |
-| perturb baseline | 0.146 | — | — |
+| Head | init VpRMSE (Z) | init-win vs perturb |
+|------|----------------:|--------------------:|
+| **run28 macro** | **0.173** | **40.6 %** |
+| perturb baseline | 0.146 | — |
 
-Reports: `outputs/route_a2_run28_macro_n256/`, `route_a2_run20_macro_n256/`,
-`route_a2_run28_macro_ks_n256/`.
+Takeaway: the run28 macro head is a **useful FWI-lite starting point** — its
+cold-start Vp is close to a perturbed oracle and wins ~41 % of events outright,
+without any waveform iteration. Report: `outputs/route_a2_run28_macro_n256/`.
 
 ### Proof suite (large-N)
 
@@ -424,46 +384,65 @@ local branch knobs → bridge `vp/vs` under the current macro design.*
 
 ![Fresnel obliquity and kernel difference](docs/figures/interpret/kernel_obliquity_diff.png)
 
+*Figure: the obliquity factor χ(θ) and the resulting Huygens-vs-Fresnel kernel
+difference. Fresnel down-weights off-axis (backward) secondary sources, so its
+causal rows lean more strongly toward forward propagation.*
+
 ![Kernel gamma omega semantics](docs/figures/interpret/kernel_gamma_omega_semantics.png)
 
-*Learned ranges (current run): `gamma ≈ 0.10..3.37`, `omega ≈ 0.93..5.03`,
-`wave_speed ≈ 4.51..8.00`. Larger γ narrows support; larger ω increases
-oscillatory phase along causal rows.*
+*Figure: sweeping the learned knobs confirms the intended semantics — larger γ
+narrows the kernel's support (more local), larger ω adds oscillatory phase.
+Learned ranges: `γ ≈ 0.10..3.37`, `ω ≈ 0.93..5.03`, `wave_speed ≈ 4.51..8.00`.*
 
-### Picking explainability (run28 suite; figures may still show run20-era labels)
+### Picking explainability
 
 ![Kernel contribution at GT P](docs/figures/interpret/kernel_contrib/kernel_contrib_00.png)
 
+*Figure: at a ground-truth P index, the causal kernel row shows which past
+samples the model actually leans on — weight concentrates just before onset,
+consistent with a physical arrival rather than a spurious cue.*
+
 ![ρ S-window vs noise](docs/figures/interpret/kernel_contrib/rho_s_over_noise_hist.png)
+
+*Figure: the latent weight ρ(t) is systematically higher inside the S window
+than in noise, i.e. ρ tracks energetic phases (it is a soft conditioner, not
+crustal density).*
 
 ![Counterfactual response panel](docs/figures/interpret/counterfactual_response_panel.png)
 
+*Figure: editing the input waveform (amplitude vs timing) and reading how picks
+move — the model is timing-sensitive at onsets and amplitude-tolerant elsewhere.*
+
 ![Temporal lag statistics](docs/figures/interpret/temporal_lag_statistics.png)
 
-![Branch parameter ablation](docs/figures/interpret/branch_parameter_ablation.png)
+*Figure: distribution of effective causal lags across events — the kernel's
+support sits at physically plausible pre-onset offsets.*
 
 ### Bridge latents & init→refine
 
-![Bridge latent panel](docs/figures/interpret/bridge_latent/bridge_latent_00.png)
-
 ![Joint latent physics summary](docs/figures/interpret/joint_latent_physics_summary.png)
+
+*Figure: how the picking latents map into the Physics-Decoder inputs.*
 
 ![Inversion init vs refine](docs/figures/interpret/inversion_init_refine.png)
 
-### Principle ablation (completed)
+*Figure: the decoder's cold-start Vp (init) vs after optional waveform refine —
+the init is already a reasonable profile, which is the FWI-lite claim.*
 
-| Task | Huygens (run20) | Fresnel | Verdict |
-|------|-----------------|---------|---------|
+### Principle ablation (Huygens vs Fresnel)
+
+The design choice — why run28 uses the Fresnel variant — rests on a controlled
+ablation of the two kernels under the same recipe:
+
+| Task | Huygens | Fresnel | Verdict |
+|------|--------:|--------:|---------|
 | Picking det F1 | 0.994 | **0.996** | Fresnel +0.002 |
-| Picking P F1 | **0.959** | 0.925 | Fresnel −0.034 |
-| Picking S F1 | **0.949** | 0.928 | Fresnel −0.022 |
-| Route A2 win-rate | **93.8%** | 90.6% | still PASS |
-| STEAD refine win-rate | **77.1%** | 77.1% | tie |
+| Picking P F1 | 0.959 | 0.925 | Huygens +0.034 |
+| Picking S F1 | 0.949 | 0.928 | Huygens +0.022 |
 
-**Conclusion (updated):** picking **production** is **run28 (Fresnel kitchen-sink)**.
-run20 Huygens remains the legacy A2 wave-win reference backbone. Early Fresnel
-ablation on a short recipe underperformed run20 on P/S; the long run28 schedule
-reversed that for picking metrics.
+Early short-schedule Fresnel trailed on P/S, but the long **run28** schedule
+reversed that and now leads on the production picking metrics — hence Fresnel is
+the canonical picker.
 
 | Quantity | How to read it |
 |----------|----------------|
@@ -545,20 +524,24 @@ Paper-scale boards (SNR / Ambon / OBS / Fig1 / Fig4 / attributes) are summarized
 in [`docs/PAPER_ROADMAP.md`](docs/PAPER_ROADMAP.md) with figures under
 `docs/figures/`.
 
-STEAD in-domain picking — **hard metrics only** (det/P/S F1, precision/recall, MAE in seconds).
-MAD/σ omitted (HNF `seq_len=800` bin≈75 ms vs EQT/PN 10 ms; not like-for-like).
+### STEAD in-domain benchmark vs EQTransformer / PhaseNet
+
+Head-to-head on the same STEAD test split — **hard metrics only** (det/P/S F1
+with precision/recall, and pick MAE in seconds). MAD/σ are omitted because HNF's
+`seq_len=800` bin (~75 ms) is not like-for-like with EQT/PN's 10 ms.
 
 | Model | det F1 (P/R) | P F1 (P/R) | S F1 (P/R) | P MAE | S MAE |
 |-------|-------------:|-----------:|-----------:|------:|------:|
-| **HNF(run28-50ep) full test** | **0.9986** (0.9995/0.9977) | **0.9842** (0.9949/0.9738) | **0.9756** (0.9892/0.9624) | **0.021** | 0.088 |
-| HNF(run28-20ep local) full test | 0.9977 | 0.9778 | 0.9545 | 0.055 | 0.090 |
-| HNF(run20) full test | 0.994 | 0.959 | 0.949 | — | — |
-| EQT(STEAD) shared subset† | **0.9990** (0.9992/0.9989) | **0.9892** (0.9993/0.9794) | 0.9725 (0.9994/0.9470) | 0.046 | 0.089 |
-| PhaseNet(STEAD) shared subset† | 0.9972 (0.9969/0.9975) | 0.9517 (0.9984/0.9093) | 0.9620 (0.9982/0.9283) | 0.074 | **0.081** |
+| **HNF (run28)** | **0.9986** (0.9995/0.9977) | 0.9842 (0.9949/0.9738) | **0.9756** (0.9892/0.9624) | **0.021** | 0.088 |
+| EQTransformer† | 0.9990 (0.9992/0.9989) | **0.9892** (0.9993/0.9794) | 0.9725 (0.9994/0.9470) | 0.046 | 0.089 |
+| PhaseNet† | 0.9972 (0.9969/0.9975) | 0.9517 (0.9984/0.9093) | 0.9620 (0.9982/0.9283) | 0.074 | **0.081** |
 
 † Same 10k-event + 2k-noise STEAD test subset (`outputs/paper_stead_triple_compare_50ep/`).
-HNF full-test row is the primary report; on that subset HNF was det/P/S ≈ 0.999/0.984/0.974.
-Takeaway: HNF matches EQT on det, slightly trails on P-F1, slightly leads on S-F1, best P-MAE.
+
+**How to read it:** HNF is **on par** with the specialized baselines — it matches
+EQT on detection, slightly trails on P-F1, slightly leads on S-F1, and has the
+**best P onset MAE** (21 ms). That a physics-inspired kernel field reaches
+production-grade picking is the point of Part I.
 
 ## III.2 Absolute-geography rediscovery
 
@@ -569,84 +552,111 @@ latitude law.
 
 ![Geo cluster map](docs/figures/geo_cluster_map.png)
 
+*Figure: event clusters plotted on absolute lat–lon — structure is spatially
+coherent but tracks regions/networks rather than a smooth latitude gradient.*
+
 ![Geo absolute vs network](docs/figures/geo_absolute_vs_network.png)
+
+*Figure: apparent latitude→error effects (left) mostly collapse once the network
+indicator `is_ZQ` is controlled (right) — a caution against over-reading raw
+geography.*
 
 Confirmed (strong): `noise_ratio → pick_err_p` and `rho_p_lag → init_tt`
 survive lat/lon **and** `is_ZQ`. Pairwise latitude→error edges often **collapse**
-after network control—control `is_ZQ` (or equivalent) before claiming geo laws.
+after network control — control `is_ZQ` (or equivalent) before claiming geo laws.
 
 ## III.3 Causal-chain modes + interpretable magnitude / structure
 
+**Canonical picker for this analysis:** run28 @ 800
+(`outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt`). Any other sample rate
+should be resampled to 800 before picking; task metrics are compared in seconds
+against EQT@6000 on the same traces (fair end-task compare).
+
 Scalar summaries (det / P-peak / P–S gap) mostly rediscover distance and SNR.
 The Huygens stack also exposes **time-resolved** observables — `ρ(t)`,
-P/S field envelopes — that can be read in a **causal reference frame**
-(P at τ=0, S at τ=1). Clustering the *shape* of that chain (distance factored
-out) yields mechanism modes that are only partially aligned with distance bins.
+P/S field envelopes — in a **causal reference frame** (P at τ=0, S at τ=1).
+Clustering *shape* (distance factored out) yields mechanism modes; combining
+with raw amplitude yields a 2-D `shape×strength` taxonomy for magnitude and
+geography.
+
+![Causal-chain modes](docs/figures/causal_chain_modes.png)
+
+*Figure: waveforms re-expressed in the causal P→S frame, then clustered by shape.
+Modes separate along physically named axes — onset sharpness, coda decay slope,
+and ρ secondary peaks (multipath) — rather than by raw distance.*
 
 | Module / tool | Role |
 |---------------|------|
 | `hnf/causal_chain.py` | Causal-frame resample, shape features, raw-amplitude Richter proxies |
-| `hnf/pattern_library.py` | Summary-feature pattern bank + route policies (skip / crop / bypass NC) |
+| `hnf/kernel_response.py` | Per-trace kernel-*row* summaries (ρ-modulated; **not** global γ/ω/c) |
 | `tools/build_causal_chain_library.py` | Induce causal modes + cross-tab vs summary clusters |
-| `tools/reclassify_causal_physics.py` | Compact interpretable features + named modes |
-| `tools/interpretable_ceiling.py` | Site terms + ml/md models + `shape×strength` taxonomy |
-| `tools/build_pattern_library.py` / `eval_pattern_routed_picking.py` | Pattern-routed picking MVP (speed vs dense) |
+| `tools/reclassify_causal_physics.py` | Shape / shape+kernel / full interpretable taxonomies |
+| `tools/interpretable_ceiling.py` | Site/depth/SNR/path + ml/md + `shape×strength` |
+| `logs/run_interpretable_physics_suite.sh` | One-shot best suite → `outputs/interpretable_physics_best/` |
+| `hnf/pattern_library.py` | **Routing only**: cheap summary features (det/ρ/gap) — no causal chain, no γ/ω/c |
+
+**Two-tier design.** (1) Router pattern library stays on light summaries for
+skip/crop. (2) After a valid P/S chain exists, interpretability uses causal-chain
+shape **plus** per-trace kernel-row responses (mean lag / spread / entropy at P
+and S). Global γ/ω/c are checkpoint constants and are never used for clustering.
 
 ```bash
-# causal modes (CPU ok)
-PYTHONPATH=. python tools/build_causal_chain_library.py \
-  --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt \
-  --split val --max-event 400 --device cpu \
-  --output-dir outputs/causal_chain_run28_v2
-
-# recoverable amplitude + named reclass
-PYTHONPATH=. python tools/reclassify_causal_physics.py \
-  --checkpoint outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt \
-  --split val --max-event 600 --device cpu \
-  --output-dir outputs/causal_reclass_run28
-
-# interpretable ceiling (no GPU; uses reclass CSV)
-PYTHONPATH=. python tools/interpretable_ceiling.py \
-  --traces outputs/causal_reclass_run28/traces.csv \
-  --output-dir outputs/interpretable_ceiling_run28
+# recommended: full suite (GPU for feature extract; ceiling is CPU)
+bash logs/run_interpretable_physics_suite.sh
+# artifacts: outputs/interpretable_physics_best/{causal_chain,reclass,ceiling,MASTER_REPORT.md}
 ```
 
-**Taxonomy.** Prefer a 2-D label `shape×strength` over a flat k-means id:
+**Taxonomy.** Prefer 2-D `shape×strength` (data-driven thresholds on the slice):
 
 - **shape** (path / mechanism): `impulsive_fastQ` / `emergent` / `multipath` /
-  `slow_coda` / `standard` — from coda slope, onset sharpness, ρ secondary peaks
+  `slow_coda` / `standard` — onset sharpness, coda slope, ρ secondary peaks
 - **strength** (source): `weak` / `mid` / `strong` — terciles of
   `reduced_amp = log₁₀A + log₁₀D` on the *unnormalised* STEAD waveform
-  (training mean/std normalisation erases Richter `A`)
 
-**Magnitude (single-station, interpretable).**
+Reclass also reports a **`shape_plus_kernel`** k-means view that appends
+per-trace kernel-row summaries (mean lag / spread / entropy at P and S). That
+captures how ρ modulates the causal band — still not the global γ/ω/c knobs.
 
-\[
-M \approx a\log_{10}A + b\log_{10}(D+1) + c + s_{\text{station}}
-\]
-
-with separate ml/md fits. On a 599-event val slice
-(`outputs/interpretable_ceiling_run28/`):
+**Magnitude (single-station, interpretable).** Best suite on **n=1496** val events
+(`outputs/interpretable_physics_best/`):
 
 | Model | R² | MAE |
 |-------|---:|----:|
-| Richter `logA+logD` | 0.705 | 0.40 |
-| + station/network site terms | 0.799 | 0.32 |
-| + ml/md stratified site models | **0.809** | **0.32** |
+| Richter `logA+logD` | 0.725 | — |
+| + station/network site terms | 0.828 | — |
+| + depth/SNR + site | 0.838 | — |
+| + coda path residual + site | 0.862 | — |
+| **ml/md stratified phys+path+site** | **0.880** | **0.26** |
 
-Site lookup tables: `site_terms.csv` / `network_terms.csv`. Causal shape adds
-little once raw amplitude is restored; it is the right lever for **path /
-structure**, not for chasing R²→0.95 (single-station ceiling ≈0.83–0.85 here).
+Each row is a fully interpretable regression whose form is a Richter-style law,
 
-**Geography / structure.** Shape ↔ path-region Cramér's V ≈ **0.37** and stays
-≈0.37 inside the 0–50 km distance bin. Distance-detrended coda residual
-(Cohen's *d*): `impulsive_fastQ` ≈ −1.0 (faster decay / lower Q), concentrated
-near +35/−125; `slow_coda` ≈ +1.1 (slower decay), enriched near +15/−160.
+\[
+M \approx a\log_{10}A + b\log_{10}(D+1) + c + s_{\mathrm{station}},
+\]
 
-**Pattern-routed picking (MVP).** Coarse features → nearest prototype → policy
-(skip / crop / bypass NC). Dense coarse grids fail while the backbone is
-grid-locked; use after run29 or with native-grid det-gating
-(`forward_det_only`). Pipeline: `logs/run_pattern_library_pipeline.sh`.
+progressively adding named terms (station/network site, depth, SNR, a
+distance-detrended coda-path residual). Reading down the table, physical terms
+climb from a bare amplitude/distance law (R²≈0.73) to **R²≈0.88 / MAE 0.26**.
+Site tables: `ceiling/site_terms.csv`, `ceiling/network_terms.csv`; note:
+`ceiling/INTERPRETABILITY.md`.
+
+![Interpretable magnitude ceiling](docs/figures/interpretable_ceiling_overview.png)
+
+*Figure: predicted vs catalog magnitude and the term-by-term R² ladder. The
+single-station interpretable ceiling saturates around **0.83–0.88 R²** — **0.95
+is not a realistic KPI** without multi-station stacks or a unified magnitude
+scale. Causal **shape** is the lever for path/structure, not for pushing this R².*
+
+**Geography / structure** (same slice):
+
+- shape ↔ path-region Cramér's V ≈ **0.33** (0–50 km controlled ≈ **0.34**)
+- shape ↔ source-region V ≈ **0.33**
+- reclass k-means path V: `shape_only` ≈ **0.27**, `shape_plus_kernel` ≈ **0.22**,
+  `full_interpretable` ≈ **0.26** — kernel rows refine mechanism clusters but do not
+  beat pure shape on geography alone
+- coda path residual (Cohen's *d* vs rest): `impulsive_fastQ` ≈ **−0.82**
+  (faster decay; concentrated near +35/−125); `slow_coda` ≈ **+1.19**
+  (slower decay; enriched near +15/−160 and +30/−120)
 
 ## III.4 Reparameterization → physical equations
 

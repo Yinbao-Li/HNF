@@ -38,6 +38,7 @@ from hnf.picking_metrics import (
     update_picking_counts,
 )
 from hnf.grid_augment import (
+    clamp_kernel_windows_for_grid,
     parse_grid_lens,
     resample_batch_to_grid,
     sample_grid_len,
@@ -251,6 +252,13 @@ def parse_args() -> argparse.Namespace:
         "--val-grid-lens",
         default="",
         help="comma list of extra grid lengths to validate on, to track invariance",
+    )
+    p.add_argument(
+        "--grid-max-band-bins",
+        type=int,
+        default=0,
+        help="if >0, clamp Huygens local_window_sec so sparse bands stay ≤ this "
+        "many bins (needed for 2000–6000 grids on ~12 GB GPUs; 0=off)",
     )
     return p.parse_args()
 
@@ -805,6 +813,7 @@ def evaluate(
     nc_noise_suppress_weight: float = 0.2,
     grid_len: Optional[int] = None,
     label_sigma_sec: float = 0.4,
+    grid_max_band_bins: int = 0,
 ) -> dict[str, float]:
     model.eval()
     total_loss = 0.0
@@ -814,6 +823,8 @@ def evaluate(
     if grid_len is not None:
         seq_len = grid_len
     tol = tolerance_bins(seq_len, pick_tolerance_sec)
+    if grid_max_band_bins > 0:
+        clamp_kernel_windows_for_grid(model, seq_len, max_band_bins=grid_max_band_bins)
 
     for batch in loader:
         batch = move_batch_to_device(batch, device)
@@ -1010,6 +1021,12 @@ def train() -> None:
     if grid_aug_lens:
         print(
             f"[grid-aug] lens={grid_aug_lens} prob={args.grid_aug_prob} base={args.seq_len}",
+            flush=True,
+        )
+    if args.grid_max_band_bins > 0:
+        print(
+            f"[grid-aug] max_band_bins={args.grid_max_band_bins} "
+            f"(at L=6000 → window≤{args.grid_max_band_bins * 60 / 6000:.2f}s)",
             flush=True,
         )
 
@@ -1245,6 +1262,16 @@ def train() -> None:
                 batch = resample_batch_to_grid(
                     batch, step_seq_len, label_sigma_sec=args.label_sigma_sec
                 )
+            if args.grid_max_band_bins > 0:
+                clamp_kernel_windows_for_grid(
+                    model, step_seq_len, max_band_bins=args.grid_max_band_bins
+                )
+            if (
+                args.grid_max_band_bins > 0
+                and step_seq_len >= 4000
+                and device.type == "cuda"
+            ):
+                torch.cuda.empty_cache()
             gap_only = (
                 args.freeze_all_but_gap_epochs > 0
                 and epoch <= args.freeze_all_but_gap_epochs
@@ -1371,6 +1398,7 @@ def train() -> None:
             nc_preserve_weight=args.nc_preserve_weight,
             nc_energy_weight=args.nc_energy_weight,
             nc_noise_suppress_weight=args.nc_noise_suppress_weight,
+            grid_max_band_bins=args.grid_max_band_bins,
         )
         score = picking_score(
             val_metrics,
@@ -1391,6 +1419,7 @@ def train() -> None:
                 post_process_p_before_s=args.post_process_p_before_s,
                 grid_len=gl,
                 label_sigma_sec=args.label_sigma_sec,
+                grid_max_band_bins=args.grid_max_band_bins,
             )
         ep_sec = time.time() - epoch_t0
 
@@ -1500,6 +1529,7 @@ def train() -> None:
         nc_preserve_weight=args.nc_preserve_weight,
         nc_energy_weight=args.nc_energy_weight,
         nc_noise_suppress_weight=args.nc_noise_suppress_weight,
+        grid_max_band_bins=args.grid_max_band_bins,
     )
     test_metrics["best_epoch"] = ckpt["epoch"]
     test_metrics["val_score_at_best"] = ckpt["score"]

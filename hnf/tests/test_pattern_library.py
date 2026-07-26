@@ -46,6 +46,21 @@ def test_kmeans_library_build_and_route():
     assert d.policy.skip_pick or "noise" in d.policy.name or d.policy.name == "noise_skip"
 
 
+def test_event_majority_cluster_never_noise_skip():
+    """Collapsed coarse det/P must not skip an event-dominated cluster."""
+    from hnf.pattern_library import _policy_from_cluster_stats
+
+    pol = _policy_from_cluster_stats(
+        n_event=1113,
+        n_noise=8,
+        mean_gap=-1.0,
+        mean_det=0.05,
+        mean_p_peak=0.05,
+    )
+    assert not pol.skip_pick
+    assert pol.name != "noise_skip"
+
+
 def test_feedback_ema_updates_center():
     center = [0.0] * len(FEATURE_NAMES)
     center[FEATURE_NAMES.index("det")] = 0.5
@@ -55,9 +70,13 @@ def test_feedback_ema_updates_center():
     lib = PatternLibrary([proto], mean=np.zeros(len(FEATURE_NAMES)), std=np.ones(len(FEATURE_NAMES)))
     feat = {n: 0.0 for n in FEATURE_NAMES}
     feat["det"] = 1.0
+    # default: counters only
     lib.update_from_fine(0, feat, confirmed=True, ema=0.5)
-    assert abs(lib.prototypes[0].center[FEATURE_NAMES.index("det")] - 0.75) < 1e-6
+    assert abs(lib.prototypes[0].center[FEATURE_NAMES.index("det")] - 0.5) < 1e-6
     assert lib.prototypes[0].n_confirm == 1
+    # explicit centre update stays opt-in
+    lib.update_from_fine(0, feat, confirmed=True, ema=0.5, update_center=True)
+    assert abs(lib.prototypes[0].center[FEATURE_NAMES.index("det")] - 0.75) < 1e-6
 
 
 def test_crop_and_route_shapes():

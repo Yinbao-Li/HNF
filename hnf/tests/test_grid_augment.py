@@ -107,3 +107,28 @@ def test_sample_grid_len_respects_prob() -> None:
         for _ in range(200)
     }
     assert drawn == {400, 800, 1200}
+
+
+def test_clamp_kernel_windows_for_grid() -> None:
+    from hnf.grid_augment import clamp_kernel_windows_for_grid
+
+    class _K(torch.nn.Module):
+        def __init__(self, w: float):
+            super().__init__()
+            self.local_window_sec = w
+
+    class _M(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.k_short = _K(8.0)
+            self.k_long = _K(20.0)
+
+    m = _M()
+    # At L=6000 with max 200 bins → ≤2.0 s
+    assert clamp_kernel_windows_for_grid(m, 6000, max_band_bins=200) == pytest.approx(2.0)
+    assert m.k_short.local_window_sec == pytest.approx(2.0)
+    assert m.k_long.local_window_sec == pytest.approx(2.0)
+    # At L=800 → ≤15 s; short stays 8, long clamps 20→15
+    clamp_kernel_windows_for_grid(m, 800, max_band_bins=200)
+    assert m.k_short.local_window_sec == pytest.approx(8.0)
+    assert m.k_long.local_window_sec == pytest.approx(15.0)

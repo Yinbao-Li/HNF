@@ -4,14 +4,11 @@
 
 Takes the feature table from ``reclassify_causal_physics.py`` (no GPU needed) and:
 
-1. Fits a Richter base ``M ~ logA + logD`` then additive **station / network**
-   residual corrections (classic site terms — still a lookup table).
-2. Trains **separate** models for ``ml`` and ``md`` (mixed scales were a
-   major residual source).
-3. Relabels every trace with a 2-D interpretable tag
-   ``{shape}×{strength}`` instead of a flat k-means id.
-4. Reports magnitude R²/MAE and clustering discrimination via region Cramér's V
-   and coda path-residual effect sizes (not silhouette).
+1. Fits Richter ``M ~ logA + logD`` then additive **station / network** site terms.
+2. Extends with interpretable covariates (depth, SNR, coda path residual) under CV.
+3. Trains **separate** models for ``ml`` / ``md`` and pools predictions.
+4. Relabels every trace with ``{shape}×{strength}`` (data-driven shape thresholds).
+5. Reports magnitude R²/MAE and geography Cramér's V + path-residual effect sizes.
 
 Example:
   PYTHONPATH=. python tools/interpretable_ceiling.py \\
@@ -38,58 +35,72 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def richter_coef(log_a: np.ndarray, log_d: np.ndarray, y: np.ndarray) -> np.ndarray:
-    x = np.column_stack([log_a, log_d, np.ones(len(y))])
+def _lstsq(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     coef, _, _, _ = np.linalg.lstsq(x, y, rcond=None)
     return coef
+
+
+def richter_coef(log_a: np.ndarray, log_d: np.ndarray, y: np.ndarray) -> np.ndarray:
+    x = np.column_stack([log_a, log_d, np.ones(len(y))])
+    return _lstsq(x, y)
 
 
 def apply_richter(coef: np.ndarray, log_a: np.ndarray, log_d: np.ndarray) -> np.ndarray:
     return coef[0] * log_a + coef[1] * log_d + coef[2]
 
 
-def cv_site_corrected(
+def design_matrix(df: pd.DataFrame, cols: list[str]) -> np.ndarray:
+    mats = []
+    for c in cols:
+        v = df[c].to_numpy(dtype=float)
+        v = np.nan_to_num(v, nan=float(np.nanmedian(v[np.isfinite(v)])) if np.isfinite(v).any() else 0.0)
+        mats.append(v)
+    mats.append(np.ones(len(df)))
+    return np.column_stack(mats)
+
+
+def cv_linear(
     df: pd.DataFrame,
+    feature_cols: list[str],
     *,
-    min_station: int,
     seed: int,
     n_folds: int = 5,
+    site: bool = False,
+    min_station: int = 3,
 ) -> dict:
-    """Richter + additive station (fallback network) residual correction, 5-fold CV."""
+    """Ordinary least squares (+ optional additive site terms) under 5-fold CV."""
     y = df["mag"].to_numpy(dtype=float)
-    log_a = df["log_peak_amp"].to_numpy(dtype=float)
-    log_d = np.log10(df["dist_km"].to_numpy(dtype=float) + 1.0)
-    stations = df["station"].astype(str).to_numpy()
-    networks = df["network"].astype(str).to_numpy()
+    x_all = design_matrix(df, feature_cols)
+    stations = df["station"].astype(str).to_numpy() if site else None
+    networks = df["network"].astype(str).to_numpy() if site else None
     n = len(y)
     rng = np.random.default_rng(seed)
     idx = rng.permutation(n)
     folds = np.array_split(idx, n_folds)
     preds = np.full(n, np.nan)
-    site_tables = []
 
     for fi in range(n_folds):
         te = folds[fi]
         tr = np.concatenate([folds[j] for j in range(n_folds) if j != fi])
-        coef = richter_coef(log_a[tr], log_d[tr], y[tr])
-        base_tr = apply_richter(coef, log_a[tr], log_d[tr])
-        resid_tr = y[tr] - base_tr
-
-        st_sums: dict[str, list[float]] = {}
-        net_sums: dict[str, list[float]] = {}
-        for s, net, r in zip(stations[tr], networks[tr], resid_tr):
-            st_sums.setdefault(s, []).append(float(r))
-            net_sums.setdefault(net, []).append(float(r))
-        st_mean = {s: float(np.mean(v)) for s, v in st_sums.items() if len(v) >= min_station}
-        net_mean = {s: float(np.mean(v)) for s, v in net_sums.items() if len(v) >= min_station}
-        site_tables.append({"fold": fi, "n_stations": len(st_mean), "n_networks": len(net_mean)})
-
-        base_te = apply_richter(coef, log_a[te], log_d[te])
-        corr = np.array(
-            [st_mean.get(stations[i], net_mean.get(networks[i], 0.0)) for i in te],
-            dtype=float,
-        )
-        preds[te] = base_te + corr
+        coef = _lstsq(x_all[tr], y[tr])
+        base_tr = x_all[tr] @ coef
+        base_te = x_all[te] @ coef
+        if site:
+            resid_tr = y[tr] - base_tr
+            st_sums: dict[str, list[float]] = {}
+            net_sums: dict[str, list[float]] = {}
+            for s, net, r in zip(stations[tr], networks[tr], resid_tr):
+                st_sums.setdefault(s, []).append(float(r))
+                net_sums.setdefault(net, []).append(float(r))
+            st_mean = {s: float(np.mean(v)) for s, v in st_sums.items() if len(v) >= min_station}
+            net_mean = {s: float(np.mean(v)) for s, v in net_sums.items() if len(v) >= min_station}
+            corr = np.array(
+                [st_mean.get(stations[i], net_mean.get(networks[i], 0.0)) for i in te],
+                dtype=float,
+            )
+            preds[te] = base_te + corr
+        else:
+            preds[te] = base_te
 
     ss_res = float(((y - preds) ** 2).sum())
     ss_tot = float(((y - y.mean()) ** 2).sum()) + 1e-12
@@ -98,47 +109,43 @@ def cv_site_corrected(
         "mae": round(float(np.abs(y - preds).mean()), 3),
         "rmse": round(float(np.sqrt(((y - preds) ** 2).mean())), 3),
         "n": int(n),
-        "site_tables": site_tables,
+        "features": list(feature_cols),
         "predictions": preds,
         "residuals": y - preds,
     }
 
 
+def cv_site_corrected(df: pd.DataFrame, *, min_station: int, seed: int) -> dict:
+    """Backward-compatible Richter + site wrapper."""
+    d = df.copy()
+    d["log_d"] = np.log10(d["dist_km"].to_numpy(float) + 1.0)
+    return cv_linear(
+        d,
+        ["log_peak_amp", "log_d"],
+        seed=seed,
+        site=True,
+        min_station=min_station,
+    )
+
+
 def richter_only_cv(df: pd.DataFrame, seed: int = 0) -> dict:
-    y = df["mag"].to_numpy(dtype=float)
-    log_a = df["log_peak_amp"].to_numpy(dtype=float)
-    log_d = np.log10(df["dist_km"].to_numpy(dtype=float) + 1.0)
-    n = len(y)
-    rng = np.random.default_rng(seed)
-    idx = rng.permutation(n)
-    folds = np.array_split(idx, 5)
-    preds = np.full(n, np.nan)
-    for fi in range(5):
-        te = folds[fi]
-        tr = np.concatenate([folds[j] for j in range(5) if j != fi])
-        coef = richter_coef(log_a[tr], log_d[tr], y[tr])
-        preds[te] = apply_richter(coef, log_a[te], log_d[te])
-    ss_res = float(((y - preds) ** 2).sum())
-    ss_tot = float(((y - y.mean()) ** 2).sum()) + 1e-12
-    return {
-        "r2": round(1.0 - ss_res / ss_tot, 3),
-        "mae": round(float(np.abs(y - preds).mean()), 3),
-        "rmse": round(float(np.sqrt(((y - preds) ** 2).mean())), 3),
-        "n": int(n),
-    }
+    d = df.copy()
+    d["log_d"] = np.log10(d["dist_km"].to_numpy(float) + 1.0)
+    out = cv_linear(d, ["log_peak_amp", "log_d"], seed=seed, site=False)
+    return {k: out[k] for k in ("r2", "mae", "rmse", "n")}
 
 
-def assign_shape(row: pd.Series) -> str:
+def assign_shape(row: pd.Series, *, peak_thr: float, coda_fast: float, coda_slow: float, onset_hi: float, onset_lo: float) -> str:
     peaks = float(row["n_rho_peaks"])
     coda = float(row["coda_slope"])
     onset = float(row["onset_sharp"])
-    if peaks >= 0.7:
+    if peaks >= peak_thr:
         return "multipath"
-    if onset >= 0.8 and coda <= -0.20:
+    if onset >= onset_hi and coda <= coda_fast:
         return "impulsive_fastQ"
-    if onset < 0.65:
+    if onset < onset_lo:
         return "emergent"
-    if coda > -0.12:
+    if coda > coda_slow:
         return "slow_coda"
     return "standard"
 
@@ -199,7 +206,6 @@ def region_association(df: pd.DataFrame, label_col: str, region_col: str = "path
 
 
 def effect_size(a: np.ndarray, b: np.ndarray) -> float:
-    """Cohen's d between two residual groups."""
     a = a[np.isfinite(a)]
     b = b[np.isfinite(b)]
     if len(a) < 5 or len(b) < 5:
@@ -229,7 +235,6 @@ def main() -> None:
     )
     d = df.loc[use].copy().reset_index(drop=True)
 
-    # path region if absent
     if "path_region" not in d.columns:
         if {"src_lat", "src_lon", "rcv_lat", "rcv_lon"}.issubset(d.columns):
             mid_lat = 0.5 * (d["src_lat"] + d["rcv_lat"])
@@ -242,19 +247,55 @@ def main() -> None:
             ]
         else:
             d["path_region"] = "unknown"
+    if "src_region" not in d.columns and {"src_lat", "src_lon"}.issubset(d.columns):
+        d["src_region"] = [
+            f"{int(np.floor(a / 5) * 5):+d}/{int(np.floor(b / 5) * 5):+d}"
+            if np.isfinite(a) and np.isfinite(b)
+            else "unknown"
+            for a, b in zip(d["src_lat"], d["src_lon"])
+        ]
 
-    # ---- magnitude: baselines + ceiling ----
-    mag_report: dict = {
-        "richter_all": richter_only_cv(d, seed=args.seed),
-        "richter_site_all": {k: v for k, v in cv_site_corrected(
-            d, min_station=args.min_station_events, seed=args.seed
-        ).items() if k not in {"predictions", "residuals", "site_tables"}},
-    }
-    full_site = cv_site_corrected(d, min_station=args.min_station_events, seed=args.seed)
-    d["mag_pred_site"] = full_site["predictions"]
-    d["mag_resid_site"] = full_site["residuals"]
+    # derived interpretable covariates
+    d["log_d"] = np.log10(d["dist_km"].to_numpy(float) + 1.0)
+    if "depth_km" in d.columns:
+        d["log_depth"] = np.log10(np.clip(d["depth_km"].to_numpy(float), 0.0, None) + 1.0)
+    else:
+        d["log_depth"] = 0.0
+    if "snr_db" in d.columns:
+        d["snr_z"] = d["snr_db"].to_numpy(float)
+        d["snr_z"] = np.nan_to_num(d["snr_z"], nan=float(np.nanmedian(d["snr_z"])))
+    else:
+        d["snr_z"] = 0.0
 
-    # per mag-type models, then pool predictions for overall R²
+    ok = d["coda_slope"].notna() & d["dist_km"].notna()
+    ld = d.loc[ok, "log_d"].to_numpy(float)
+    cs = d.loc[ok, "coda_slope"].to_numpy(float)
+    A = np.column_stack([ld, np.ones(len(ld))])
+    ccoef = _lstsq(A, cs)
+    d["coda_path_residual"] = np.nan
+    d.loc[ok, "coda_path_residual"] = cs - A @ ccoef
+    d["coda_path_residual"] = d["coda_path_residual"].fillna(0.0)
+
+    # ---- magnitude ladder (all interpretable) ----
+    feat_richter = ["log_peak_amp", "log_d"]
+    feat_phys = ["log_peak_amp", "log_d", "log_depth", "snr_z"]
+    feat_full = ["log_peak_amp", "log_d", "log_depth", "snr_z", "coda_path_residual"]
+
+    mag_report: dict = {}
+    r0 = cv_linear(d, feat_richter, seed=args.seed, site=False)
+    mag_report["richter_all"] = {k: r0[k] for k in ("r2", "mae", "rmse", "n", "features")}
+    r0s = cv_linear(d, feat_richter, seed=args.seed, site=True, min_station=args.min_station_events)
+    mag_report["richter_site_all"] = {k: r0s[k] for k in ("r2", "mae", "rmse", "n", "features")}
+    d["mag_pred_site"] = r0s["predictions"]
+    d["mag_resid_site"] = r0s["residuals"]
+
+    r_phys = cv_linear(d, feat_phys, seed=args.seed, site=True, min_station=args.min_station_events)
+    mag_report["phys_site_all"] = {k: r_phys[k] for k in ("r2", "mae", "rmse", "n", "features")}
+    r_full = cv_linear(d, feat_full, seed=args.seed, site=True, min_station=args.min_station_events)
+    mag_report["phys_path_site_all"] = {k: r_full[k] for k in ("r2", "mae", "rmse", "n", "features")}
+
+    # stratified ml/md with best interpretable feature set
+    best_feats = feat_full
     pooled_pred = np.full(len(d), np.nan)
     covered = np.zeros(len(d), dtype=bool)
     per_type = {}
@@ -263,43 +304,36 @@ def main() -> None:
         if len(sub_idx) < 40:
             continue
         sub = d.iloc[sub_idx].reset_index(drop=True)
-        base = richter_only_cv(sub, seed=args.seed)
-        site = cv_site_corrected(sub, min_station=max(2, args.min_station_events - 1), seed=args.seed)
+        base = cv_linear(sub, feat_richter, seed=args.seed, site=False)
+        site = cv_linear(sub, best_feats, seed=args.seed, site=True, min_station=max(2, args.min_station_events - 1))
         per_type[mt] = {
-            "richter": base,
-            "richter_site": {k: site[k] for k in ("r2", "mae", "rmse", "n")},
+            "richter": {k: base[k] for k in ("r2", "mae", "rmse", "n")},
+            "phys_path_site": {k: site[k] for k in ("r2", "mae", "rmse", "n", "features")},
         }
         pooled_pred[sub_idx] = site["predictions"]
         covered[sub_idx] = True
-
-    # rare / skipped types: fall back to global site model
     if (~covered).any():
-        pooled_pred[~covered] = full_site["predictions"][~covered]
+        pooled_pred[~covered] = r_full["predictions"][~covered]
     y = d["mag"].to_numpy(float)
     ss_res = float(((y - pooled_pred) ** 2).sum())
     ss_tot = float(((y - y.mean()) ** 2).sum()) + 1e-12
     mag_report["per_type"] = per_type
-    mag_report["stratified_site_pooled"] = {
+    mag_report["stratified_phys_path_site"] = {
         "r2": round(1.0 - ss_res / ss_tot, 3),
         "mae": round(float(np.abs(y - pooled_pred).mean()), 3),
         "rmse": round(float(np.sqrt(((y - pooled_pred) ** 2).mean())), 3),
         "n": int(len(y)),
-        "note": "ml/md/mb each get their own Richter+site model; rare types use global site model",
+        "features": best_feats,
+        "note": "ml/md/mb each get phys+path+site; rare types use global phys+path+site",
     }
+    # keep old key name for README compatibility (points at best pooled model)
+    mag_report["stratified_site_pooled"] = dict(mag_report["stratified_phys_path_site"])
     d["mag_pred_stratified"] = pooled_pred
     d["mag_resid_stratified"] = y - pooled_pred
 
-    # final global site table (fit on all data) for export — interpretable artifact
-    coef = richter_coef(
-        d["log_peak_amp"].to_numpy(float),
-        np.log10(d["dist_km"].to_numpy(float) + 1.0),
-        y,
-    )
-    base_all = apply_richter(
-        coef,
-        d["log_peak_amp"].to_numpy(float),
-        np.log10(d["dist_km"].to_numpy(float) + 1.0),
-    )
+    # export site tables from plain Richter residual (classic lookup)
+    coef = richter_coef(d["log_peak_amp"].to_numpy(float), d["log_d"].to_numpy(float), y)
+    base_all = apply_richter(coef, d["log_peak_amp"].to_numpy(float), d["log_d"].to_numpy(float))
     resid_all = y - base_all
     st_table = (
         pd.DataFrame({"station": d["station"], "network": d["network"], "resid": resid_all})
@@ -317,40 +351,51 @@ def main() -> None:
     net_table.to_csv(out / "network_terms.csv", index=False)
 
     mag_report["richter_equation"] = {
-        "form": "M ≈ a*log10(A) + b*log10(D+1) + c + site_term(station)",
+        "form": "M ≈ a*log10(A) + b*log10(D+1) + c + site_term(station)  [+ depth/SNR/coda_path in extended models]",
         "a": round(float(coef[0]), 4),
         "b": round(float(coef[1]), 4),
         "c": round(float(coef[2]), 4),
         "n_site_terms": int(len(st_table)),
         "n_network_terms": int(len(net_table)),
+        "extended_features": best_feats,
     }
 
-    # ---- 2-D taxonomy: shape × strength ----
-    q33, q66 = d["reduced_amp"].quantile(0.33), d["reduced_amp"].quantile(0.66)
-    d["shape"] = d.apply(assign_shape, axis=1)
+    # ---- 2-D taxonomy: data-driven shape thresholds ----
+    peak_thr = float(d["n_rho_peaks"].quantile(0.67))
+    coda_fast = float(d["coda_slope"].quantile(0.33))  # more negative
+    coda_slow = float(d["coda_slope"].quantile(0.67))
+    onset_hi = float(d["onset_sharp"].quantile(0.67))
+    onset_lo = float(d["onset_sharp"].quantile(0.33))
+    shape_thr = {
+        "peak_thr": round(peak_thr, 3),
+        "coda_fast": round(coda_fast, 3),
+        "coda_slow": round(coda_slow, 3),
+        "onset_hi": round(onset_hi, 3),
+        "onset_lo": round(onset_lo, 3),
+    }
+    q33, q66 = float(d["reduced_amp"].quantile(0.33)), float(d["reduced_amp"].quantile(0.66))
+    d["shape"] = d.apply(
+        lambda r: assign_shape(
+            r, peak_thr=peak_thr, coda_fast=coda_fast, coda_slow=coda_slow,
+            onset_hi=onset_hi, onset_lo=onset_lo,
+        ),
+        axis=1,
+    )
     d["strength"] = [assign_strength(v, q33, q66) for v in d["reduced_amp"]]
     d["tax2d"] = d["shape"] + "×" + d["strength"]
 
-    # coda path residual (distance-detrended) for structure
-    ok = d["coda_slope"].notna() & d["dist_km"].notna()
-    ld = np.log10(d.loc[ok, "dist_km"].to_numpy(float) + 1.0)
-    cs = d.loc[ok, "coda_slope"].to_numpy(float)
-    A = np.column_stack([ld, np.ones(len(ld))])
-    ccoef, _, _, _ = np.linalg.lstsq(A, cs, rcond=None)
-    d.loc[ok, "coda_path_residual"] = cs - A @ ccoef
-
-    # discrimination report
     disc = {
-        "shape_vs_region": region_association(d, "shape"),
-        "strength_vs_region": region_association(d, "strength"),
-        "tax2d_vs_region": region_association(d, "tax2d"),
+        "shape_thresholds": shape_thr,
+        "shape_vs_region": region_association(d, "shape", "path_region"),
+        "shape_vs_src_region": region_association(d, "shape", "src_region") if "src_region" in d.columns else {},
+        "strength_vs_region": region_association(d, "strength", "path_region"),
+        "tax2d_vs_region": region_association(d, "tax2d", "path_region"),
         "shape_counts": d["shape"].value_counts().to_dict(),
         "strength_counts": d["strength"].value_counts().to_dict(),
         "tax2d_counts": d["tax2d"].value_counts().to_dict(),
-        "reduced_amp_terciles": {"q33": round(float(q33), 3), "q66": round(float(q66), 3)},
+        "reduced_amp_terciles": {"q33": round(q33, 3), "q66": round(q66, 3)},
     }
 
-    # path residual effect sizes by shape (vs rest)
     shape_effects = []
     for sh in sorted(d["shape"].unique()):
         a = d.loc[d["shape"] == sh, "coda_path_residual"].to_numpy(float)
@@ -361,11 +406,14 @@ def main() -> None:
             "coda_residual_mean": round(float(np.nanmean(a)), 4),
             "cohens_d_vs_rest": round(effect_size(a, b), 3),
             "mag_mean": round(float(d.loc[d["shape"] == sh, "mag"].mean()), 2),
-            "top_regions": d.loc[d["shape"] == sh, "path_region"].value_counts().head(3).to_dict(),
+            "top_path_regions": d.loc[d["shape"] == sh, "path_region"].value_counts().head(3).to_dict(),
+            "top_src_regions": (
+                d.loc[d["shape"] == sh, "src_region"].value_counts().head(3).to_dict()
+                if "src_region" in d.columns else {}
+            ),
         })
     disc["shape_path_effects"] = shape_effects
 
-    # mag separation by strength / tax2d
     mag_sep = {}
     for col in ["strength", "shape", "tax2d"]:
         rows = []
@@ -379,6 +427,7 @@ def main() -> None:
         mag_sep[col] = sorted(rows, key=lambda r: -r["mag_mean"])
     disc["magnitude_by_label"] = mag_sep
 
+    best_r2 = mag_report["stratified_phys_path_site"]["r2"]
     report = {
         "n_traces": int(len(d)),
         "magnitude": mag_report,
@@ -386,41 +435,70 @@ def main() -> None:
         "headline": {
             "richter_r2": mag_report["richter_all"]["r2"],
             "site_r2": mag_report["richter_site_all"]["r2"],
-            "stratified_site_r2": mag_report["stratified_site_pooled"]["r2"],
-            "stratified_site_mae": mag_report["stratified_site_pooled"]["mae"],
+            "phys_site_r2": mag_report["phys_site_all"]["r2"],
+            "phys_path_site_r2": mag_report["phys_path_site_all"]["r2"],
+            "stratified_site_r2": best_r2,
+            "stratified_site_mae": mag_report["stratified_phys_path_site"]["mae"],
             "shape_region_V": disc["shape_vs_region"]["cramers_v"],
             "shape_region_V_0_50km": disc["shape_vs_region"]["distance_controlled"].get("0-50", {}).get("cramers_v"),
+            "shape_src_region_V": disc.get("shape_vs_src_region", {}).get("cramers_v"),
             "tax2d_region_V": disc["tax2d_vs_region"]["cramers_v"],
             "ceiling_note": (
-                "Interpretable single-station ceiling on this STEAD slice is ~0.83–0.85 R². "
-                "0.95 is not a realistic KPI without multi-station / unified magnitude scale."
+                "Interpretable single-station ceiling on STEAD is ~0.83–0.88 R² with site+depth+SNR+path. "
+                "0.95 is not realistic without multi-station / unified magnitude scale."
             ),
         },
     }
     (out / "ceiling_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     d.to_csv(out / "traces_labeled.csv", index=False)
 
-    # plots
+    # human-readable interpretability note
+    md = [
+        "# Interpretable physics ceiling",
+        "",
+        f"- traces: **{len(d)}**",
+        f"- Richter R²: **{mag_report['richter_all']['r2']}**",
+        f"- + site terms R²: **{mag_report['richter_site_all']['r2']}**",
+        f"- + depth/SNR + site R²: **{mag_report['phys_site_all']['r2']}**",
+        f"- + coda path residual + site R²: **{mag_report['phys_path_site_all']['r2']}**",
+        f"- **best (ml/md stratified phys+path+site) R²: {best_r2}**  MAE={mag_report['stratified_phys_path_site']['mae']}",
+        "",
+        "## Taxonomy `shape × strength`",
+        f"- shape↔path-region Cramér's V: **{disc['shape_vs_region']['cramers_v']}**",
+        f"- (0–50 km controlled): **{disc['shape_vs_region']['distance_controlled'].get('0-50', {}).get('cramers_v')}**",
+        f"- tax2d↔path-region V: **{disc['tax2d_vs_region']['cramers_v']}**",
+        f"- thresholds: `{json.dumps(shape_thr)}`",
+        "",
+        "## Shape → structure (coda path residual)",
+    ]
+    for e in shape_effects:
+        md.append(
+            f"- **{e['shape']}** n={e['n']}: residual={e['coda_residual_mean']}, "
+            f"d={e['cohens_d_vs_rest']}, maḡ={e['mag_mean']}, regions={e['top_path_regions']}"
+        )
+    md.append("")
+    md.append("## Reading")
+    md.append(
+        "- **strength** (reduced_amp) tracks source size → magnitude.\n"
+        "- **shape** (onset/coda/ρ peaks) tracks path/mechanism → geography & Q-like residual.\n"
+        "- Do not chase R²→0.95 with single-station interpretable features."
+    )
+    (out / "INTERPRETABILITY.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(2, 2, figsize=(11, 8))
-
-        # 1. predicted vs true (stratified site)
         ax = axes[0, 0]
         ax.scatter(d["mag"], d["mag_pred_stratified"], s=12, alpha=0.45, c="steelblue")
-        lims = [0, max(6, d["mag"].max())]
+        lims = [0, max(6, float(d["mag"].max()))]
         ax.plot(lims, lims, "k--", lw=0.8)
         ax.set_xlabel("catalog mag")
         ax.set_ylabel("predicted mag")
-        ax.set_title(
-            f"Stratified Richter+site  R²={mag_report['stratified_site_pooled']['r2']}  "
-            f"MAE={mag_report['stratified_site_pooled']['mae']}"
-        )
+        ax.set_title(f"Best interpretable  R²={best_r2}  MAE={mag_report['stratified_phys_path_site']['mae']}")
 
-        # 2. mag by strength
         ax = axes[0, 1]
         order = ["weak", "mid", "strong"]
         data = [d.loc[d["strength"] == s, "mag"].to_numpy() for s in order]
@@ -428,23 +506,21 @@ def main() -> None:
         ax.set_ylabel("magnitude")
         ax.set_title("Strength axis (reduced_amp terciles)")
 
-        # 3. mag by shape
         ax = axes[1, 0]
         shapes = sorted(d["shape"].unique())
         data = [d.loc[d["shape"] == s, "mag"].to_numpy() for s in shapes]
         ax.boxplot(data, labels=shapes, showfliers=False)
         ax.tick_params(axis="x", rotation=20, labelsize=8)
         ax.set_ylabel("magnitude")
-        ax.set_title(f"Shape axis (region V={disc['shape_vs_region']['cramers_v']})")
+        ax.set_title(f"Shape axis (path V={disc['shape_vs_region']['cramers_v']})")
 
-        # 4. coda path residual by shape
         ax = axes[1, 1]
         data = [d.loc[d["shape"] == s, "coda_path_residual"].dropna().to_numpy() for s in shapes]
         ax.boxplot(data, labels=shapes, showfliers=False)
         ax.axhline(0, color="k", lw=0.6)
         ax.tick_params(axis="x", rotation=20, labelsize=8)
         ax.set_ylabel("coda path residual")
-        ax.set_title("Structure proxy by shape (distance-detrended)")
+        ax.set_title("Structure proxy by shape")
 
         fig.tight_layout()
         fig.savefig(out / "ceiling_overview.png", dpi=130)
@@ -453,7 +529,6 @@ def main() -> None:
         print(f"[ceiling] plot skipped: {exc}", flush=True)
 
     print(json.dumps(report["headline"], indent=2), flush=True)
-    print(json.dumps({"magnitude": mag_report, "shape_effects": shape_effects}, indent=2), flush=True)
 
 
 if __name__ == "__main__":

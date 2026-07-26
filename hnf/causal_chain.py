@@ -311,6 +311,14 @@ INTERPRETABLE_NAMES: tuple[str, ...] = (
     "det",
     "p_peak",
     "s_peak",
+    # per-trace kernel *responses* (ρ-modulated causal rows; NOT global γ/ω/c)
+    "p_kern_mean_lag_sec",
+    "p_kern_spread_sec",
+    "p_kern_entropy",
+    "s_kern_mean_lag_sec",
+    "s_kern_spread_sec",
+    "s_kern_entropy",
+    "ps_kern_lag_ratio",
 )
 
 
@@ -369,10 +377,11 @@ def interpretable_feature_dict(
     chain_feat: dict[str, float],
     amp_feat: dict[str, float],
     summary_feat: dict[str, float],
+    kernel_feat: Optional[dict[str, float]] = None,
 ) -> dict[str, float]:
-    """Merge chain shape + raw amplitude + model confidence into one dict."""
+    """Merge chain shape + raw amplitude + confidence (+ optional kernel rows)."""
     out = {n: float("nan") for n in INTERPRETABLE_NAMES}
-    for src in (chain_feat, amp_feat, summary_feat):
+    for src in (chain_feat, amp_feat, summary_feat, kernel_feat or {}):
         for k, v in src.items():
             if k in out:
                 out[k] = float(v)

@@ -47,6 +47,7 @@ from hnf.causal_chain import (
     name_causal_mode,
     raw_amplitude_features,
 )
+from hnf.kernel_response import extract_kernel_response_features
 from hnf.pattern_library import _kmeans, extract_pattern_features
 from hnf.stead_picking_dataset import STEAD_DIR, STEADPickingDataset
 from tools.analyze_stead_picking import load_model
@@ -218,9 +219,14 @@ def main() -> None:
     )
     loader = DataLoader(ds, batch_size=1, shuffle=False)
 
-    # Feature subsets for two taxonomies
+    # Feature subsets for taxonomies
     shape_idx = [INTERPRETABLE_NAMES.index(n) for n in (
         "coda_slope", "onset_sharp", "n_rho_peaks", "log_sp_amp_ratio", "pre_p_energy_frac"
+    )]
+    kernel_idx = [INTERPRETABLE_NAMES.index(n) for n in (
+        "coda_slope", "onset_sharp", "n_rho_peaks", "log_sp_amp_ratio", "pre_p_energy_frac",
+        "p_kern_mean_lag_sec", "p_kern_spread_sec", "p_kern_entropy",
+        "s_kern_mean_lag_sec", "s_kern_spread_sec", "s_kern_entropy", "ps_kern_lag_ratio",
     )]
     full_idx = list(range(len(INTERPRETABLE_NAMES)))
 
@@ -260,7 +266,14 @@ def main() -> None:
             )
             chain = causal_chain_features(obs)
             summ = extract_pattern_features(model, x, t, pick_threshold=args.pick_threshold)
-            feat = interpretable_feature_dict(chain, amp, summ)
+            # map pick seconds → bins on the model grid
+            seq = int(x.size(1))
+            p_idx = int(round(obs.p_sec / 60.0 * (seq - 1))) if obs.p_sec >= 0 else -1
+            s_idx = int(round(obs.s_sec / 60.0 * (seq - 1))) if obs.s_sec >= 0 else -1
+            kern = extract_kernel_response_features(
+                model, x, t, p_idx=p_idx, s_idx=s_idx, bypass_noise_cancel=True
+            )
+            feat = interpretable_feature_dict(chain, amp, summ, kern)
             vecs.append(interpretable_to_vector(feat))
 
             rows.append({
@@ -289,6 +302,7 @@ def main() -> None:
     # ---- two taxonomies ----
     taxonomies = {
         "shape_only": shape_idx,   # path/mechanism; distance-independent
+        "shape_plus_kernel": kernel_idx,  # shape + per-trace kernel-row responses
         "full_interpretable": full_idx,  # includes amplitude → better mag separation
     }
     reports = {}
@@ -419,6 +433,7 @@ def main() -> None:
 
     geo_report = {
         "shape_only": geo_assoc(f"mode_{shape_tax}"),
+        "shape_plus_kernel": geo_assoc("mode_shape_plus_kernel"),
         "full_interpretable": geo_assoc(f"mode_{primary}"),
     }
 
