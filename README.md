@@ -713,10 +713,10 @@ asks whether the **same pattern**—sparse observation → HNF encoder → task 
 
 | Pattern step | Seismology (Domain I) | EEG (Domain II) | Fluid (Domain III) |
 |--------------|----------------------|-----------------|--------------------|
-| Sparse observation | 3C waveforms | multi-channel EEG | sparse 4D-flow voxels |
-| Encoder | HNF picking backbone | HNF EEG encoder | HNF flow encoder |
+| Sparse observation | 3C waveforms | multi-channel EEG | sparse **3D/4D** flow voxels |
+| Encoder | HNF picking backbone | HNF EEG encoder | **3D spatial HNF** (+ ω-DOF) |
 | Physics / task head | picks + vp/vs | disease / state head | constitutive (η, λ, …) |
-| Interpretable unit | ρ(t), γ, ω, K rows | ρ(t) / spectral proxies | kernel ↔ shear-rate |
+| Interpretable unit | ρ(t), γ, ω, K rows | ρ(t) / spectral proxies | **ρ(x,y,z), γ, vort/mom sources** |
 | Discovery | geo + velocity residuals | group contrasts / ROC | residual vs base rheology |
 
 ## IV.1 Domain II — AD/FTD EEG
@@ -880,28 +880,100 @@ Val shows kept-acc↑ with coverage trade-off; test still mostly holds baseline
 
 
 
-## IV.2 Domain III — sparse flow → constitutive discovery
+## IV.2 Domain III — sparse 3D/4D flow → constitutive discovery
 
-**Status:** Stage-0 + Stage-1 + RACLETTE Stage-0b **done** (2026-07-16).
+**Status:** Stage-0c **3D/4D spatial HNF** suite **complete** (2026-07-27): synth 3D/4D + RACLETTE 3D +
+baseline & literature-SOTA comparison + interpretability figures.
+
+### Stage-0c — 3D/4D spatial Huygens
+
+Upgraded from 2D slices to **volumetric (vx, vy, vz)** with vector vorticity ω and
+Biot–Savart secondary sources on a 3D stencil; **4D** adds per-voxel temporal Conv1d
+over cardiac phase (T=4). Full suite: [`outputs/fluid/spatial_3d4d_suite/SUITE.md`](outputs/fluid/spatial_3d4d_suite/SUITE.md).
+
+| Task | Grid | HNF test vel_rel | Notes |
+|------|------|-----------------:|-------|
+| all families | 12³ | **0.41** | pipe 0.21, shear 0.12, vortex 0.92 |
+| vortex_tube only | 12³ | **0.32** | vs 2D spatial **0.85**, raster **0.87** |
+| 4D synth | 8×12×12×T=4 | **0.67** | pipe 0.29 ✓, advecting_vortex 1.00 ✗ |
+| RACLETTE 3D | real volumes | **1.19** | inside-vessel 1.05 — needs more tuning |
+
+![Model comparison](docs/figures/fluid/fluid3d_model_compare.png)
+*Figure: sparse 3D reconstruction — U-Net baseline vs literature SOTA (RecFNO, FlowMRI-Net) vs HNF.*
+
+![3D vortex explain](docs/figures/fluid/spatial3d_vortex_explain.png)
+*Figure: mid-z slice — ρ field, |v| GT/pred, ω_z, error (vortex_tube checkpoint).*
+
+![Source semantics](docs/figures/fluid/spatial3d_source_semantics.png)
+*Figure: learned secondary-source magnitudes by flow family (mom vs vort DOF).*
+
+### vs baselines & literature SOTA (@10% sparse keep, synthetic)
+
+Same 30-epoch budget on synthetic 12³ grids. **U-Net / CNN-AE** are standard baselines;
+**RecFNO** (Zhao et al., 2023) and **FlowMRI-Net** (Wallerberger et al., 2025) are recent
+literature methods adapted to our grid sparse-velocity task (FlowMRI-Net uses a simplified
+unrolled grid variant; the paper's full model operates in k-space).
+
+| Model | type | vortex_tube vel_rel | all-families vel_rel | params |
+|-------|------|--------------------:|---------------------:|-------:|
+| 3D U-Net | baseline | **0.086** | **0.207** | 3.15M |
+| 3D CNN-AE | baseline | 0.094 | — | 936K |
+| **RecFNO3D** | lit. SOTA | **0.200** | 0.472 | 313K |
+| **FlowMRI-Net3D** | lit. SOTA | 0.279 | 0.507 | **19K** |
+| **HNF spatial3D+rot** | ours | 0.322 | 0.409 | 71K |
+| HNF spatial2D+rot | ours | 0.852 | 0.426 | ~65K |
+
+**4D synth** (8×12×12, T=4, 40 ep HNF / 30 ep U-Net):
+
+| Model | vel_rel | pipe | advecting_vortex |
+|-------|--------:|-----:|-----------------:|
+| U-Net 4D (baseline) | **0.39** | 0.10 | 0.59 |
+| HNF spatial4D | 0.67 | 0.29 | 1.00 |
+
+**Takeaway:** U-Net still wins raw error on this budget. Among **literature SOTA**, RecFNO
+beats HNF on vortex-only (0.20 vs 0.32); HNF wins on **multi-family** 3D aggregate (0.41 vs
+0.47–0.51) while keeping interpretable γ, ρ, and vorticity-source semantics. 4D temporal
+mixing remains a gap vs U-Net; RACLETTE 3D needs domain-specific preprocessing.
+
+Full board: [`outputs/fluid/BASELINE3D4D.md`](outputs/fluid/BASELINE3D4D.md),
+[`outputs/fluid/baseline3d4d_board.json`](outputs/fluid/baseline3d4d_board.json).
+Run: `python scripts/experiments/sweep_fluid_baseline3d4d.py` (add `--skip-baselines` or
+`--skip-literature` to refresh one group only).
+
+### Interpretability & discovery (3D)
+
+| Signal | Finding |
+|--------|---------|
+| Kernel γ | layer0≈0.29, layer1≈0.29 → moderate-range 3D Huygens propagation |
+| ρ field | spatially varying medium density modulates source strength |
+| Vortex-specialized ckpt | vel_rel≈0.26 on vortex vs ≈1.0 on OOD pipe (physics-aligned specialization) |
+| Secondary sources | comparable ‖vort‖ across families; reconstruction gap driven by architecture capacity |
+
+Artifacts: [`outputs/fluid/explain_spatial3d/`](outputs/fluid/explain_spatial3d/),
+[`tools/explain_fluid_spatial3d.py`](tools/explain_fluid_spatial3d.py).
+
+### Earlier stages (unchanged baseline)
 
 | Stage | Result |
 |-------|--------|
-| 0 sparse→dense (synth) | vel_rel **0.330** @10% keep (channel easy; vortex hard) |
-| 1 constitutive | Newtonian/Carreau **fam_acc 0.799**, **η_rel 0.267**, vel_rel 0.109 |
-| 0b RACLETTE GT slices | inside-vessel vel_rel **0.793** @10% keep — **hard / weak first pass** |
+| 0 sparse→dense (2D synth) | vel_rel **0.330** @10% keep |
+| 1 constitutive | Newtonian/Carreau **fam_acc 0.799**, **η_rel 0.267** |
+| 0b RACLETTE 2D slices | inside-vessel vel_rel **0.793** @10% keep |
 
 | Piece | Location |
 |-------|----------|
-| Stage-0 | `hnf/fluid_{synth,dataset,model}.py`, `tools/train_fluid.py` |
-| Stage-1 | `hnf/fluid_constitutive*.py`, `tools/train_fluid_constitutive.py` |
-| RACLETTE I/O | `tools/preprocess_raclette_slices.py` (needs `/usr/bin/python3` + pyvista_zstd) |
-| Stage-0b | `hnf/raclette_dataset.py`, `tools/train_raclette_stage0b.py` |
-| Launchers | `scripts/experiments/run_fluid_stage{0,1}.py`, `run_fluid_stage0b_raclette.py` |
-| Artifacts | `outputs/fluid/stage0_synth/`, `stage1_constitutive/`, `stage0b_raclette/` |
+| **3D/4D HNF** | `hnf/fluid_spatial{3d,4d}.py`, `hnf/fluid_synth{3d,4d}.py` |
+| Baseline models | `hnf/fluid_baselines3d.py`, `scripts/experiments/sweep_fluid_baseline3d4d.py` |
+| Literature SOTA | `hnf/fluid_sota3d.py` (RecFNO3D, FlowMRI-Net unrolled) |
+| Compare figures | `tools/plot_fluid_compare3d.py`, `docs/figures/fluid/` |
+| Training | `tools/train_fluid_spatial3d4d.py`, `logs/run_fluid_3d4d_suite.sh` |
+| 2D spatial (prior) | `hnf/fluid_spatial.py`, `outputs/fluid/spatial_suite/` |
+| Stage-0 raster | `hnf/fluid_{synth,dataset,model}.py`, `tools/train_fluid.py` |
+| Stage-1 constitutive | `hnf/fluid_constitutive*.py` |
+| RACLETTE 3D pp | `tools/preprocess_raclette_volumes.py` |
+| Artifacts | `outputs/fluid/spatial_3d4d_suite/`, `explain_spatial3d/` |
 
-**Takeaways:** family ID well above chance; η recovery improved vs Stage-0 (0.59→0.27)
-but not yet &lt;10%. RACLETTE sparse recon not yet competitive — do not overclaim.
-Synthetic GT only for constitutive; no “new rheology” claim.
+**Next:** improve 4D temporal head + RACLETTE 3D preprocessing; Stage-1 η head on 3D features.
 
 
 ## IV.3 Cross-domain checklist
