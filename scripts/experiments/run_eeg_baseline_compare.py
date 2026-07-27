@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Train EEGNet + Shallow1D on the same protocol as HNF Stage-1 and write a compare board."""
+"""Train EEGNet / Shallow1D / Transformer on same protocol as HNF; write compare board."""
 
 from __future__ import annotations
 
@@ -12,14 +12,13 @@ from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="EEG baseline compare launcher")
+    p = argparse.ArgumentParser(description="EEG baseline + HNF compare launcher")
     p.add_argument("--data-dir", default="external_data/eeg_adftd")
-    p.add_argument("--hnf-metrics", default="outputs/eeg/adftd_hnf_stage1/test_metrics.json")
     p.add_argument("--output-dir", default="outputs/eeg/adftd_baseline_compare")
     p.add_argument("--epochs", type=int, default=50)
     p.add_argument("--batch-size", type=int, default=16)
     p.add_argument("--device", default="cuda")
-    p.add_argument("--models", default="eegnet,shallow1d")
+    p.add_argument("--models", default="eegnet,shallow1d,transformer")
     p.add_argument("--skip-train", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     return p.parse_args()
@@ -35,14 +34,56 @@ def _run(cmd: list[str], log_path: Path) -> None:
         raise SystemExit(rc)
 
 
-def _row(name: str, metrics: dict, n_params: int | None = None) -> dict:
+def _ad_ftd_from_per_subject(per_subj: dict) -> float:
+    yt, yp = [], []
+    for _sid, row in per_subj.items():
+        lab = int(row["label"])
+        if lab not in (1, 2):
+            continue
+        yt.append(lab)
+        yp.append(int(row["pred"]))
+    if not yt:
+        return float("nan")
+    import numpy as np
+
+    yt = np.asarray(yt)
+    yp = np.asarray(yp)
+    return float((yt == yp).mean())
+
+
+def _hnf_row(label: str, path: Path) -> dict | None:
+    if not path.is_file():
+        print(f"[eeg-compare] WARN missing {label}: {path}", flush=True)
+        return None
+    with path.open(encoding="utf-8") as f:
+        m = json.load(f)
+    subj_acc = m.get("subject_accuracy", m.get("test_subject_accuracy"))
+    auc = m.get("auc_macro", m.get("test_epoch_auc"))
+    ad_ftd = m.get("ad_ftd_subject_accuracy")
+    if ad_ftd is None and "per_subject" in m:
+        ad_ftd = _ad_ftd_from_per_subject(m["per_subject"])
+    return {
+        "model": label,
+        "accuracy": m.get("accuracy", m.get("test_epoch_acc")),
+        "macro_f1": m.get("macro_f1"),
+        "subject_accuracy": subj_acc,
+        "ad_ftd_subject_accuracy": ad_ftd,
+        "auc_macro": auc,
+        "n_params": m.get("n_params"),
+        "n_subjects": m.get("n_subjects", m.get("n_test_subjects")),
+        "source": str(path),
+    }
+
+
+def _row(name: str, metrics: dict) -> dict:
     return {
         "model": name,
         "accuracy": metrics.get("accuracy"),
         "macro_f1": metrics.get("macro_f1"),
         "subject_accuracy": metrics.get("subject_accuracy"),
+        "ad_ftd_subject_accuracy": metrics.get("ad_ftd_subject_accuracy"),
         "auc_macro": metrics.get("auc_macro"),
-        "n_params": n_params if n_params is not None else metrics.get("n_params"),
+        "n_params": metrics.get("n_params"),
         "n_subjects": metrics.get("n_subjects"),
         "source": metrics.get("checkpoint") or metrics.get("source"),
     }
@@ -59,21 +100,14 @@ def main() -> None:
         print("models:", models)
         return
 
-    rows = []
-    hnf_path = Path(args.hnf_metrics)
-    if hnf_path.is_file():
-        with hnf_path.open(encoding="utf-8") as f:
-            hnf = json.load(f)
-        # HNF stage1 params from known run (~89k)
-        rows.append(
-            _row(
-                "HNF(stage1)",
-                {**hnf, "source": str(hnf_path), "checkpoint": hnf.get("checkpoint")},
-                n_params=89442,
-            )
-        )
-    else:
-        print(f"[eeg-compare] WARN missing HNF metrics: {hnf_path}", flush=True)
+    rows: list[dict] = []
+    for hnf_label, hnf_path in [
+        ("HNF Stage-1", Path("outputs/eeg/adftd_hnf_stage1/test_metrics.json")),
+        ("HNF native v3", Path("outputs/eeg/adftd_hnf_native_v3/test_metrics.json")),
+    ]:
+        r = _hnf_row(hnf_label, hnf_path)
+        if r is not None:
+            rows.append(r)
 
     for name in models:
         model_out = out / name
@@ -131,6 +165,7 @@ def main() -> None:
             "epochs": args.epochs,
             "batch_size": args.batch_size,
             "selection": "best val macro-AUC",
+            "note": "Transformer = Conv stem + CLS + 3-layer encoder (d=64, h=4)",
         },
         "rows": rows,
     }
@@ -139,17 +174,25 @@ def main() -> None:
         json.dump(summary, f, indent=2)
 
     md_lines = [
-        "# EEG Stage-1 vs baselines (same protocol)",
+        "# EEG classification compare (same split, n_test=18 subjects)",
         "",
-        "| Model | subject_acc | macro-AUC | epoch_acc | macro-F1 | params |",
-        "|-------|------------:|----------:|----------:|---------:|-------:|",
+        "| Model | subject acc | AD↔FTD acc | macro-AUC | epoch acc | macro-F1 | params |",
+        "|-------|------------:|-----------:|----------:|----------:|---------:|-------:|",
     ]
     for r in rows:
+        ad = r.get("ad_ftd_subject_accuracy")
+        ad_s = f"{ad:.3f}" if ad is not None and ad == ad else "—"
+        mf1 = r.get("macro_f1")
+        mf1_s = f"{mf1:.3f}" if mf1 is not None and mf1 == mf1 else "—"
         md_lines.append(
-            f"| {r['model']} | {r['subject_accuracy']:.3f} | {r['auc_macro']:.3f} | "
-            f"{r['accuracy']:.3f} | {r['macro_f1']:.3f} | {r.get('n_params', '—')} |"
+            f"| {r['model']} | {r['subject_accuracy']:.3f} | {ad_s} | "
+            f"{r['auc_macro']:.3f} | {r['accuracy']:.3f} | {mf1_s} | {r.get('n_params', '—')} |"
         )
-    md_lines.append("")
+    md_lines += [
+        "",
+        "Protocol: subject-level = mean epoch softmax then argmax; AD↔FTD on true AD∪FTD only.",
+        "",
+    ]
     md_path = out / "compare_summary.md"
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
     print("\n".join(md_lines), flush=True)

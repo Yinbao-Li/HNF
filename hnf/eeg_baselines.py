@@ -17,17 +17,13 @@ class _Conv2dSameTime(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.conv(x)
-        # Odd kernels with pad=k//2 keep T; even can grow by 1 → crop.
         if y.size(-1) > x.size(-1):
             y = y[..., : x.size(-1)]
         return y
 
 
 class EEGNet(nn.Module):
-    """Compact EEGNet (Lawhern et al.) for (B, C, T) multi-class EEG.
-
-    F1/D/F2 follow the original compact recipe; ``kern_length`` ≈ 0.5 s @ 128 Hz.
-    """
+    """Compact EEGNet (Lawhern et al.) for (B, C, T) multi-class EEG."""
 
     def __init__(
         self,
@@ -97,7 +93,7 @@ class Shallow1DCNN(nn.Module):
         dropout: float = 0.25,
     ):
         super().__init__()
-        del n_samples  # length-agnostic via AdaptiveAvgPool
+        del n_samples
         self.n_channels = n_channels
         self.features = nn.Sequential(
             nn.Conv1d(n_channels, hidden, kernel_size=25, padding=12),
@@ -125,6 +121,178 @@ class Shallow1DCNN(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.features(_as_bct(x, self.n_channels)))
+
+
+class EEGTransformer(nn.Module):
+    """Conv stem → temporal tokens → Transformer encoder + CLS (ViT-style on EEG).
+
+    Fair comparison baseline: same (B, C, T) input, no HNF inductive bias.
+    """
+
+    def __init__(
+        self,
+        n_channels: int = 19,
+        n_samples: int = 1280,
+        n_classes: int = 3,
+        d_model: int = 64,
+        n_heads: int = 4,
+        n_layers: int = 3,
+        dropout: float = 0.25,
+        pool_second: int = 8,
+    ):
+        super().__init__()
+        self.n_channels = n_channels
+        self.n_samples = n_samples
+        self.d_model = d_model
+        # 1280 → 320 → ~40 (or fewer) temporal tokens
+        self.stem = nn.Sequential(
+            nn.Conv1d(n_channels, d_model, kernel_size=25, padding=12),
+            nn.BatchNorm1d(d_model),
+            nn.GELU(),
+            nn.MaxPool1d(4),
+            nn.Dropout(dropout),
+            nn.Conv1d(d_model, d_model, kernel_size=15, padding=7),
+            nn.BatchNorm1d(d_model),
+            nn.GELU(),
+            nn.MaxPool1d(pool_second),
+            nn.Dropout(dropout),
+        )
+        enc_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=n_heads,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            batch_first=True,
+            activation="gelu",
+            norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(enc_layer, num_layers=n_layers)
+        self.cls = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        self.head = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, n_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_bct = _as_bct(x, self.n_channels)
+        if x_bct.size(-1) != self.n_samples:
+            x_bct = nn.functional.interpolate(
+                x_bct, size=self.n_samples, mode="linear", align_corners=False
+            )
+        h = self.stem(x_bct).transpose(1, 2)  # (B, T', D)
+        cls = self.cls.expand(h.size(0), -1, -1)
+        h = torch.cat([cls, h], dim=1)
+        h = self.transformer(h)
+        return self.head(h[:, 0])
+
+
+class _ConformerBlock(nn.Module):
+    """Simplified Conformer block: FFN/2 → MHSA → Conv → FFN/2 (macaron)."""
+
+    def __init__(self, d_model: int, n_heads: int, dropout: float, conv_kernel: int = 15):
+        super().__init__()
+        self.ff1 = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model * 2, d_model),
+            nn.Dropout(dropout),
+        )
+        self.norm_attn = nn.LayerNorm(d_model)
+        self.attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.attn_drop = nn.Dropout(dropout)
+        pad = conv_kernel // 2
+        self.conv_norm = nn.LayerNorm(d_model)
+        self.conv_pw1 = nn.Conv1d(d_model, d_model * 2, kernel_size=1)
+        self.conv_dw = nn.Conv1d(
+            d_model, d_model, kernel_size=conv_kernel, padding=pad, groups=d_model
+        )
+        self.conv_bn = nn.BatchNorm1d(d_model)
+        self.conv_pw2 = nn.Conv1d(d_model, d_model, kernel_size=1)
+        self.conv_drop = nn.Dropout(dropout)
+        self.ff2 = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model * 2, d_model),
+            nn.Dropout(dropout),
+        )
+        self.norm_out = nn.LayerNorm(d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, T, D)
+        x = x + 0.5 * self.ff1(x)
+        h = self.norm_attn(x)
+        a, _ = self.attn(h, h, h, need_weights=False)
+        x = x + self.attn_drop(a)
+        h = self.conv_norm(x).transpose(1, 2)  # (B, D, T)
+        h = self.conv_pw1(h)
+        h = nn.functional.glu(h, dim=1)
+        h = self.conv_dw(h)
+        if h.size(-1) > x.size(1):
+            h = h[..., : x.size(1)]
+        h = nn.functional.silu(self.conv_bn(h))
+        h = self.conv_drop(self.conv_pw2(h)).transpose(1, 2)
+        x = x + h
+        x = x + 0.5 * self.ff2(x)
+        return self.norm_out(x)
+
+
+class EEGConformer(nn.Module):
+    """EEG-oriented Conformer: spatial-temporal stem + Conformer blocks + GAP.
+
+    Inspired by Song et al. EEG Conformer; compact for small clinical N.
+    """
+
+    def __init__(
+        self,
+        n_channels: int = 19,
+        n_samples: int = 1280,
+        n_classes: int = 3,
+        d_model: int = 40,
+        n_heads: int = 4,
+        n_layers: int = 4,
+        dropout: float = 0.35,
+    ):
+        super().__init__()
+        self.n_channels = n_channels
+        self.n_samples = n_samples
+        # Patch embedding similar to EEG Conformer: temporal then spatial
+        self.patch = nn.Sequential(
+            nn.Conv2d(1, d_model, kernel_size=(1, 25), stride=(1, 5), padding=(0, 12), bias=False),
+            nn.BatchNorm2d(d_model),
+            nn.ELU(),
+            nn.Conv2d(d_model, d_model, kernel_size=(n_channels, 1), bias=False),
+            nn.BatchNorm2d(d_model),
+            nn.ELU(),
+            nn.AvgPool2d(kernel_size=(1, 5), stride=(1, 5)),
+            nn.Dropout(dropout),
+        )
+        self.blocks = nn.ModuleList(
+            [_ConformerBlock(d_model, n_heads, dropout) for _ in range(n_layers)]
+        )
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(),
+            nn.LayerNorm(d_model),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, n_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_bct = _as_bct(x, self.n_channels)
+        if x_bct.size(-1) != self.n_samples:
+            x_bct = nn.functional.interpolate(
+                x_bct, size=self.n_samples, mode="linear", align_corners=False
+            )
+        h = self.patch(x_bct.unsqueeze(1))  # (B, D, 1, T')
+        h = h.squeeze(2).transpose(1, 2)  # (B, T', D)
+        for blk in self.blocks:
+            h = blk(h)
+        return self.head(h.transpose(1, 2))
 
 
 def _as_bct(x: torch.Tensor, n_channels: int) -> torch.Tensor:
@@ -159,5 +327,31 @@ def build_eeg_baseline(
             n_samples=n_samples,
             n_classes=n_classes,
             dropout=dropout,
+        )
+    if key in {"transformer", "eegtransformer", "vit"}:
+        return EEGTransformer(
+            n_channels=n_channels,
+            n_samples=n_samples,
+            n_classes=n_classes,
+            dropout=dropout,
+        )
+    if key in {"tinytransformer", "tiny", "transformer_tiny"}:
+        # Smaller + heavier dropout for small-N clinical EEG.
+        return EEGTransformer(
+            n_channels=n_channels,
+            n_samples=n_samples,
+            n_classes=n_classes,
+            d_model=32,
+            n_heads=4,
+            n_layers=2,
+            dropout=max(dropout, 0.4),
+            pool_second=10,
+        )
+    if key in {"conformer", "eegconformer"}:
+        return EEGConformer(
+            n_channels=n_channels,
+            n_samples=n_samples,
+            n_classes=n_classes,
+            dropout=max(dropout, 0.35),
         )
     raise ValueError(f"Unknown EEG baseline model: {name!r}")

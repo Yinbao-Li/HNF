@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Train EEG baseline classifiers (EEGNet / Shallow1D) on ds004504."""
+"""Train Braindecode SOTA EEG models on ds004504 (same protocol as HNF)."""
 
 from __future__ import annotations
 
@@ -21,17 +21,17 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from hnf.eeg_baselines import build_eeg_baseline
+from hnf.eeg_braindecode_models import build_braindecode_model, display_name
 from hnf.eeg_dataset import EEGDataset, LABEL_TO_ID
 from tools.train_eeg import evaluate, set_seed
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Train EEG baseline (EEGNet / Shallow1D)")
+    p = argparse.ArgumentParser(description="Train Braindecode EEG SOTA baseline")
     p.add_argument(
         "--model",
         required=True,
-        choices=["eegnet", "shallow1d", "transformer", "tinytransformer", "conformer"],
+        choices=["eegnetv4", "shallowfbcsp", "deep4net", "eegconformer"],
     )
     p.add_argument("--data-dir", default="external_data/eeg_adftd")
     p.add_argument("--output-dir", default="")
@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--dropout", type=float, default=0.25)
+    p.add_argument("--att-dropout", type=float, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--device", default="")
@@ -54,7 +55,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     set_seed(args.seed)
-    out = Path(args.output_dir or f"outputs/eeg/adftd_{args.model}")
+    out = Path(args.output_dir or f"outputs/eeg/adftd_bd_{args.model}")
     out.mkdir(parents=True, exist_ok=True)
     device = torch.device(
         args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,7 +74,6 @@ def main() -> None:
     )
     train_ds = EEGDataset(split="train", **common)
     val_ds = EEGDataset(split="val", **common)
-
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
@@ -85,22 +85,27 @@ def main() -> None:
         val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers
     )
 
-    model = build_eeg_baseline(
+    extra = {}
+    if args.att_dropout is not None:
+        extra["att_drop_prob"] = args.att_dropout
+    model = build_braindecode_model(
         args.model,
         n_channels=19,
         n_samples=n_samples,
         n_classes=len(LABEL_TO_ID),
         dropout=args.dropout,
+        extra=extra,
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
 
-    # Stronger regularization for attention models on tiny clinical N.
     wd = args.weight_decay
     lr = args.lr
-    if args.model in {"tinytransformer", "conformer"}:
+    if args.model == "eegconformer":
         wd = max(wd, 5e-4)
-        if args.model == "tinytransformer":
-            lr = min(lr, 2e-4)
+        lr = min(lr, 3e-4)
+    if args.model == "deep4net":
+        wd = max(wd, 5e-4)
+
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     ce = nn.CrossEntropyLoss()
@@ -109,8 +114,8 @@ def main() -> None:
     best_auc = -1.0
     best_path = out / "best.pt"
     print(
-        f"[EEG-base] model={args.model} device={device} params={n_params} "
-        f"train={len(train_ds)} val={len(val_ds)} subjects_train={len(train_ds.subjects)}",
+        f"[EEG-bd] model={display_name(args.model)} device={device} params={n_params} "
+        f"train={len(train_ds)} val={len(val_ds)}",
         flush=True,
     )
 
@@ -144,7 +149,7 @@ def main() -> None:
         }
         history.append(row)
         print(
-            f"[EEG-base:{args.model}] ep {epoch:03d}  train_loss={train_loss:.4f}  "
+            f"[EEG-bd:{args.model}] ep {epoch:03d}  train_loss={train_loss:.4f}  "
             f"val_loss={val_metrics['loss']:.4f}  val_acc={val_metrics['acc']:.4f}  "
             f"val_auc={val_metrics['auc']:.4f}",
             flush=True,
@@ -160,15 +165,25 @@ def main() -> None:
                     "args": vars(args),
                     "n_params": n_params,
                     "model_name": args.model,
+                    "backend": "braindecode",
                     "label_to_id": LABEL_TO_ID,
                 },
                 best_path,
             )
-            print(f"[EEG-base] saved best → {best_path} (score={best_auc:.4f})", flush=True)
+            print(f"[EEG-bd] saved best → {best_path} (score={best_auc:.4f})", flush=True)
 
     with (out / "history.json").open("w", encoding="utf-8") as f:
-        json.dump({"history": history, "best_auc": best_auc, "model": args.model}, f, indent=2)
-    print(f"[EEG-base] done in {time.time() - t0:.1f}s  best_val_auc={best_auc:.4f}", flush=True)
+        json.dump(
+            {
+                "history": history,
+                "best_auc": best_auc,
+                "model": args.model,
+                "backend": "braindecode",
+            },
+            f,
+            indent=2,
+        )
+    print(f"[EEG-bd] done in {time.time() - t0:.1f}s  best_val_auc={best_auc:.4f}", flush=True)
 
 
 if __name__ == "__main__":

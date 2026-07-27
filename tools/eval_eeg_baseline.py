@@ -21,6 +21,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from hnf.eeg_baselines import build_eeg_baseline
+from hnf.eeg_braindecode_models import build_braindecode_model
 from hnf.eeg_dataset import EEGDataset, ID_TO_LABEL, LABEL_TO_ID
 from tools.eval_eeg import _macro_f1, _safe_auc
 
@@ -47,6 +48,7 @@ def main() -> None:
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     ckpt_args = ckpt.get("args", {})
     model_name = str(ckpt.get("model_name") or ckpt_args.get("model") or "eegnet")
+    backend = str(ckpt.get("backend") or ckpt_args.get("backend") or "native")
     sample_rate = int(ckpt_args.get("sample_rate", 128))
     epoch_sec = float(ckpt_args.get("epoch_sec", 10.0))
     dropout = float(ckpt_args.get("dropout", 0.25))
@@ -63,13 +65,27 @@ def main() -> None:
     )
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False)
 
-    model = build_eeg_baseline(
-        model_name,
-        n_channels=19,
-        n_samples=n_samples,
-        n_classes=len(LABEL_TO_ID),
-        dropout=dropout,
-    ).to(device)
+    if backend == "braindecode":
+        extra = {}
+        att_drop = ckpt_args.get("att_dropout")
+        if att_drop is not None:
+            extra["att_drop_prob"] = float(att_drop)
+        model = build_braindecode_model(
+            model_name,
+            n_channels=19,
+            n_samples=n_samples,
+            n_classes=len(LABEL_TO_ID),
+            dropout=dropout,
+            extra=extra,
+        ).to(device)
+    else:
+        model = build_eeg_baseline(
+            model_name,
+            n_channels=19,
+            n_samples=n_samples,
+            n_classes=len(LABEL_TO_ID),
+            dropout=dropout,
+        ).to(device)
     model.load_state_dict(ckpt["state_dict"], strict=True)
     model.eval()
 
@@ -99,6 +115,14 @@ def main() -> None:
         mean_p = np.mean(np.stack(plist, axis=0), axis=0)
         sub_pred.append(int(mean_p.argmax()))
         sub_true.append(labels_by_sid[sid])
+    sub_pred_arr = np.asarray(sub_pred, dtype=np.int64)
+    sub_true_arr = np.asarray(sub_true, dtype=np.int64)
+    ad_ftd_mask = (sub_true_arr == 1) | (sub_true_arr == 2)
+    ad_ftd_acc = (
+        float((sub_pred_arr[ad_ftd_mask] == sub_true_arr[ad_ftd_mask]).mean())
+        if ad_ftd_mask.any()
+        else float("nan")
+    )
 
     cm = np.zeros((num_classes, num_classes), dtype=np.int64)
     for t, p in zip(y, pred):
@@ -107,11 +131,13 @@ def main() -> None:
     result = {
         "checkpoint": str(args.checkpoint),
         "model": model_name,
+        "backend": backend,
         "n_epochs_eval": int(len(y)),
         "n_subjects": int(len(buckets)),
         "accuracy": float((pred == y).mean()),
         "macro_f1": _macro_f1(y, pred, num_classes),
-        "subject_accuracy": float((np.asarray(sub_pred) == np.asarray(sub_true)).mean()),
+        "subject_accuracy": float((sub_pred_arr == sub_true_arr).mean()),
+        "ad_ftd_subject_accuracy": ad_ftd_acc,
         "confusion_matrix": cm.tolist(),
         "id_to_label": ID_TO_LABEL,
         **_safe_auc(y, probs, num_classes),

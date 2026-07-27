@@ -14,10 +14,17 @@ import torch
 from torch.utils.data import Dataset
 
 
-# Paper taxonomy: HC / MCI / AD. ds004504 has CN / FTD / AD;
-# by default FTD is mapped to the MCI slot (class 1).
+# Classifier slot ids (unchanged for Stage-1 checkpoint compatibility).
+# ds004504 has CN / FTD / AD. With ftd_as_mci=True (default), FTD occupies
+# class-1 — historically labeled "MCI" in paper taxonomy, but clinically it
+# is FTD. Prefer CLINICAL_* names for all new clinical reporting.
 LABEL_TO_ID = {"HC": 0, "MCI": 1, "AD": 2}
 ID_TO_LABEL = {v: k for k, v in LABEL_TO_ID.items()}
+
+# Honest clinical differential taxonomy (same integer ids as above when
+# FTD occupies the class-1 slot).
+CLINICAL_LABEL_TO_ID = {"HC": 0, "FTD": 1, "AD": 2}
+CLINICAL_ID_TO_LABEL = {v: k for k, v in CLINICAL_LABEL_TO_ID.items()}
 
 # Common Group spellings in participants.tsv
 _GROUP_ALIASES = {
@@ -65,6 +72,10 @@ class SubjectRef:
     group_raw: str
     label: int
     set_path: Path
+    clinical_group: str = "HC"  # HC / FTD / AD (never "MCI")
+    age: float = float("nan")
+    gender: str = ""
+    mmse: float = float("nan")
 
 
 def _normalize_group(raw: str) -> str:
@@ -77,20 +88,71 @@ def _normalize_group(raw: str) -> str:
     raise ValueError(f"Unrecognized Group value: {raw!r}")
 
 
+def map_group_to_clinical(group: str) -> str:
+    """Map raw participants.tsv Group → clinical label ``HC`` / ``FTD`` / ``AD``."""
+    g = _normalize_group(group)
+    if g == "MCI":
+        # ds004504 has no native MCI; if present treat as unspecified disease
+        raise ValueError("Native MCI not in ds004504 clinical differential")
+    if g not in CLINICAL_LABEL_TO_ID:
+        raise ValueError(f"Cannot map group {group!r} ({g}) to HC/FTD/AD")
+    return g
+
+
 def map_group_to_label(group: str, *, ftd_as_mci: bool = True) -> int:
     """Map clinical group to classifier label id.
 
-    With ``ftd_as_mci=True`` (default), FTD occupies the MCI class slot so the
-    head stays 3-way (HC/MCI/AD) as in the paper taxonomy.
+    With ``ftd_as_mci=True`` (default), FTD occupies class 1 (historically the
+    MCI slot) so Stage-1 checkpoints stay 3-way compatible. Clinical reports
+    must still call class 1 **FTD**, not MCI.
     """
-    g = _normalize_group(group)
-    if g == "FTD":
+    clinical = map_group_to_clinical(group)
+    if clinical == "FTD":
         if not ftd_as_mci:
-            raise ValueError("FTD requires ftd_as_mci=True for the 3-way HC/MCI/AD head")
-        return LABEL_TO_ID["MCI"]
-    if g not in LABEL_TO_ID:
-        raise ValueError(f"Cannot map group {group!r} ({g}) to HC/MCI/AD")
-    return LABEL_TO_ID[g]
+            raise ValueError(
+                "ftd_as_mci=False is unsupported for the current 3-way head; "
+                "use clinical naming (CLINICAL_ID_TO_LABEL) instead of dropping FTD"
+            )
+        return CLINICAL_LABEL_TO_ID["FTD"]
+    return CLINICAL_LABEL_TO_ID[clinical]
+
+
+def _safe_float(value: object, default: float = float("nan")) -> float:
+    try:
+        if value is None:
+            return default
+        s = str(value).strip()
+        if s == "" or s.lower() in {"n/a", "na", "nan", "none"}:
+            return default
+        return float(s)
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_participants_full(data_dir: Path) -> list[dict[str, str]]:
+    """Read participants.tsv with all clinical covariates."""
+    tsv = data_dir / "participants.tsv"
+    if not tsv.is_file():
+        nested = list(data_dir.glob("**/participants.tsv"))
+        if not nested:
+            return []
+        tsv = nested[0]
+    rows: list[dict[str, str]] = []
+    with tsv.open("r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            sid = (row.get("participant_id") or row.get("subject") or "").strip()
+            group = (row.get("Group") or row.get("group") or row.get("diagnosis") or "").strip()
+            if not sid or not group:
+                continue
+            if not sid.startswith("sub-"):
+                sid = f"sub-{sid}"
+            rows.append({**row, "participant_id": sid, "Group": group})
+    return rows
+
+
+def _read_participants(data_dir: Path) -> list[tuple[str, str]]:
+    return [(r["participant_id"], r["Group"]) for r in _read_participants_full(data_dir)]
 
 
 def _find_set_file(data_dir: Path, subject_id: str) -> Optional[Path]:
@@ -107,29 +169,6 @@ def _find_set_file(data_dir: Path, subject_id: str) -> Optional[Path]:
     # Fallback glob
     hits = sorted(data_dir.glob(f"**/{subject_id}*task-eyesclosed*eeg.set"))
     return hits[0] if hits else None
-
-
-def _read_participants(data_dir: Path) -> list[tuple[str, str]]:
-    tsv = data_dir / "participants.tsv"
-    if not tsv.is_file():
-        # Some downloads nest one level
-        nested = list(data_dir.glob("**/participants.tsv"))
-        if not nested:
-            return []
-        tsv = nested[0]
-        data_dir = tsv.parent
-    rows: list[tuple[str, str]] = []
-    with tsv.open("r", encoding="utf-8") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        for row in reader:
-            sid = (row.get("participant_id") or row.get("subject") or "").strip()
-            group = (row.get("Group") or row.get("group") or row.get("diagnosis") or "").strip()
-            if not sid or not group:
-                continue
-            if not sid.startswith("sub-"):
-                sid = f"sub-{sid}"
-            rows.append((sid, group))
-    return rows
 
 
 def _subject_split(
@@ -230,7 +269,7 @@ def make_synthetic_subjects(
     rng = np.random.default_rng(seed)
     t = np.arange(int(duration_sec * sfreq), dtype=np.float64) / sfreq
     out: dict[str, tuple[np.ndarray, int]] = {}
-    for label, tag in enumerate(("HC", "MCI", "AD")):
+    for label, tag in enumerate(("HC", "FTD", "AD")):
         base_f = 10.0 - 2.0 * label
         for i in range(n_per_class):
             sid = f"sub-synth{tag}{i:02d}"
@@ -328,13 +367,17 @@ class EEGDataset(Dataset):
         refs: list[SubjectRef] = []
         for sid, (arr, label) in synth.items():
             self._cache[sid] = arr  # already conceptually "500 Hz"; resample on read
-            # Store as if native 500 Hz then resample in _get_recording
+            clinical = CLINICAL_ID_TO_LABEL[label]
             refs.append(
                 SubjectRef(
                     subject_id=sid,
-                    group_raw=ID_TO_LABEL[label],
+                    group_raw=clinical,
                     label=label,
                     set_path=Path(f"synthetic://{sid}"),
+                    clinical_group=clinical,
+                    age=65.0 + float(label),
+                    gender="F" if label % 2 == 0 else "M",
+                    mmse=30.0 - 6.0 * float(label),
                 )
             )
         # Mark synthetic native rate
@@ -343,25 +386,32 @@ class EEGDataset(Dataset):
 
     def _discover_subjects(self, *, use_derivatives: bool) -> list[SubjectRef]:
         del use_derivatives  # discovery prefers derivatives via _find_set_file order
-        rows = _read_participants(self.data_dir)
+        rows = _read_participants_full(self.data_dir)
         if not rows:
-            # Infer from folder names only (no labels) → skip
             return []
         refs: list[SubjectRef] = []
-        for sid, group in rows:
+        for row in rows:
+            sid = row["participant_id"]
+            group = row["Group"]
             path = _find_set_file(self.data_dir, sid)
             if path is None:
                 continue
             try:
+                clinical = map_group_to_clinical(group)
                 label = map_group_to_label(group, ftd_as_mci=self.ftd_as_mci)
             except ValueError:
                 continue
+            gender = (row.get("Gender") or row.get("gender") or "").strip().upper()
             refs.append(
                 SubjectRef(
                     subject_id=sid,
                     group_raw=group,
                     label=label,
                     set_path=path,
+                    clinical_group=clinical,
+                    age=_safe_float(row.get("Age") or row.get("age")),
+                    gender=gender[:1] if gender else "",
+                    mmse=_safe_float(row.get("MMSE") or row.get("mmse")),
                 )
             )
         return refs
@@ -405,6 +455,10 @@ class EEGDataset(Dataset):
             "label": int(ref.label),
             "subject_id": ref.subject_id,
             "start": int(start),
+            "clinical_group": ref.clinical_group,
+            "age": float(ref.age),
+            "gender": ref.gender,
+            "mmse": float(ref.mmse),
         }
 
     def subject_ids(self) -> list[str]:

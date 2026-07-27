@@ -44,7 +44,7 @@ cd HNF
 pip install -r requirements.txt
 ```
 
-- Python deps: `torch>=2.0`, `numpy`, `matplotlib`, `pytest`, `tqdm`, `openpyxl`
+- Python deps: `torch>=2.0`, `numpy`, `matplotlib`, `pytest`, `tqdm`, `openpyxl`, `braindecode>=0.8`, `mne`, `scikit-learn`
 - Place STEAD under `STEAD/` (~90GB; gitignored)
 - Large run products stay in `outputs/` (gitignored); key plots mirror to `docs/figures/`
 - GPU ≥12GB recommended; picking uses `seq_len=800`; bridge inference often uses `infer_seq_len=600`
@@ -526,9 +526,25 @@ in [`docs/PAPER_ROADMAP.md`](docs/PAPER_ROADMAP.md) with figures under
 
 ### STEAD in-domain benchmark vs EQTransformer / PhaseNet
 
-Head-to-head on the same STEAD test split — **hard metrics only** (det/P/S F1
-with precision/recall, and pick MAE in seconds). MAD/σ are omitted because HNF's
-`seq_len=800` bin (~75 ms) is not like-for-like with EQT/PN's 10 ms.
+Head-to-head on the STEAD EQTransformer test split — **tol=0.5 s**, pick_th=0.3,
+det_th=0.5. Hard metrics: det/P/S F1 and pick MAE in seconds.
+
+#### Full test (n=126566 — canonical)
+
+| Model | det F1 | P F1 | S F1 | P MAE | S MAE |
+|-------|-------:|-----:|-----:|------:|------:|
+| **HNF (run28)** | 0.9986 | 0.9842 | **0.9756** | **0.021** | 0.088 |
+| EQTransformer | **0.9989** | **0.9897** | 0.9731 | 0.046 | 0.088 |
+| PhaseNet | 0.9969 | 0.9512 | 0.9618 | 0.072 | **0.080** |
+
+Artifact: `outputs/paper_stead_full_test_compare/stead_full_test_compare.md`.
+Launcher: `scripts/paper/run_stead_full_test_compare.py`.
+
+**How to read it:** F1 is neck-and-neck with EQT; HNF’s standout is **P-wave timing**
+(**21 ms MAE** vs EQT 46 ms / PhaseNet 72 ms). S MAE is similar to EQT; PhaseNet
+is slightly better on S MAE at the cost of lower P F1.
+
+#### Subset sanity (10k events + 2k noise — precision/recall detail)
 
 | Model | det F1 (P/R) | P F1 (P/R) | S F1 (P/R) | P MAE | S MAE |
 |-------|-------------:|-----------:|-----------:|------:|------:|
@@ -536,12 +552,10 @@ with precision/recall, and pick MAE in seconds). MAD/σ are omitted because HNF'
 | EQTransformer† | 0.9990 (0.9992/0.9989) | **0.9892** (0.9993/0.9794) | 0.9725 (0.9994/0.9470) | 0.046 | 0.089 |
 | PhaseNet† | 0.9972 (0.9969/0.9975) | 0.9517 (0.9984/0.9093) | 0.9620 (0.9982/0.9283) | 0.074 | **0.081** |
 
-† Same 10k-event + 2k-noise STEAD test subset (`outputs/paper_stead_triple_compare_50ep/`).
+† Subset from `outputs/paper_stead_triple_compare_50ep/` (same protocol, faster iteration).
 
-**How to read it:** HNF is **on par** with the specialized baselines — it matches
-EQT on detection, slightly trails on P-F1, slightly leads on S-F1, and has the
-**best P onset MAE** (21 ms). That a physics-inspired kernel field reaches
-production-grade picking is the point of Part I.
+**Protocol note:** tol=0.5 s is the standard STEAD/EQT window. Tightening to 0.3 s
+barely moves HNF P F1 (P MAE ~21 ms ≪ 300 ms); S F1 drops ~1–2% uniformly across models.
 
 ## III.2 Absolute-geography rediscovery
 
@@ -707,37 +721,163 @@ asks whether the **same pattern**—sparse observation → HNF encoder → task 
 
 ## IV.1 Domain II — AD/FTD EEG
 
-**Status:** Stage-1 + baselines **done** (2026-07-16). Not a SOTA claim —
-pattern-port smoke test with a first-pass ρ/ω group contrast.
+**Goal (breakthrough bar):** produce *clinically meaningful* knowledge —
+differential help (HC / **FTD** / AD), MMSE-aligned incremental value, and
+FDR-surviving interpretable markers — not a Stage-1 smoke-test narrative.
+Stage-1 classification is the **floor to beat**. See
+`.cursor/rules/eeg-clinical-standards.mdc`.
+
+**Status (2026-07-27).** Stage-1 temporal port + EEG-native redesign + clinical
+suite are in place. Current preferred clinical checkpoint:
+`outputs/eeg/adftd_hnf_native_v3/best.pt`
+(report: `outputs/eeg/clinical_breakthrough_native_v3/`).
+v5 (regional + δ + segment pool) is trained as a backbone probe —
+report `outputs/eeg/clinical_breakthrough_native_v5/` — but does **not** beat v3.
 
 | Piece | Location |
 |-------|----------|
-| Dataset | `hnf/eeg_dataset.py` (OpenNeuro ds004504 / ADFTD) |
-| Model | `hnf/eeg_model.py`; baselines `hnf/eeg_baselines.py` |
-| Train / eval | `tools/train_eeg.py`, `tools/eval_eeg.py`, `tools/train_eeg_baseline.py`, `tools/eval_eeg_baseline.py` |
-| Analysis / compare | `scripts/domain/run_eeg_analysis.py`, `scripts/experiments/run_eeg_baseline_compare.py` |
-| Download | `tools/download_eeg_adftd.py` → `external_data/eeg_adftd/` |
-| Artifacts | `outputs/eeg/adftd_hnf_stage1/`, `outputs/eeg/adftd_baseline_compare/`, `docs/figures/eeg/` |
+| Dataset | `hnf/eeg_dataset.py` (ds004504; Age/Gender/MMSE; clinical HC/FTD/AD names) |
+| Stage-1 port | `hnf/eeg_model.py` (STEAD-style temporal multi-scale) |
+| **EEG-native HNF** | `hnf/eeg_native_model.py` + `hnf/eeg_geometry.py` (v5: regional / δ / segment pool) |
+| Clinical helpers | `hnf/eeg_clinical.py` |
+| **Braindecode SOTA** | `hnf/eeg_braindecode_models.py` + `tools/train_eeg_braindecode.py` |
+| **Temporal chain** | `hnf/eeg_temporal_chain.py` + `tools/build_eeg_temporal_chain_library.py` |
+| Pattern router | `hnf/eeg_pattern_library.py` + `tools/build_eeg_pattern_library.py` |
+| Train native | `tools/train_eeg_native.py` |
+| **Clinical suite** | `tools/run_eeg_clinical_suite.py` |
+| Explain | `tools/explain_eeg_native.py` |
+| Knowledge cards | `tools/build_eeg_knowledge_cards.py` |
+| Marker stability | `tools/run_eeg_marker_stability.py` |
 
-Same-protocol test (18 subjects, non-overlap 10 s @ 128 Hz):
+```bash
+# EEG-native train + clinical suite
+bash logs/run_eeg_native_pipeline.sh
+# clinical suite only (any ckpt)
+bash logs/run_eeg_clinical_suite.sh
+# Braindecode SOTA sweep + compare board
+PYTHONPATH=. python scripts/experiments/sweep_eeg_braindecode_baselines.py --device cuda
+PYTHONPATH=. python scripts/experiments/build_eeg_braindecode_compare.py
+# Temporal-chain shape clustering (early→late + θ→α propagation)
+PYTHONPATH=. python tools/build_eeg_temporal_chain_library.py --split all --device cuda --no-synthetic
+# Single-subject explain panels
+PYTHONPATH=. python tools/explain_eeg_native.py --checkpoint outputs/eeg/adftd_hnf_native_v3/best.pt --device cuda --no-synthetic
+```
 
-| Model | subject_acc | macro-AUC | epoch_acc | macro-F1 |
-|-------|------------:|----------:|----------:|---------:|
-| **HNF** | **0.778** | **0.841** | 0.675 | **0.647** |
-| EEGNet | 0.722 | 0.818 | 0.695 | 0.613 |
-| Shallow1D | 0.500 | 0.840 | 0.565 | 0.459 |
+**Taxonomy note.** ds004504 is CN / FTD / AD. Stage-1 trained with FTD in the
+historical “MCI” class-1 slot; **clinical reports must call class-1 FTD**.
 
-**Takeaways (conservative):**
-- HNF ports to EEG classification and edges EEGNet on **subject-level** acc / F1;
-  delta is modest, test-N is small → **not** a breakthrough.
-- First-pass interpretability: learned kernel ω ∈ ~0.77–0.98; ω·⟨ρ⟩ HC vs AD
-  ANOVA *p*≈0.0018 — **group contrast signal**, not a validated EEG physics law.
-- Mean ρ(t) curves for HC vs AD largely **overlap** → ρ alone is not a clean
-  disease marker here; no FDR mining / transfer few-shot yet
-  (`tools/transfer_eeg.py` still pending).
+### Why redesign (not just retrain the STEAD port)
 
-Claims stay at **classification + ρ/ω contrasts**, not “EEG physics laws”, until
-mining replicates the FDR discipline from Part III.
+Stage-1 clinical FDR hits were almost only classical `bp_alpha` /
+`theta_alpha_ratio` — HNF ρ/kernel features did **not** drive the clinical
+signal. EEG-native HNF keeps the same methodology but changes the inductive bias:
+
+1. **Spatial secondary sources** — 10–20 electrodes as Huygens sources
+   (`SpatialHuygensMix`) plus regional energies / frontotemporal contrast
+2. **Rhythm-aware temporal branches** — δ (~2.5 Hz) / θ (~6 Hz) / α (~10 Hz) with
+   \(\omega\cdot c \approx 2\pi f\) priors; early/late segment pooling (v5)
+3. **Clinical aux** — optional MMSE head (v3 uses a light weight) so latents keep
+   severity-ordered information
+
+### Clinical board (same subject split, n_test=18)
+
+| Checkpoint | subject acc | AD↔FTD acc | MMSE ΔR² (demo→+EEG) | AD vs rest AUC (+EEG) | FDR train hits (HNF-native) |
+|------------|------------:|-----------:|---------------------:|----------------------:|----------------------------:|
+| Stage-1 port | **0.778** | **0.846** | 0.161 | 0.768 | 6 (0 HNF) |
+| native v1 | **0.778** | 0.769 | 0.228 | 0.796 | 21 (ρ-driven) |
+| native v2 (over-balanced) | 0.611 | 0.692 | 0.259 | 0.900 | 18 (**HNF α/θ**) |
+| **native v3 (preferred)** | **0.778** | 0.769 | **0.346** | **0.901** | **30** (**HNF α/θ + ρ**; 10 survive test FDR) |
+| native v4 (hard-pair) | 0.611 | 0.692 | 0.346 | 0.896 | 27 (failed like v2) |
+| native v5 (regional+δ+seg) | 0.722 | 0.769 | 0.330 | 0.890 | 25 (α+ρ+`region_pf_contrast`; 0 test FDR) |
+
+**Reading (ambition ≠ claim):**
+- Classification floor is **held by v3** (subject_acc 0.778); EEG-native does not yet
+  *beat* Stage-1 on AD↔FTD hard differential (0.769 vs 0.846).
+- Clinical *knowledge* side clearly moved: MMSE incremental ΔR² **0.16 → 0.35**,
+  demography-controlled AD-vs-rest AUC **0.77 → 0.90**, and FDR hits now include
+  HNF θ/α energies and ρ — not only classical band power.
+- v5 proves regional geometry is FDR-visible (`region_pf_contrast`) but did not lift
+  subject accuracy or test FDR confirmation over v3 — keep as architecture probe.
+- Still **not** a clinical breakthrough claim: test N=18, no external replication,
+  transfer/few-shot still open.
+
+### vs Braindecode official SOTA (val-tuned, same split)
+
+Braindecode **0.8** implementations — EEGNetv4, ShallowFBCSPNet, Deep4Net,
+EEGConformer — each swept on val macro-AUC (30 ep) then retrained 50 ep.
+Board: `outputs/eeg/adftd_braindecode_sota/compare_summary.md`.
+
+| Model | subject acc | AD↔FTD acc | macro-AUC |
+|-------|------------:|-----------:|----------:|
+| **HNF Stage-1** | **0.778** | **0.846** | 0.841 |
+| **HNF native v3** | **0.778** | 0.769 | **0.914** |
+| EEGNetv4 (Braindecode) | 0.722 | 0.692 | 0.780 |
+| ShallowFBCSPNet | 0.556 | 0.385 | 0.828 |
+| Deep4Net | 0.611 | 0.462 | 0.811 |
+| EEG Conformer | 0.667 | 0.692 | 0.773 |
+
+HNF leads **subject accuracy** and **macro-AUC** on this small cohort; Braindecode
+ShallowFBCSPNet has high epoch-level AUC but weak subject voting — a known
+small-N pitfall.
+
+### Interpretability & discovery (EEG-native v3)
+
+Three layers beyond scalar classification:
+
+1. **Single-epoch explain** — ρ(t), θ/α/δ branch envelopes, band proxy, kernel γ/ω
+2. **FDR marker mining** — train discovery → test confirmation; **10/30** survive test BH-FDR
+3. **Temporal-chain shape clustering** — epoch τ∈[0,1] frame + θ→α propagation (not STEAD P→S)
+
+![EEG explain — HC example](docs/figures/eeg/explain_native_hc.png)
+
+*Figure: native v3 forward on a held-out HC epoch — mean EEG, ρ(t), rhythm envelopes,
+band proxy, and learned spatial kernel params.*
+
+![EEG temporal-chain modes](docs/figures/eeg/temporal_chain_modes.png)
+
+*Figure: K=5 shape clusters in the epoch early→late frame. Mode **M4** shows
+ρ early→late **decay** (drift ≈ −0.17), consistent with the FDR finding that HC
+carries higher ρ than disease groups.*
+
+![EEG subject router clusters](docs/figures/eeg/subject_cluster_pca.png)
+
+*Figure: subject-level K-means on router features (ρ, band power, HNF energies) —
+**routing** clusters, distinct from temporal-chain **shape** modes.*
+
+**Test-confirmed markers (knowledge cards):** `outputs/eeg/knowledge_cards_native_v3/KNOWLEDGE_CARDS.md`
+
+| Marker | Contrast | Direction | test FDR |
+|--------|----------|-----------|:--------:|
+| `rho_mean`, `rho_std`, `rho_p90`, `omega_rho` | HC vs AD / disease | HC **>** disease | ✓ |
+| `theta_alpha_ratio` | HC vs AD / disease | disease **>** HC (slowing) | ✓ |
+
+Bootstrap + cross-checkpoint (v1/v3/v5): ρ family stable at **100%** hit rate across
+200 resamples; see `outputs/eeg/marker_stability_native/marker_stability.md`.
+
+![ρ mean — HC vs AD (clinical board)](docs/figures/eeg/fig4_rho_mean_hc_ad.png)
+
+*Figure: group contrast on the core FDR marker `rho_mean` — HC higher than AD on
+held-out subjects (pilot N; not a standalone diagnostic claim).*
+
+**Clinical increment (native v3, all subjects):** MMSE ΔR² demo→+EEG = **0.35**;
+AD-vs-rest AUC **0.64 → 0.90** after adding EEG features.
+
+### Publishability snapshot (honest)
+
+| Track | Publishable claim | Caveat |
+|-------|-------------------|--------|
+| STEAD picking | Competitive F1 + **best P MAE (21 ms)** + interpretable ρ/γ/ω | EQT slightly higher P F1 |
+| Cross-domain method | Same HNF pattern ports STEAD → EEG with interpretable units | EEG is pilot |
+| EEG biomarker | **ρ medium-density** as HNF-native marker; MMSE/AUC increment | N=18 test, single site |
+| EEG diagnosis SOTA | Beats tuned Braindecode on subject acc | **Not** multi-site validated |
+
+**Next on the breakthrough checklist:** EEG pattern-library router is online
+(`hnf/eeg_pattern_library.py`, `bash logs/run_eeg_pattern_library.sh` →
+`outputs/eeg/pattern_library_*_tight/`). Tight recipe: stricter second-look,
+val-calibrated OOD abstain, online confirm/reject counters (centres frozen).
+Val shows kept-acc↑ with coverage trade-off; test still mostly holds baseline
+(fill). Next useful lever is larger N / external set so OOD gates generalize.
+
 
 
 ## IV.2 Domain III — sparse flow → constitutive discovery
