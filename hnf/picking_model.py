@@ -1425,6 +1425,11 @@ class STEADHNFPickingModel(nn.Module):
             )
             h_real = h_real + gate * cue
 
+        p_seed_real = h_real
+        if nc_out is not None and getattr(self, "p_onset_refine", None) is not None:
+            p_hint, p_gate = self.p_onset_refine(x, nc_out.get("preserve_gate"))
+            p_seed_real = p_seed_real + p_gate * p_hint
+
         p_real, p_imag = self._propagate(p_seed_real, h_imag, self.p_layers, t, rho)
         s_real, s_imag = self._propagate(h_real, h_imag, self.s_layers, t, rho)
 

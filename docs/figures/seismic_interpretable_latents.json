@@ -1,0 +1,11 @@
+{
+  "checkpoint": "outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt",
+  "split": "val",
+  "trace_name": "COA.CI_20150719110833_EV",
+  "dataset_idx": 21743,
+  "p_true_sec": 3.9799747467041016,
+  "s_true_sec": 9.011263847351074,
+  "p_pred_sec": 3.9799747467041016,
+  "s_pred_sec": 9.011263847351074,
+  "score": 10.542865805876573
+}
