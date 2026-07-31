@@ -1,6 +1,96 @@
 {
   "figure": "docs/figures/eeg/aniso_journal_classify_biomarker.png",
+  "layout": "a full-width top; b,c bottom row",
   "panel_a": {
+    "type": "router_feature_PCA_LDA",
+    "n_subjects": 88,
+    "var": {
+      "PC1": 0.30298783555084147,
+      "PC2": 0.15983603213020442,
+      "PC1+PC2": 0.4628238676810459
+    },
+    "lda_acc": 0.6818181818181818,
+    "pc1_hc_vs_disease_thr": 0.5769571431186045,
+    "pc1_hc_vs_disease_acc": 0.7840909090909091,
+    "loadings_top": {
+      "PC1": [
+        [
+          "rho_std",
+          0.3830439129138658
+        ],
+        [
+          "rho_p90",
+          0.38286805402244434
+        ],
+        [
+          "rho_cv",
+          0.38277984527532366
+        ],
+        [
+          "theta_alpha_ratio",
+          -0.37171877943070997
+        ],
+        [
+          "bp_alpha",
+          0.36684500950475024
+        ],
+        [
+          "prob_hc",
+          0.29542543288274353
+        ]
+      ],
+      "PC2": [
+        [
+          "hnf_delta_energy",
+          -0.3940977938430609
+        ],
+        [
+          "hnf_theta_energy",
+          -0.38510480457261387
+        ],
+        [
+          "hnf_theta_alpha_ratio",
+          -0.37553350079144115
+        ],
+        [
+          "region_pf_contrast",
+          0.37381415927576445
+        ],
+        [
+          "region_ft_contrast",
+          -0.33725012550472055
+        ],
+        [
+          "bp_theta",
+          -0.2938038861499749
+        ]
+      ]
+    },
+    "features": [
+      "rho_mean",
+      "rho_std",
+      "rho_p90",
+      "rho_cv",
+      "bp_delta",
+      "bp_theta",
+      "bp_alpha",
+      "bp_beta",
+      "theta_alpha_ratio",
+      "hnf_theta_energy",
+      "hnf_alpha_energy",
+      "hnf_theta_alpha_ratio",
+      "hnf_delta_energy",
+      "region_ft_contrast",
+      "region_pf_contrast",
+      "prob_hc",
+      "prob_ftd",
+      "prob_ad",
+      "max_prob",
+      "ad_ftd_score",
+      "pred_entropy"
+    ]
+  },
+  "panel_b": {
     "metric": [
       "subject_accuracy",
       "macro_AUC"
@@ -28,7 +118,7 @@
     ],
     "protocol": "held-out test n=18, seed=42"
   },
-  "panel_b": {
+  "panel_c": {
     "spearman_r": 0.4511530680474891,
     "spearman_p": 1.0271017144973506e-05,
     "kruskal_p": 2.804706254798901e-05,
@@ -45,5 +135,5 @@
     },
     "definition": "D_eff = 1 / rho_std (subject-level; PNF medium-density dynamics)"
   },
-  "caption_suggestion": "EEG classification and interpretable biomarkers. a Subject accuracy and macro-AUC versus Braindecode / literature baselines (held-out test, n=18). b Subject-level effective diffusivity D_eff = 1/rho_std increases with disease stage HC\u2192FTD\u2192AD (Spearman \u03c1=0.45, p<0.001), consistent with reduced PNF medium-density dynamics (and reduced neural synchrony) in Alzheimer's disease."
+  "caption_suggestion": "EEG subject manifold, classification, and interpretable biomarkers. a Subject-level PCA of 21 router features with LDA decision regions (3-class acc=0.68; PC1 HC\u2194disease thr=0.58, acc=0.78; black rings = classifier errors). b Subject accuracy and macro-AUC versus Braindecode / literature baselines (held-out test, n=18). c Subject-level effective diffusivity D_eff = 1/rho_std increases with disease stage HC\u2192FTD\u2192AD (Spearman \u03c1=0.45, p<0.001)."
 }

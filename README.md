@@ -799,18 +799,23 @@ Same subject split. Braindecode models: val macro-AUC grid (30 ep) → retrain 5
 *Figure: anisotropic diffusion HNF vs literature / Braindecode SOTA under two
 evaluation protocols (test n=18; pooled val+test n=31).*
 
-**Journal summary figure (classification + biomarker):**
+**Journal summary figure (manifold + classification + biomarker):**
 
-![EEG classification and interpretable biomarkers](docs/figures/eeg/aniso_journal_classify_biomarker.png)
+![EEG subject manifold, classification, and interpretable biomarkers](docs/figures/eeg/aniso_journal_classify_biomarker.png)
 
-*Figure: EEG classification and interpretable biomarkers.
-**a** Subject accuracy and macro-AUC versus Braindecode / literature baselines
+*Figure: EEG subject manifold, classification, and interpretable biomarkers.
+**a** Subject-level PCA of 21 router features (ρ dynamics, band power, HNF energies,
+soft class scores) with LDA decision regions (n=88). PC1 largely separates HC from
+disease (HC↔disease threshold acc ≈ 0.78); AD vs FTD remains soft in 2D. Black rings
+mark classifier errors / boundary cases.
+**b** Subject accuracy and macro-AUC versus Braindecode / literature baselines
 (held-out test, n=18).
-**b** Subject-level effective diffusivity \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\)
+**c** Subject-level effective diffusivity \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\)
 increases along HC→FTD→AD (Spearman ρ=0.45, **p<0.001**), consistent with reduced
 PNF medium-density dynamics (and reduced neural synchrony) in AD.
 Note: \(D_{\mathrm{eff}}\) is a per-subject proxy from ρ dynamics; the shared SPD
-tensor \(D\) in the kernel is global.*
+tensor \(D\) in the kernel is global. PCA/LDA boundaries are descriptive on the
+same router features and are not an independent diagnostic rule.*
 
 **Phase ablation (same aniso backbone):** phase_off subject acc **0.833** vs
 phase_on **0.667** on test — rhythm phase on the diffusion kernel is **not** helpful;
@@ -862,7 +867,9 @@ under the anisotropic diffusion backbone.*
 
 ![Subject router clusters](docs/figures/eeg/aniso_subject_cluster_pca.png)
 
-*Figure: subject-level clusters on router features (ρ, band power, HNF energies).*
+*Figure: subject-level PCA on router features (ρ, band power, HNF energies).
+The journal summary **panel a** adds LDA decision regions, the PC1 HC↔disease
+threshold, and classifier-error rings on the same manifold.*
 
 Knowledge cards: `outputs/eeg/aniso_interpret/knowledge_cards/KNOWLEDGE_CARDS.md`
 (15 train-FDR hits; ρ family + classical θ/α).  
