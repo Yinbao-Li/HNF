@@ -1,0 +1,109 @@
+{
+  "figure": "docs/figures/rheo/rheo_journal_memory_sota.png",
+  "master_board": "outputs/rheo/interpret_mine/MASTER_BOARD.md",
+  "knowledge": {
+    "cards": [
+      {
+        "id": "K1_lambda_recovery",
+        "claim": "Two Maxwell relaxation times recovered to high accuracy.",
+        "evidence": "\u03bb_PNF=[0.5000455975532532, 4.987682342529297] vs \u03bb_GT=[0.5000010132789612, 5.000000953674316]",
+        "rel_err": 0.001276444992981851
+      },
+      {
+        "id": "K2_anisotropy_axes",
+        "claim": "Learned A_k are nearly diagonal SPD with channel anisotropy matching GT.",
+        "evidence": {
+          "A_pnf": [
+            [
+              [
+                1.1971746683120728,
+                0.00178836181294173
+              ],
+              [
+                0.00178836181294173,
+                1.5556098222732544
+              ]
+            ],
+            [
+              [
+                0.6006636619567871,
+                -3.69785338989459e-05
+              ],
+              [
+                -3.69785338989459e-05,
+                0.7810959219932556
+              ]
+            ]
+          ],
+          "A_gt": [
+            [
+              [
+                1.2000010013580322,
+                0.0
+              ],
+              [
+                0.0,
+                1.5600008964538574
+              ]
+            ],
+            [
+              [
+                0.6000010371208191,
+                0.0
+              ],
+              [
+                0.0,
+                0.7800010442733765
+              ]
+            ]
+          ],
+          "eigenvalue_anisotropy_ratio": [
+            1.2994180917739868,
+            1.300388216972351
+          ]
+        }
+      },
+      {
+        "id": "K3_boltzmann_memory",
+        "claim": "Stress is a causal hereditary integral of strain-rate (Boltzmann superposition).",
+        "evidence": "Exact Maxwell recurrence implements \u222b G(t-s) \u03b3\u0307(s) ds with G=\u03a3 A_k e^{-\u03c4/\u03bb_k}."
+      },
+      {
+        "id": "K4_spectrum_identifiability",
+        "claim": "On linear Prony data, PNF matches classical NLS; sparse libraries / black-box RhINN lag after tuning.",
+        "evidence": "tuned board: PNF=NLS=0.0033; EUCLID=0.0147; RhINN=0.0177"
+      }
+    ],
+    "lambda": [
+      0.5000455975532532,
+      4.987682342529297
+    ],
+    "A": [
+      [
+        [
+          1.1971746683120728,
+          0.00178836181294173
+        ],
+        [
+          0.00178836181294173,
+          1.5556098222732544
+        ]
+      ],
+      [
+        [
+          0.6006636619567871,
+          -3.69785338989459e-05
+        ],
+        [
+          -3.69785338989459e-05,
+          0.7810959219932556
+        ]
+      ]
+    ],
+    "aniso_ratio": [
+      1.2994180917739868,
+      1.300388216972351
+    ]
+  },
+  "caption": "Anisotropic Boltzmann / Prony memory on synthetic linear viscoelasticity (dim=2, K=2). (a) Model-zoo stress relative L2 error. (b) Anisotropic spectra G11/G22: GT solid, PNF open markers; \u03bb1, \u03bb2 marked. (c) Multi-step shear visualization: \u03b3\u0307 drive (top); GT | PNF | |RhINN\u2212GT| maps with one shared \u03c3 colorbar (error scale in title). (d) Oscillatory residual \u03c3\u0302\u2212\u03c3. Modal weights satisfy A_k = L_k L_k^T (SPD)."
+}

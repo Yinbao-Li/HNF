@@ -892,6 +892,51 @@ deployment readiness. External replication and multi-site transfer remain open.
 
 **Status:** Stage-0c **3D/4D spatial HNF** suite **complete** (2026-07-27): synth 3D/4D + RACLETTE 3D +
 baseline & literature-SOTA comparison + interpretability figures.
+**Boltzmann memory (R0–R1 aniso)** train + full model zoo + **tuned domain SOTA** +
+interpretability / knowledge mining + journal panel **complete** (2026-07-31).
+
+| Artifact | Path |
+|----------|------|
+| **Master model zoo** (all runs) | [`outputs/rheo/interpret_mine/MASTER_BOARD.md`](outputs/rheo/interpret_mine/MASTER_BOARD.md) |
+| Tuned domain SOTA (citable) | [`outputs/rheo/domain_sota_tuned/BOARD.md`](outputs/rheo/domain_sota_tuned/BOARD.md) |
+| Aniso ML board | [`outputs/rheo/aniso_sota_full/BOARD.md`](outputs/rheo/aniso_sota_full/BOARD.md) |
+| R0 isotropic ablations | [`outputs/rheo/suite_final/BOARD.md`](outputs/rheo/suite_final/BOARD.md) |
+| Knowledge cards | [`outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md`](outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md) |
+| Journal figure | [`docs/figures/rheo/rheo_journal_memory_sota.png`](docs/figures/rheo/rheo_journal_memory_sota.png) |
+
+### All-model performance (highlights)
+
+Full table: [`MASTER_BOARD.md`](outputs/rheo/interpret_mine/MASTER_BOARD.md). Key rows on anisotropic linear Prony data (`dim=2`, `K=2`):
+
+| Model | Family | stress_rel ↓ | params |
+|-------|--------|-------------:|-------:|
+| **PNF aniso** / Classical Prony NLS | domain (tuned) | **0.0033** | 11 |
+| r0_k2_full (isotropic Prony) | R0 ablation | **0.0033** | — |
+| Diagonal Prony | rheology baseline | 0.0046 | 10 |
+| Sparse Prony (EUCLID-lite) | domain (tuned) | 0.0147 | 33 |
+| LSTM | generic ML ablation | 0.0149 | 55k |
+| RhINN (mech_encode) | domain (tuned) | 0.0177 | 8.7k |
+| Isotropic Prony (misspecified) | misspec | 0.128 | 5 |
+| TCN / FIR | generic ML ablation | 0.19–0.22 | — |
+| RhINN (untuned) | *not fair* | 0.776 | 8.7k |
+
+**Takeaway:** after val tuning, **PNF ties classical Prony NLS** and beats tuned EUCLID (~4.5×) / RhINN (~5×). Untuned RhINN (0.78) is not a valid comparison.
+
+![Rheology journal panel](docs/figures/rheo/rheo_journal_memory_sota.png)
+*Figure (a–d). Synthetic linear viscoelasticity (dim=2, K=2). (a) Model-zoo stress relative \(L_2\) error. (b) Anisotropic spectra \(G_{11}/G_{22}\): GT solid, PNF open markers; \(\lambda_{1,2}\) below axis; legend top-right. (c) Multi-step shear visualization: \(\dot\gamma\) (top); **GT | PNF | \(|\)RhINN−GT\(|\)** with one shared \(\sigma\) colorbar on the far right (error max in title). (d) Oscillatory residual \(\hat\sigma-\sigma\). Artifacts: [`MASTER_BOARD`](outputs/rheo/interpret_mine/MASTER_BOARD.md), [`KNOWLEDGE_CARDS`](outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md). Regenerate: `PYTHONPATH=. python tools/plot_rheo_journal_figure.py`*
+
+### Physics knowledge mining (interpretable)
+
+From PNF aniso checkpoint vs material GT (`λ=[0.5,5]`, diagonal \(A_k\)):
+
+| Card | Finding |
+|------|---------|
+| **K1** λ recovery | \(\hat\lambda \approx [0.500, 4.988]\) vs GT \([0.5, 5.0]\) |
+| **K2** anisotropy axes | Learned \(A_k\) nearly diagonal SPD; channel ratio ≈1.30 matches GT |
+| **K3** Boltzmann memory | Maxwell recurrence ≡ causal hereditary integral \(\int G(t-s)\dot\gamma(s)\,ds\) |
+| **K4** spectrum ID | On linear Prony data, PNF ≡ NLS; sparse libraries / black-box RhINN lag after tuning |
+
+Run tuned board: `PYTHONPATH=. python tools/tune_rheo_domain_sota.py --output-dir outputs/rheo/domain_sota_tuned`
 
 ### Stage-0c — 3D/4D spatial Huygens
 

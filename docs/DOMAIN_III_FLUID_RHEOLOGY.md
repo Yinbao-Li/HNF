@@ -109,11 +109,75 @@ Physics Decoder (fluid head)
 - Replace: layered Earth TT operator → fluid residual operator (start **2D slice / reduced 3D**, not full 5D CFD).  
 - Same failure mode to watch: **weak kernel→θ propagation** (apply Domain-II/Zhizi Stage-A fixes: direct kernel summary + intermediate physics loss).
 
+## Boltzmann memory track (R0–R1 + aniso SOTA)
+
+### R0 isotropic ablation
+Suite board: `outputs/rheo/suite_final/BOARD.md`  
+Best isotropic ckpt: `outputs/rheo/best_memory/best.pt` (**r0_k2_full**)
+
+| Model | stress_rel | λ_rel | G_rel | score |
+|-------|----------:|------:|------:|------:|
+| **r0_k2_full** (best) | **0.0033** | **0.0001** | **0.0002** | **0.0034** |
+| r1_k2_aniso | 0.0038 | ≈0 | ≈0 | 0.0038 |
+| r0_k2_freq | 0.0033 | 0.0041 | 0.0017 | 0.0058 |
+| r0_k2_stress_only | 0.0059 | 0.0706 | 0.0286 | 0.0498 |
+| r0_k3_full | 0.0288 | 0.1144 | 0.0219 | 0.0925 |
+| r0_k1_stress_only | 0.0470 | 0.1665 | 0.1325 | 0.1700 |
+
+### R1 anisotropic vs domain SOTA (**tuned fair board**)
+Board: `outputs/rheo/domain_sota_tuned/BOARD.md`  
+**Master zoo (all boards merged):** `outputs/rheo/interpret_mine/MASTER_BOARD.md`  
+**Knowledge cards:** `outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md`  
+**Journal panel (a–d):** `docs/figures/rheo/rheo_journal_memory_sota.{png,pdf}`  
+(c = multi-step GT | PNF | |RhINN−GT| maps with external \(\sigma\) / \(|\Delta\sigma|\) colorbars)
+
+| Model | stress_rel ↓ | params | Notes |
+|-------|-------------:|-------:|-------|
+| classical_prony_nls_tuned | **0.0033** | 11 | rheometry NLS (grid on nfev/init) |
+| **pnf_aniso** | **0.0033** | **11** | lr/param_weight tuned |
+| sparse_prony_euclid_tuned | 0.0147 | 33 | lib/L1/two-stage tuned |
+| rhinn_tuned (mech_encode) | 0.0177 | 8.7k | mode/hidden/phys/lr tuned |
+
+**Takeaway:** after val tuning of all methods, PNF ties classical NLS and remains
+ahead of tuned EUCLID/RhINN. Untuned RhINN (0.78) was not a fair comparison.
+
+**Interpretability mined from PNF:** recovered \(\lambda\approx[0.50,4.99]\) vs GT \([0.5,5]\);
+channel spectra \(G_{11}/G_{22}\) (journal b); startup-shear case recovers anisotropic \(\sigma\) (journal c).
+
+| File | Role |
+|------|------|
+| `hnf/rheo_memory.py` | `PronyBoltzmannKernel` (λ_k, G_k / A_k, G_∞) |
+| `hnf/rheo_baselines.py` | isotropic / diagonal Prony, LSTM, TCN, FIR |
+| `hnf/rheo_domain_sota.py` | classical NLS / EUCLID-lite / RhINN |
+| `hnf/rheo_synth.py` | startup / oscillatory / multi-step protocols |
+| `hnf/rheo_dataset.py` | fixed-material dataset + `RheoMemoryModel` |
+| `tools/train_rheo_memory.py` | identify shared Prony spectrum |
+| `tools/run_rheo_aniso_sota.py` | full aniso train + SOTA board |
+| `tools/tune_rheo_domain_sota.py` | fair val-tune → test-once domain board |
+| `tools/plot_rheo_journal_figure.py` | master board + knowledge cards + journal a–d |
+
+```bash
+# anisotropic full + SOTA board
+PYTHONPATH=. python tools/run_rheo_aniso_sota.py \
+  --output-dir outputs/rheo/aniso_sota_full --dim 2 --n-modes 2
+# fair domain SOTA (val tune → test once)
+PYTHONPATH=. python tools/tune_rheo_domain_sota.py \
+  --output-dir outputs/rheo/domain_sota_tuned
+# master board + knowledge cards + journal figure a–d
+PYTHONPATH=. python tools/plot_rheo_journal_figure.py
+# single aniso train
+PYTHONPATH=. python tools/train_rheo_memory.py \
+  --output-dir outputs/rheo/memory_r1 --anisotropic --dim 2 --n-modes 2 \
+  --param-weight 0.5 --epochs 60
+```
+
 ## Phased deliverables
 
 | Stage | Data | Success criteria | Publishable artifact |
 |-------|------|------------------|----------------------|
 | **0** | RACLETTE sparse→dense v | Rel. velocity error vs CFD; ablate sparsity | Reconstruction table (supporting) |
+| **R0** | Fixed-material Prony + varied protocols | Recover λ_k, G_k; low σ rel. error | Memory-kernel identification table |
+| **R1** | Anisotropic A_k + SOTA board | Beat diagonal/isotropic/LSTM on stress_rel | Aniso SOTA table |
 | **1** | Constitutive synthetic | Param RMSE / relative error vs GT; Newton vs Carreau vs Oldroyd-B ID | **Main inversion accuracy table** |
 | **2** | Real 4D Flow | Params in physiological bands; non-Newtonian beats Newton on held-out v | Real-data case study |
 | **3** | Mining | Causal chain: Δkernel → Δshear stats → Δθ / residual; FDR-controlled candidates | Knowledge-mining report (hypotheses only) |
