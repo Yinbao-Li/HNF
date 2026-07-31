@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 class HuygensKernel(nn.Module):
     """
-    Huygens / Huygens–Fresnel kernel.
+    Huygens / Huygens–Fresnel / anisotropic diffusion kernel.
 
     Huygens (legacy):
       K = 1/(r^2+eps) * exp(-γ r^2) * exp(i ω r)
@@ -22,6 +22,12 @@ class HuygensKernel(nn.Module):
       K = [i ω / (2π (r+eps))] * χ(θ) * exp(-γ r^2) * exp(i ω r)
       χ(θ) = (1 + cosθ) / 2   (Fresnel–Kirchhoff obliquity)
       cosθ ≈ (c·Δt) / sqrt((c·Δt)^2 + α||x_i-x_j||^2 + eps)
+
+    Anisotropic diffusion (EEG-oriented):
+      K = (4π τ)^{-d/2} (det D)^{-1/2} exp(-Δx^T D^{-1} Δx / (4τ))
+           * [exp(i ω τ) if rhythm_phase else 1]
+      With distance_mode=time and no explicit Δx, uses 1-D heat kernel in lag τ
+      with diffusivity κ from wave_speed (and mild γ envelope).
     """
 
     def __init__(
@@ -42,11 +48,13 @@ class HuygensKernel(nn.Module):
         obliquity_scale: float = 1.0,
         obliquity_mix: float = 0.0,
         learnable_obliquity: bool = False,
+        rhythm_phase: bool = True,
+        aniso_dim: int = 2,
     ):
         super().__init__()
         if distance_mode not in {"feature", "time", "hybrid"}:
             raise ValueError(f"Unknown distance_mode: {distance_mode}")
-        if principle not in {"huygens", "huygens_fresnel"}:
+        if principle not in {"huygens", "huygens_fresnel", "aniso_diffusion"}:
             raise ValueError(f"Unknown principle: {principle}")
 
         if learnable_gamma:
@@ -88,11 +96,78 @@ class HuygensKernel(nn.Module):
         self.local_window_sec = local_window_sec
         self.sparse_band = sparse_band
         self.principle = principle
+        self.rhythm_phase = bool(rhythm_phase)
+        self.aniso_dim = max(1, int(aniso_dim))
         self._learnable_gamma = learnable_gamma
         self._learnable_omega = learnable_omega
         self._learnable_wave_speed = learnable_wave_speed
         self._learnable_obliquity = learnable_obliquity
         self._use_obliquity = principle == "huygens_fresnel" or mix > 0.0
+
+        # Lower-triangular factors for SPD D = L L^T + ε I (feature-space anisotropy).
+        if principle == "aniso_diffusion":
+            d = self.aniso_dim
+            eye = torch.eye(d, dtype=torch.float32)
+            self.diff_L = nn.Parameter(0.1 * eye.clone())
+        else:
+            self.register_parameter("diff_L", None)
+
+    def is_aniso_diffusion(self) -> bool:
+        return self.principle == "aniso_diffusion"
+
+    def diffusion_tensor(self) -> torch.Tensor:
+        """Return SPD diffusivity D ∈ R^{d×d}."""
+        if self.diff_L is None:
+            d = self.aniso_dim
+            kappa = self.effective_wave_speed().clamp_min(1e-3)
+            return kappa * torch.eye(d, device=kappa.device, dtype=kappa.dtype)
+        L = torch.tril(self.diff_L)
+        return L @ L.transpose(-1, -2) + self.eps * torch.eye(
+            L.size(-1), device=L.device, dtype=L.dtype
+        )
+
+    def mahalanobis2(self, delta: torch.Tensor) -> torch.Tensor:
+        """δ^T D^{-1} δ for delta[..., d]."""
+        D = self.diffusion_tensor()
+        # Solve D y = δ^T → y = D^{-1} δ via cholesky
+        L = torch.linalg.cholesky(D)
+        # delta: (..., d)
+        flat = delta.reshape(-1, delta.size(-1))
+        y = torch.cholesky_solve(flat.unsqueeze(-1), L).squeeze(-1)
+        m2 = (flat * y).sum(dim=-1)
+        return m2.reshape(delta.shape[:-1])
+
+    def _diffusion_amplitude_from_lag(
+        self,
+        tau: torch.Tensor,
+        r_maha2: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Anisotropic heat-kernel amplitude for lag τ>0."""
+        kappa = self.effective_wave_speed().clamp_min(1e-3)
+        tau_safe = tau.clamp_min(self.eps)
+        if r_maha2 is None:
+            # 1-D / co-located: (4π κ τ)^{-1/2}
+            amp = (4.0 * math.pi * kappa * tau_safe).pow(-0.5)
+        else:
+            D = self.diffusion_tensor()
+            det = torch.linalg.det(D).clamp_min(self.eps)
+            d = float(D.size(-1))
+            amp = (4.0 * math.pi * tau_safe).pow(-0.5 * d) * det.pow(-0.5)
+            amp = amp * torch.exp(-r_maha2 / (4.0 * tau_safe))
+        # Mild γ envelope keeps locality when κ grows
+        amp = amp * torch.exp(-self.effective_gamma() * tau_safe)
+        return amp
+
+    def _phase_factor(self, lag: torch.Tensor) -> torch.Tensor:
+        """Rhythm phase exp(iωτ) or 1 / cos depending on flags."""
+        if not self.rhythm_phase:
+            if self.use_complex:
+                return torch.complex(torch.ones_like(lag), torch.zeros_like(lag))
+            return torch.ones_like(lag)
+        omega = self.effective_omega()
+        if self.use_complex:
+            return torch.exp(1j * omega * lag)
+        return torch.cos(omega * lag)
 
     def effective_obliquity_mix(self) -> torch.Tensor:
         return self.obliquity_mix.clamp(0.0, 1.0)
@@ -253,6 +328,41 @@ class HuygensKernel(nn.Module):
         mask: Optional[torch.Tensor] = None,
         x: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if self.is_aniso_diffusion():
+            if t is not None:
+                tau = self.compute_time_lag_matrix(t).clamp_min(0.0)
+            else:
+                tau = r.clamp_min(self.eps)
+            r_maha2 = None
+            if x is not None and self.distance_mode in {"feature", "hybrid"} and x.size(-1) >= 1:
+                # Project coords to aniso_dim for Mahalanobis (pad/truncate).
+                d = self.aniso_dim
+                xc = x[..., :d] if x.size(-1) >= d else F.pad(x, (0, d - x.size(-1)))
+                delta = xc.unsqueeze(-2) - xc.unsqueeze(-3)
+                r_maha2 = self.mahalanobis2(delta)
+            amp = self._diffusion_amplitude_from_lag(tau, r_maha2=r_maha2)
+            if rho is not None:
+                if rho.dim() == 3 and rho.size(-1) == 1:
+                    rho = rho.squeeze(-1)
+                rho_mean = (rho.unsqueeze(-1) + rho.unsqueeze(-2)) / 2.0
+                amp = amp * torch.exp(-rho_mean * tau.clamp_min(self.eps))
+            phase = self._phase_factor(tau)
+            if self.use_complex:
+                k = amp.to(phase.dtype) * phase
+            else:
+                k = amp * phase
+            if mask is None and t is not None:
+                if self.is_aniso_diffusion():
+                    dt = self.compute_time_lag_matrix(t)
+                    mask = (dt > 0).float()
+                    if self.local_window_sec is not None:
+                        mask = mask * (dt <= self.local_window_sec + 1e-6).float()
+                else:
+                    mask = self.compute_causal_mask(r, t)
+            if mask is not None:
+                k = k * mask
+            return k
+
         amplitude = self._spherical_amplitude_mag(r)
 
         if self.principle == "huygens_fresnel" or float(self.obliquity_mix.item()) > 0.0:
@@ -273,9 +383,13 @@ class HuygensKernel(nn.Module):
             phase = torch.exp(1j * omega * r)
             if self.principle == "huygens_fresnel":
                 phase = (1j) * phase
+            if not self.rhythm_phase:
+                phase = torch.ones_like(phase)
+                if self.principle == "huygens_fresnel":
+                    phase = phase * (1j)
             k = amp.to(phase.dtype) * phase
         else:
-            phase = torch.cos(omega * r)
+            phase = torch.cos(omega * r) if self.rhythm_phase else torch.ones_like(r)
             k = amp * phase
 
         if mask is None and t is not None:
@@ -308,6 +422,17 @@ class HuygensKernel(nn.Module):
     ) -> torch.Tensor:
         """Complex kernel K(i, i-d) as a function of lag only (uniform time grid)."""
         r = max(lag_sec, float(self.eps))
+        if self.is_aniso_diffusion():
+            tau = torch.tensor(r, device=self.gamma.device, dtype=torch.float32)
+            amp = self._diffusion_amplitude_from_lag(tau)
+            if rho_i is not None and rho_j is not None:
+                rho_mean = (rho_i + rho_j) / 2.0
+                amp = amp * torch.exp(-rho_mean * r)
+            phase = self._phase_factor(tau)
+            if self.use_complex:
+                return amp.to(phase.dtype) * phase
+            return amp * phase
+
         amp = self._spherical_amplitude_mag(
             torch.tensor(r, device=self.gamma.device, dtype=torch.float32)
         )
@@ -334,11 +459,11 @@ class HuygensKernel(nn.Module):
         amp = amp * envelope
         omega = self.effective_omega()
         if self.use_complex:
-            phase = torch.exp(1j * omega * r)
+            phase = torch.exp(1j * omega * r) if self.rhythm_phase else torch.ones((), dtype=torch.complex64, device=amp.device)
             if self.principle == "huygens_fresnel":
                 phase = (1j) * phase
             return amp.to(phase.dtype) * phase
-        phase = torch.cos(omega * r)
+        phase = torch.cos(torch.tensor(omega * r, device=amp.device)) if self.rhythm_phase else torch.ones((), device=amp.device)
         return amp * phase
 
     def _passes_light_cone(self, lag_sec: float) -> bool:
@@ -384,40 +509,61 @@ class HuygensKernel(nn.Module):
         src_clamped = src.clamp(min=0)
 
         amp = self._spherical_amplitude_mag(lags)
-        if self.principle == "huygens_fresnel" or float(self.obliquity_mix.item()) > 0.0:
-            c = self.effective_wave_speed()
-            axial = (c * lags).clamp_min(0.0)
-            alpha = self.effective_obliquity_scale()
-            lateral2 = (alpha ** 2) * (lags.clamp_min(0.0) + self.eps)
-            cos_theta = (axial / torch.sqrt(axial ** 2 + lateral2 + self.eps)).clamp(-1.0, 1.0)
-            chi = 0.5 * (1.0 + cos_theta)
-            if self.principle == "huygens_fresnel":
-                amp = amp * chi
+        if self.is_aniso_diffusion():
+            amp = self._diffusion_amplitude_from_lag(lags)
+            if rho is not None:
+                rho_1d = rho.squeeze(-1) if rho.dim() == 3 and rho.size(-1) == 1 else rho
+                rho_i = rho_1d.unsqueeze(1).expand(b, w_max, n)
+                idx = src_clamped.unsqueeze(0).expand(b, w_max, n).long()
+                rho_j = torch.gather(rho_1d.unsqueeze(1).expand(b, w_max, n), 2, idx)
+                amp = amp.squeeze(-1).unsqueeze(0) * torch.exp(
+                    -(rho_i + rho_j) / 2.0 * lags.squeeze(-1).unsqueeze(0)
+                )
             else:
-                mix = self.effective_obliquity_mix()
-                amp = amp * (1.0 - mix + mix * chi)
-        if rho is not None:
-            rho_1d = rho.squeeze(-1) if rho.dim() == 3 and rho.size(-1) == 1 else rho
-            rho_i = rho_1d.unsqueeze(1).expand(b, w_max, n)
-            idx = src_clamped.unsqueeze(0).expand(b, w_max, n).long()
-            rho_j = torch.gather(rho_1d.unsqueeze(1).expand(b, w_max, n), 2, idx)
-            amp = amp.squeeze(-1).unsqueeze(0) * torch.exp(
-                -(rho_i + rho_j) / 2.0 * lags.squeeze(-1).unsqueeze(0)
-            )
+                amp = amp.squeeze(-1).unsqueeze(0).expand(b, -1, -1)
+            phase = self._phase_factor(lags).squeeze(-1)
+            if self.use_complex:
+                k_stack = (amp.to(phase.dtype) * phase.unsqueeze(0)) * valid.unsqueeze(0)
+            else:
+                k_stack = (amp * phase.unsqueeze(0)) * valid.unsqueeze(0)
         else:
-            amp = amp.squeeze(-1).unsqueeze(0).expand(b, -1, -1)
+            if self.principle == "huygens_fresnel" or float(self.obliquity_mix.item()) > 0.0:
+                c = self.effective_wave_speed()
+                axial = (c * lags).clamp_min(0.0)
+                alpha = self.effective_obliquity_scale()
+                lateral2 = (alpha ** 2) * (lags.clamp_min(0.0) + self.eps)
+                cos_theta = (axial / torch.sqrt(axial ** 2 + lateral2 + self.eps)).clamp(-1.0, 1.0)
+                chi = 0.5 * (1.0 + cos_theta)
+                if self.principle == "huygens_fresnel":
+                    amp = amp * chi
+                else:
+                    mix = self.effective_obliquity_mix()
+                    amp = amp * (1.0 - mix + mix * chi)
+            if rho is not None:
+                rho_1d = rho.squeeze(-1) if rho.dim() == 3 and rho.size(-1) == 1 else rho
+                rho_i = rho_1d.unsqueeze(1).expand(b, w_max, n)
+                idx = src_clamped.unsqueeze(0).expand(b, w_max, n).long()
+                rho_j = torch.gather(rho_1d.unsqueeze(1).expand(b, w_max, n), 2, idx)
+                amp = amp.squeeze(-1).unsqueeze(0) * torch.exp(
+                    -(rho_i + rho_j) / 2.0 * lags.squeeze(-1).unsqueeze(0)
+                )
+            else:
+                amp = amp.squeeze(-1).unsqueeze(0).expand(b, -1, -1)
 
-        envelope = torch.exp(-self.effective_gamma() * lags**2).squeeze(-1)
-        amp = amp * envelope.unsqueeze(0)
-        omega = self.effective_omega()
-        if self.use_complex:
-            phase = torch.exp(1j * omega * lags).squeeze(-1)
-            if self.principle == "huygens_fresnel":
-                phase = (1j) * phase
-            k_stack = (amp.to(phase.dtype) * phase.unsqueeze(0)) * valid.unsqueeze(0)
-        else:
-            phase = torch.cos(omega * lags).squeeze(-1)
-            k_stack = (amp * phase.unsqueeze(0)) * valid.unsqueeze(0)
+            envelope = torch.exp(-self.effective_gamma() * lags**2).squeeze(-1)
+            amp = amp * envelope.unsqueeze(0)
+            omega = self.effective_omega()
+            if self.use_complex:
+                if self.rhythm_phase:
+                    phase = torch.exp(1j * omega * lags).squeeze(-1)
+                else:
+                    phase = torch.ones(w_max, n, device=device, dtype=torch.complex64)
+                if self.principle == "huygens_fresnel":
+                    phase = (1j) * phase
+                k_stack = (amp.to(phase.dtype) * phase.unsqueeze(0)) * valid.unsqueeze(0)
+            else:
+                phase = torch.cos(omega * lags).squeeze(-1) if self.rhythm_phase else torch.ones(w_max, n, device=device)
+                k_stack = (amp * phase.unsqueeze(0)) * valid.unsqueeze(0)
 
         idx_h = src_clamped.unsqueeze(0).unsqueeze(-1).expand(b, w_max, n, d_feat).long()
         h_stack = torch.gather(

@@ -69,6 +69,7 @@ class DeepHuygensStack(nn.Module):
         obliquity_scale: float = 1.0,
         bayesian_mc: bool = False,
         n_samples: int = 32,
+        rhythm_phase: bool = True,
     ):
         super().__init__()
         self.layers = nn.ModuleList(
@@ -87,6 +88,7 @@ class DeepHuygensStack(nn.Module):
                     obliquity_scale=obliquity_scale,
                     bayesian_mc=bayesian_mc,
                     n_samples=n_samples,
+                    rhythm_phase=rhythm_phase,
                 )
                 for i in range(num_layers)
             ]

@@ -1,0 +1,49 @@
+{
+  "checkpoint": "outputs/eeg/aniso_diffusion_ablation/phase_off/best.pt",
+  "arch": "eeg_hnf_aniso_phase_off",
+  "kernel_params": {
+    "spatial": {
+      "tau0": 0.19191476702690125,
+      "omega": 1.5010000467300415,
+      "mix": 0.6268462538719177,
+      "D_eig0": 0.0042966618202626705,
+      "D_eig1": 0.01553627010434866,
+      "D_eig2": 0.06245525926351547,
+      "rhythm_phase": 0.0
+    },
+    "theta_layer0": {
+      "gamma": 1.5153216123580933,
+      "omega": 37.69911193847656,
+      "wave_speed": 0.3094506561756134,
+      "target_hz": 6.0,
+      "rhythm_phase": 0.0,
+      "principle": 1.0
+    },
+    "alpha_layer0": {
+      "gamma": 1.487117886543274,
+      "omega": 62.831851959228516,
+      "wave_speed": 0.4551337659358978,
+      "target_hz": 10.0,
+      "rhythm_phase": 0.0,
+      "principle": 1.0
+    },
+    "delta_layer0": {
+      "gamma": 1.5404375791549683,
+      "omega": 15.707962989807129,
+      "wave_speed": 0.5071575045585632,
+      "target_hz": 2.5,
+      "rhythm_phase": 0.0,
+      "principle": 1.0
+    }
+  },
+  "figures": [
+    "aniso_clinical_increment.png",
+    "aniso_confusion.png",
+    "aniso_diffusion_geometry.png",
+    "aniso_explain_panel.png",
+    "aniso_rho_group_contrast.png",
+    "aniso_sota_subject_acc.png",
+    "aniso_subject_cluster_pca.png",
+    "aniso_temporal_chain_modes.png"
+  ]
+}

@@ -40,7 +40,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num-workers", type=int, default=0)
     p.add_argument("--device", default="")
-    p.add_argument("--principle", default="huygens_fresnel")
+    p.add_argument("--principle", default="huygens_fresnel",
+                   choices=["huygens", "huygens_fresnel", "aniso_diffusion"])
+    p.add_argument(
+        "--rhythm-phase",
+        dest="rhythm_phase",
+        action="store_true",
+        default=True,
+        help="Use oscillatory rhythm phase exp(iωτ)/cos(ωr) (default: on)",
+    )
+    p.add_argument(
+        "--no-rhythm-phase",
+        dest="rhythm_phase",
+        action="store_false",
+        help="Ablate rhythm phase: pure anisotropic diffusion amplitude",
+    )
     p.add_argument("--sample-rate", type=int, default=128)
     p.add_argument("--epoch-sec", type=float, default=10.0)
     p.add_argument("--stride-sec", type=float, default=5.0)
@@ -93,6 +107,16 @@ def parse_args() -> argparse.Namespace:
         help="If >0 and not fully subject-balanced, multiply AD/FTD sample weights by this",
     )
     p.add_argument("--no-synthetic", action="store_true")
+    p.add_argument(
+        "--swap-val-test",
+        action="store_true",
+        help="Exchange val↔test after seed split (train fixed): original test→val, original val→test",
+    )
+    p.add_argument(
+        "--pool-val-test",
+        action="store_true",
+        help="Merge original val+test into one pool: used as val during training AND as test for final report",
+    )
     p.add_argument("--resume", default=None)
     return p.parse_args()
 
@@ -142,10 +166,16 @@ def main() -> None:
         epoch_sec=args.epoch_sec,
         stride_sec=args.stride_sec,
         synthetic_if_missing=not args.no_synthetic,
+        swap_val_test=bool(args.swap_val_test) and not bool(args.pool_val_test),
     )
     train_ds = EEGDataset(split="train", **common)
-    val_ds = EEGDataset(split="val", **common)
-    test_ds = EEGDataset(split="test", **common)
+    if args.pool_val_test:
+        # Same subject pool for selection (val) and final report (test).
+        val_ds = EEGDataset(split="valtest", **common)
+        test_ds = val_ds
+    else:
+        val_ds = EEGDataset(split="val", **common)
+        test_ds = EEGDataset(split="test", **common)
 
     sampler = None
     if args.subject_balanced:
@@ -198,6 +228,7 @@ def main() -> None:
         dropout=args.dropout,
         principle=args.principle,
         use_spatial=not args.no_spatial,
+        rhythm_phase=bool(args.rhythm_phase),
     ).to(device)
     n_params = sum(p.numel() for p in model.parameters())
 
@@ -225,6 +256,8 @@ def main() -> None:
         f"[EEG-native] device={device} params={n_params} arch={arch_tag} "
         f"train={len(train_ds)} val={len(val_ds)} test={len(test_ds)} "
         f"spatial={not args.no_spatial} principle={args.principle} "
+        f"rhythm_phase={bool(args.rhythm_phase)} "
+        f"swap_val_test={bool(args.swap_val_test)} pool_val_test={bool(args.pool_val_test)} "
         f"adftd_margin_w={args.adftd_margin_weight} adftd_bce_w={args.adftd_bce_weight}",
         flush=True,
     )

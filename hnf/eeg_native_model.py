@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from hnf.eeg_dataset import STANDARD_10_20
-from hnf.eeg_geometry import electrode_distance_tensor, region_index_masks
+from hnf.eeg_geometry import electrode_distance_tensor, electrode_xyz, region_index_masks
 from hnf.multiscale import DeepHuygensStack
 from hnf.picking_model import TemporalMediumDensity
 
@@ -88,6 +88,85 @@ class SpatialHuygensMix(nn.Module):
         return torch.einsum("cd,bdt->bct", M, x)
 
 
+class SpatialAnisoDiffusionMix(nn.Module):
+    """Electrode mix via anisotropic diffusion Green kernel on 10–20 XYZ.
+
+    K_ij ∝ (det D)^{-1/2} (4π τ0)^{-3/2} exp( - Δx^T D^{-1} Δx / (4 τ0) )
+           * [cos(ω r_D) if rhythm_phase else 1]
+    """
+
+    def __init__(
+        self,
+        n_channels: int = 19,
+        tau0: float = 0.25,
+        omega: float = 1.5,
+        rhythm_phase: bool = True,
+        learnable: bool = True,
+    ):
+        super().__init__()
+        if n_channels != len(STANDARD_10_20):
+            raise ValueError("SpatialAnisoDiffusionMix expects the 19-ch 10–20 set")
+        xyz = torch.from_numpy(electrode_xyz(STANDARD_10_20))
+        self.register_buffer("xyz", xyz)
+        self.rhythm_phase = bool(rhythm_phase)
+        self.eps = 1e-4
+        # Lower-triangular L for D = L L^T + εI
+        self.diff_L = nn.Parameter(0.35 * torch.eye(3))
+        if learnable:
+            self.log_tau = nn.Parameter(torch.tensor(math.log(max(tau0, 1e-3))))
+            self.omega = nn.Parameter(torch.tensor(_raw_for_softplus_target(omega)))
+            self.mix = nn.Parameter(torch.tensor(0.7))
+            self.res_scale = nn.Parameter(torch.tensor(0.2))
+        else:
+            self.register_buffer("log_tau", torch.tensor(math.log(max(tau0, 1e-3))))
+            self.register_buffer("omega", torch.tensor(_raw_for_softplus_target(omega)))
+            self.register_buffer("mix", torch.tensor(0.7))
+            self.register_buffer("res_scale", torch.tensor(0.0))
+        self.W = nn.Parameter(0.01 * torch.randn(n_channels, n_channels))
+
+    def diffusion_tensor(self) -> torch.Tensor:
+        L = torch.tril(self.diff_L)
+        return L @ L.T + self.eps * torch.eye(3, device=L.device, dtype=L.dtype)
+
+    def geometric_kernel(self) -> torch.Tensor:
+        D = self.diffusion_tensor()
+        Lchol = torch.linalg.cholesky(D)
+        delta = self.xyz.unsqueeze(1) - self.xyz.unsqueeze(0)  # (C,C,3)
+        flat = delta.reshape(-1, 3)
+        y = torch.cholesky_solve(flat.unsqueeze(-1), Lchol).squeeze(-1)
+        maha2 = (flat * y).sum(dim=-1).reshape(delta.shape[:2])
+        tau = torch.exp(self.log_tau).clamp_min(1e-3)
+        det = torch.linalg.det(D).clamp_min(self.eps)
+        amp = (4.0 * math.pi * tau).pow(-1.5) * det.pow(-0.5)
+        K = amp * torch.exp(-maha2 / (4.0 * tau))
+        if self.rhythm_phase:
+            w = F.softplus(self.omega) + 1e-3
+            K = K * torch.cos(w * torch.sqrt(maha2.clamp_min(0.0) + self.eps))
+        K = K / (K.abs().sum(dim=-1, keepdim=True) + 1e-6)
+        return K
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        K = self.geometric_kernel()
+        eye = torch.eye(K.size(0), device=K.device, dtype=K.dtype)
+        alpha = torch.sigmoid(self.mix)
+        beta = F.softplus(self.res_scale)
+        M = alpha * K + (1.0 - alpha) * eye + beta * self.W
+        return torch.einsum("cd,bdt->bct", M, x)
+
+    def collect_params(self) -> dict[str, float]:
+        D = self.diffusion_tensor().detach().cpu()
+        eig = torch.linalg.eigvalsh(D)
+        return {
+            "tau0": float(torch.exp(self.log_tau).detach().cpu()),
+            "omega": float(F.softplus(self.omega).detach().cpu() + 1e-3),
+            "mix": float(torch.sigmoid(self.mix).detach().cpu()),
+            "D_eig0": float(eig[0]),
+            "D_eig1": float(eig[1]),
+            "D_eig2": float(eig[2]),
+            "rhythm_phase": float(self.rhythm_phase),
+        }
+
+
 class RegionalEnergy(nn.Module):
     """Scalp-region energies + frontotemporal contrast (interpretable)."""
 
@@ -139,7 +218,7 @@ class SegmentPool(nn.Module):
 
 
 class RhythmBranch(nn.Module):
-    """One temporal Huygens stack tuned to a target EEG rhythm (Hz)."""
+    """One temporal Huygens/diffusion stack tuned to a target EEG rhythm (Hz)."""
 
     def __init__(
         self,
@@ -151,6 +230,7 @@ class RhythmBranch(nn.Module):
         dropout: float = 0.2,
         principle: str = "huygens_fresnel",
         dim: Optional[int] = None,
+        rhythm_phase: bool = True,
     ):
         super().__init__()
         dim = int(dim or embed_dim)
@@ -169,17 +249,20 @@ class RhythmBranch(nn.Module):
             if dim == embed_dim
             else nn.Sequential(nn.Linear(dim, embed_dim, bias=False), nn.LayerNorm(embed_dim))
         )
+        # Diffusion uses wave_speed as diffusivity κ; keep O(1) init.
+        wave0 = 1.0 if principle != "aniso_diffusion" else 0.5
         self.stack = DeepHuygensStack(
             dim=dim,
             num_layers=num_layers,
             gamma=_raw_for_softplus_target(gamma0),
             omega=_raw_for_softplus_target(omega0),
-            wave_speed=_raw_for_softplus_target(1.0),
+            wave_speed=_raw_for_softplus_target(wave0),
             local_window_sec=local_window_sec,
             dropout=dropout,
             sparse_band=True,
             principle=principle,
             obliquity_scale=1.0,
+            rhythm_phase=rhythm_phase,
         )
 
     def forward(
@@ -224,6 +307,7 @@ class EEGHNFNativeClassifier(nn.Module):
         use_delta: bool = True,
         segment_pool: bool = True,
         include_region_in_head: bool = True,
+        rhythm_phase: bool = True,
     ):
         super().__init__()
         self.n_channels = n_channels
@@ -235,10 +319,20 @@ class EEGHNFNativeClassifier(nn.Module):
         self.use_delta = use_delta
         self.segment_pool = segment_pool
         self.include_region_in_head = bool(include_region_in_head)
+        self.principle = principle
+        self.rhythm_phase = bool(rhythm_phase)
         self.temporal_downsample = max(1, int(temporal_downsample))
         self.branch_rate = max(1, sample_rate // self.temporal_downsample)
 
-        self.spatial = SpatialHuygensMix(n_channels=n_channels) if use_spatial else nn.Identity()
+        if use_spatial:
+            if principle == "aniso_diffusion":
+                self.spatial = SpatialAnisoDiffusionMix(
+                    n_channels=n_channels, rhythm_phase=self.rhythm_phase
+                )
+            else:
+                self.spatial = SpatialHuygensMix(n_channels=n_channels)
+        else:
+            self.spatial = nn.Identity()
         self.regional = RegionalEnergy(n_channels=n_channels)
         self.channel_embed = nn.Conv1d(n_channels, embed_dim, kernel_size=1)
         self.medium_net = TemporalMediumDensity(channels=embed_dim, hidden=32)
@@ -246,19 +340,19 @@ class EEGHNFNativeClassifier(nn.Module):
         self.theta = RhythmBranch(
             embed_dim, target_hz=6.0, sample_rate=self.branch_rate,
             local_window_sec=1.25, num_layers=1, dropout=dropout, principle=principle,
-            dim=embed_dim,
+            dim=embed_dim, rhythm_phase=self.rhythm_phase,
         )
         self.alpha = RhythmBranch(
             embed_dim, target_hz=10.0, sample_rate=self.branch_rate,
             local_window_sec=0.75, num_layers=1, dropout=dropout, principle=principle,
-            dim=max(32, embed_dim // 2),
+            dim=max(32, embed_dim // 2), rhythm_phase=self.rhythm_phase,
         )
         self.delta = None
         if use_delta:
             self.delta = RhythmBranch(
                 embed_dim, target_hz=2.5, sample_rate=self.branch_rate,
                 local_window_sec=2.0, num_layers=1, dropout=dropout, principle=principle,
-                dim=max(32, embed_dim // 2),
+                dim=max(32, embed_dim // 2), rhythm_phase=self.rhythm_phase,
             )
 
         n_branches = 3 if use_delta else 2
@@ -393,7 +487,9 @@ class EEGHNFNativeClassifier(nn.Module):
 
     def collect_kernel_params(self) -> dict[str, dict[str, float]]:
         params: dict[str, dict[str, float]] = {}
-        if self.use_spatial and isinstance(self.spatial, SpatialHuygensMix):
+        if self.use_spatial and isinstance(self.spatial, SpatialAnisoDiffusionMix):
+            params["spatial"] = self.spatial.collect_params()
+        elif self.use_spatial and isinstance(self.spatial, SpatialHuygensMix):
             params["spatial"] = {
                 "gamma": float(F.softplus(self.spatial.gamma).detach().cpu() + 1e-3),
                 "omega": float(F.softplus(self.spatial.omega).detach().cpu() + 1e-3),
@@ -405,10 +501,13 @@ class EEGHNFNativeClassifier(nn.Module):
         for name, branch in branches:
             for li, layer in enumerate(branch.stack.layers):
                 k = layer.kernel
-                params[f"{name}_layer{li}"] = {
+                entry = {
                     "gamma": float(k.effective_gamma().detach().cpu()),
                     "omega": float(k.effective_omega().detach().cpu()),
                     "wave_speed": float(k.effective_wave_speed().detach().cpu()),
                     "target_hz": float(branch.target_hz),
+                    "rhythm_phase": float(getattr(k, "rhythm_phase", True)),
+                    "principle": 0.0 if k.principle != "aniso_diffusion" else 1.0,
                 }
+                params[f"{name}_layer{li}"] = entry
         return params

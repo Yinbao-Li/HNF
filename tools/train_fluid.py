@@ -38,10 +38,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--keep-frac", type=float, default=0.1)
     p.add_argument("--n-train", type=int, default=2048)
     p.add_argument("--n-val", type=int, default=256)
+    p.add_argument("--n-test", type=int, default=256)
     p.add_argument("--embed-dim", type=int, default=64)
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--eta-weight", type=float, default=0.1)
     p.add_argument("--no-eta", action="store_true")
+    p.add_argument("--families", default="", help="comma-separated subset, e.g. vortex")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--device", default="")
@@ -69,6 +71,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, eta_wei
     tot_v, tot_eta, n = 0.0, 0.0, 0
     rels: list[float] = []
     eta_rels: list[float] = []
+    by_family: dict[str, list[float]] = {}
     for batch in loader:
         x = batch["x"].to(device)
         dense = batch["dense"].to(device)
@@ -77,7 +80,10 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, eta_wei
         tot_v += float(loss_v.item()) * x.size(0)
         n += x.size(0)
         for i in range(x.size(0)):
-            rels.append(rel_err(pred[i], dense[i]))
+            r = rel_err(pred[i], dense[i])
+            rels.append(r)
+            fam = batch["family"][i] if isinstance(batch["family"], (list, tuple)) else str(batch["family"])
+            by_family.setdefault(str(fam), []).append(r)
         if "eta" in aux:
             eta_t = torch.as_tensor(batch["eta"], device=device, dtype=pred.dtype)
             loss_eta = mse(aux["eta"], eta_t)
@@ -93,6 +99,8 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, eta_wei
         "eta_rel": float(np.mean(eta_rels)) if eta_rels else float("nan"),
         "score": -float(np.mean(rels)) if rels else float("-inf"),
     }
+    for fam, vals in by_family.items():
+        out[f"vel_rel_{fam}"] = float(np.mean(vals))
     out["loss"] = out["vel_mse"] + eta_weight * (out["eta_mse"] if out["eta_mse"] == out["eta_mse"] else 0.0)
     return out
 
@@ -106,6 +114,7 @@ def main() -> None:
         args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
     )
     predict_eta = not args.no_eta
+    families = [f.strip() for f in args.families.split(",") if f.strip()] or None
 
     train_ds = SyntheticFluidDataset(
         split="train",
@@ -114,6 +123,7 @@ def main() -> None:
         w=args.w,
         keep_frac=args.keep_frac,
         seed=args.seed,
+        families=families,
     )
     val_ds = SyntheticFluidDataset(
         split="val",
@@ -122,12 +132,25 @@ def main() -> None:
         w=args.w,
         keep_frac=args.keep_frac,
         seed=args.seed,
+        families=families,
+    )
+    test_ds = SyntheticFluidDataset(
+        split="test",
+        n_samples=args.n_test,
+        h=args.h,
+        w=args.w,
+        keep_frac=args.keep_frac,
+        seed=args.seed,
+        families=families,
     )
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers
     )
 
     model = FluidHNFReconstructor(
@@ -203,6 +226,21 @@ def main() -> None:
                 best_path,
             )
             print(f"[fluid-s0] saved best → {best_path} (vel_rel={val_m['vel_rel']:.4f})", flush=True)
+
+    test_m = evaluate(model, test_loader, device, args.eta_weight)
+    ckpt = torch.load(best_path, map_location=device, weights_only=False)
+    model.load_state_dict(ckpt["state_dict"])
+    test_m_best = evaluate(model, test_loader, device, args.eta_weight)
+    summary = {
+        "arch": "raster",
+        "best_val": ckpt["val_metrics"],
+        "test_last": test_m,
+        "test_best": test_m_best,
+        "history": history,
+        "families": families or "all",
+    }
+    with (out / "summary.json").open("w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
 
     with (out / "history.json").open("w", encoding="utf-8") as f:
         json.dump({"history": history, "best_score": best_score}, f, indent=2)

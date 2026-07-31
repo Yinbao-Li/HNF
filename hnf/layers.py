@@ -29,6 +29,8 @@ def build_huygens_kernel(
     obliquity_mix: float = 0.0,
     bayesian_mc: bool = False,
     n_samples: int = 32,
+    rhythm_phase: bool = True,
+    aniso_dim: int = 2,
 ):
     """Factory: deterministic HuygensKernel or Bayesian–MC Causal Kernel."""
     learnable_obliquity = learnable_kernel_params and (
@@ -71,6 +73,8 @@ def build_huygens_kernel(
         obliquity_scale=obliquity_scale,
         obliquity_mix=obliquity_mix,
         learnable_obliquity=learnable_obliquity,
+        rhythm_phase=rhythm_phase,
+        aniso_dim=aniso_dim,
     )
 
 
@@ -215,6 +219,7 @@ class HuygensWaveBlock(nn.Module):
         obliquity_mix: float = 0.0,
         bayesian_mc: bool = False,
         n_samples: int = 32,
+        rhythm_phase: bool = True,
     ):
         super().__init__()
         self.kernel = build_huygens_kernel(
@@ -232,6 +237,7 @@ class HuygensWaveBlock(nn.Module):
             obliquity_mix=obliquity_mix,
             bayesian_mc=bayesian_mc,
             n_samples=n_samples,
+            rhythm_phase=rhythm_phase,
         )
         self.proj_real = nn.Linear(dim, dim, bias=False)
         self.proj_imag = nn.Linear(dim, dim, bias=False)

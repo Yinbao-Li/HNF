@@ -74,10 +74,18 @@ def _load_model(ckpt_path: Path, device: torch.device):
     epoch_sec = float(a.get("epoch_sec", 10.0))
     embed_dim = int(a.get("embed_dim", 64))
     principle = str(a.get("principle", "huygens_fresnel"))
+    rhythm_phase = bool(a.get("rhythm_phase", True))
     dropout = float(a.get("dropout", 0.2))
     seq_len = int(round(epoch_sec * sample_rate))
 
-    if "native" in arch or "eeg_hnf_native" in arch:
+    if (
+        "native" in arch
+        or "eeg_hnf_native" in arch
+        or "eeg_hnf_aniso" in arch
+        or "aniso" in arch
+        or any(k.startswith("spatial.diff_L") for k in ckpt.get("state_dict", {}))
+        or any(k.startswith("theta.stack.") for k in ckpt.get("state_dict", {}))
+    ):
         from hnf.eeg_native_model import EEGHNFNativeClassifier
 
         sd = ckpt["state_dict"]
@@ -93,6 +101,9 @@ def _load_model(ckpt_path: Path, device: torch.device):
         else:
             # Fall back: prefer matching the larger (v5) layout.
             include_region = True
+        # State-dict heuristic if args missing: aniso spatial has diff_L.
+        if any(k.startswith("spatial.diff_L") for k in sd):
+            principle = "aniso_diffusion"
         model = EEGHNFNativeClassifier(
             n_channels=19,
             seq_len=seq_len,
@@ -105,6 +116,7 @@ def _load_model(ckpt_path: Path, device: torch.device):
             use_delta=use_delta,
             segment_pool=segment_pool,
             include_region_in_head=include_region,
+            rhythm_phase=rhythm_phase,
         ).to(device)
     else:
         model = EEGHNFClassifier(
@@ -135,6 +147,7 @@ def _collect_split(
     synthetic_if_missing: bool,
     max_epochs: int,
     mean_omega: float,
+    swap_val_test: bool = False,
 ) -> dict[str, Any]:
     ds = EEGDataset(
         data_dir=data_dir,
@@ -144,6 +157,7 @@ def _collect_split(
         epoch_sec=epoch_sec,
         stride_sec=epoch_sec,  # non-overlap
         synthetic_if_missing=synthetic_if_missing,
+        swap_val_test=swap_val_test,
     )
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
     rows: list[dict[str, Any]] = []
@@ -546,11 +560,23 @@ def main() -> None:
 
     print(f"[clinical] device={device} arch={arch_name} ckpt={args.checkpoint}", flush=True)
     packs = {}
+    swap_val_test = bool(ckpt_args.get("swap_val_test", False))
+    pool_val_test = bool(ckpt_args.get("pool_val_test", False))
+    if pool_val_test:
+        print(
+            "[clinical] pool_val_test=True — val and test both use merged val+test pool",
+            flush=True,
+        )
+    elif swap_val_test:
+        print("[clinical] swap_val_test=True (original test→val, original val→test)", flush=True)
     for split in ("train", "val", "test"):
         print(f"[clinical] collecting {split} …", flush=True)
+        ds_split = split
+        if pool_val_test and split in {"val", "test"}:
+            ds_split = "valtest"
         packs[split] = _collect_split(
             model,
-            split,
+            ds_split,
             data_dir=args.data_dir,
             seed=args.seed,
             sample_rate=sample_rate,
@@ -560,6 +586,7 @@ def main() -> None:
             synthetic_if_missing=not args.no_synthetic,
             max_epochs=args.max_epochs_per_split,
             mean_omega=mean_omega,
+            swap_val_test=swap_val_test and not pool_val_test,
         )
 
     subj = {sp: _aggregate_subjects(packs[sp]["epochs"]) for sp in packs}

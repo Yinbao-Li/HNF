@@ -1,0 +1,49 @@
+{
+  "figure": "docs/figures/eeg/aniso_journal_classify_biomarker.png",
+  "panel_a": {
+    "metric": [
+      "subject_accuracy",
+      "macro_AUC"
+    ],
+    "models": [
+      "PNF aniso",
+      "EEGNetv4",
+      "EEG Conformer",
+      "Deep4Net",
+      "ShallowFBCSP"
+    ],
+    "subject_acc": [
+      0.833,
+      0.722,
+      0.667,
+      0.611,
+      0.556
+    ],
+    "macro_auc": [
+      0.917,
+      0.78,
+      0.773,
+      0.811,
+      0.828
+    ],
+    "protocol": "held-out test n=18, seed=42"
+  },
+  "panel_b": {
+    "spearman_r": 0.4511530680474891,
+    "spearman_p": 1.0271017144973506e-05,
+    "kruskal_p": 2.804706254798901e-05,
+    "mw_hc_ad_p": 1.2157902907442324e-05,
+    "means": {
+      "HC": 0.1319338514615669,
+      "FTD": 0.1939664003438519,
+      "AD": 0.19917861652808966
+    },
+    "ns": {
+      "HC": 29,
+      "FTD": 23,
+      "AD": 36
+    },
+    "definition": "D_eff = 1 / rho_std (subject-level; PNF medium-density dynamics)"
+  },
+  "caption_suggestion": "EEG classification and interpretable biomarkers. a Subject accuracy and macro-AUC versus Braindecode / literature baselines (held-out test, n=18). b Subject-level effective diffusivity D_eff = 1/rho_std increases with disease stage HC\u2192FTD\u2192AD (Spearman \u03c1=0.45, p<0.001), consistent with reduced PNF medium-density dynamics (and reduced neural synchrony) in Alzheimer's disease."
+}

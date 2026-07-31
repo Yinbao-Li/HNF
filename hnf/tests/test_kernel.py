@@ -66,6 +66,43 @@ def test_huygens_fresnel_differs_from_huygens():
     assert not torch.allclose(torch.abs(kh), torch.abs(kf), rtol=1e-3, atol=1e-4)
 
 
+def test_aniso_diffusion_kernel_and_phase_ablation():
+    n = 16
+    t = torch.linspace(0, 1, n).reshape(1, n, 1)
+    x = torch.randn(1, n, 4)
+    k_phase = HuygensKernel(
+        principle="aniso_diffusion",
+        causal=True,
+        distance_mode="time",
+        wave_speed=0.5,
+        sparse_band=True,
+        rhythm_phase=True,
+        local_window_sec=0.5,
+    )
+    k_nophase = HuygensKernel(
+        principle="aniso_diffusion",
+        causal=True,
+        distance_mode="time",
+        wave_speed=0.5,
+        sparse_band=True,
+        rhythm_phase=False,
+        local_window_sec=0.5,
+    )
+    h = torch.randn(1, n, 4)
+    h_c = torch.complex(h, torch.zeros_like(h))
+    y1 = k_phase.forward_apply(h_c, h, t=t)
+    y0 = k_nophase.forward_apply(h_c, h, t=t)
+    assert y1.shape == h_c.shape
+    assert torch.isfinite(y1.real).all() and torch.isfinite(y0.real).all()
+    # Phase ablation should change the complex response
+    assert not torch.allclose(y1.real, y0.real, rtol=1e-3, atol=1e-4) or not torch.allclose(
+        y1.imag, y0.imag, rtol=1e-3, atol=1e-4
+    )
+    # Dense build also finite
+    kd = k_phase(x, t=t, return_complex=True)
+    assert torch.isfinite(kd.real).all()
+
+
 def test_fresnel_obliquity_in_unit_interval():
     n = 10
     t = torch.linspace(0, 2, n).reshape(1, n, 1)

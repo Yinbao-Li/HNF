@@ -299,6 +299,9 @@ class EEGDataset(Dataset):
         use_derivatives: Prefer preprocessed derivatives .set files.
         synthetic_if_missing: Build synthetic subjects when data absent.
         cache_resampled: Keep resampled full recordings in memory.
+        swap_val_test: If True, exchange val↔test after the seed split
+            (train unchanged). Used when user wants original test as val
+            for model selection and original val as final holdout.
     """
 
     def __init__(
@@ -316,8 +319,9 @@ class EEGDataset(Dataset):
         use_derivatives: bool = True,
         synthetic_if_missing: bool = True,
         cache_resampled: bool = True,
+        swap_val_test: bool = False,
     ):
-        if split not in {"train", "val", "test"}:
+        if split not in {"train", "val", "test", "valtest"}:
             raise ValueError(f"Unknown split: {split}")
         self.split = split
         self.sample_rate = int(sample_rate)
@@ -328,6 +332,7 @@ class EEGDataset(Dataset):
         self.stride_samples = max(1, int(round(self.stride_sec * self.sample_rate)))
         self.ftd_as_mci = ftd_as_mci
         self.cache_resampled = cache_resampled
+        self.swap_val_test = bool(swap_val_test)
         self.data_dir = Path(data_dir)
         self._cache: dict[str, np.ndarray] = {}
         self._synth_native: dict[str, tuple[np.ndarray, float]] = {}
@@ -347,7 +352,22 @@ class EEGDataset(Dataset):
             val_ratio=val_ratio,
             seed=seed,
         )
-        self.subjects = [s for s in subjects if split_map[s.subject_id] == split]
+        if self.swap_val_test:
+            swapped: dict[str, str] = {}
+            for sid, role in split_map.items():
+                if role == "val":
+                    swapped[sid] = "test"
+                elif role == "test":
+                    swapped[sid] = "val"
+                else:
+                    swapped[sid] = role
+            split_map = swapped
+        if split == "valtest":
+            self.subjects = [
+                s for s in subjects if split_map[s.subject_id] in {"val", "test"}
+            ]
+        else:
+            self.subjects = [s for s in subjects if split_map[s.subject_id] == split]
         if not self.subjects:
             raise RuntimeError(f"Split {split!r} is empty after subject partitioning")
 

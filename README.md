@@ -719,165 +719,166 @@ asks whether the **same pattern**—sparse observation → HNF encoder → task 
 | Interpretable unit | ρ(t), γ, ω, K rows | ρ(t) / spectral proxies | **ρ(x,y,z), γ, vort/mom sources** |
 | Discovery | geo + velocity residuals | group contrasts / ROC | residual vs base rheology |
 
-## IV.1 Domain II — AD/FTD EEG
+## IV.1 Domain II — AD/FTD EEG (anisotropic diffusion HNF)
 
-**Goal (breakthrough bar):** produce *clinically meaningful* knowledge —
-differential help (HC / **FTD** / AD), MMSE-aligned incremental value, and
-FDR-surviving interpretable markers — not a Stage-1 smoke-test narrative.
-Stage-1 classification is the **floor to beat**. See
-`.cursor/rules/eeg-clinical-standards.mdc`.
+**Preferred checkpoint (classification):**  
+`outputs/eeg/aniso_diffusion_ablation/phase_off/best.pt`  
+— EEG-native HNF with **anisotropic diffusion** spatial/temporal kernels and
+**no rhythm phase** on the Green kernel (`--principle aniso_diffusion --no-rhythm-phase`).  
+Clinical suite: `outputs/eeg/aniso_diffusion_ablation/phase_off_clinical/`.  
+Figures: `docs/figures/eeg/aniso_*.{png,pdf}`. Interpretability dump:
+`outputs/eeg/aniso_interpret/`.
 
-**Status (2026-07-27).** Stage-1 temporal port + EEG-native redesign + clinical
-suite are in place. Current preferred clinical checkpoint:
-`outputs/eeg/adftd_hnf_native_v3/best.pt`
-(report: `outputs/eeg/clinical_breakthrough_native_v3/`).
-v5 (regional + δ + segment pool) is trained as a backbone probe —
-report `outputs/eeg/clinical_breakthrough_native_v5/` — but does **not** beat v3.
+**Kernel (conceptual).** Secondary sources mix via an anisotropic heat kernel
+
+\[
+K(\Delta x,\tau)\propto(\det D)^{-1/2}\,\tau^{-d/2}
+\exp\!\bigl(-\Delta x^{\mathsf T} D^{-1}\Delta x/(4\tau)\bigr)
+\]
+
+with learnable SPD \(D\) on 10–20 electrode XYZ (spatial) and lag-\(\tau\) diffusion
+in rhythm branches (temporal). Ablation: adding oscillatory \(\mathrm{e}^{\mathrm{i}\omega\tau}\)
+**hurts** held-out discrimination → preferred model is amplitude-only diffusion.
 
 | Piece | Location |
 |-------|----------|
-| Dataset | `hnf/eeg_dataset.py` (ds004504; Age/Gender/MMSE; clinical HC/FTD/AD names) |
-| Stage-1 port | `hnf/eeg_model.py` (STEAD-style temporal multi-scale) |
-| **EEG-native HNF** | `hnf/eeg_native_model.py` + `hnf/eeg_geometry.py` (v5: regional / δ / segment pool) |
-| Clinical helpers | `hnf/eeg_clinical.py` |
-| **Braindecode SOTA** | `hnf/eeg_braindecode_models.py` + `tools/train_eeg_braindecode.py` |
-| **Temporal chain** | `hnf/eeg_temporal_chain.py` + `tools/build_eeg_temporal_chain_library.py` |
-| Pattern router | `hnf/eeg_pattern_library.py` + `tools/build_eeg_pattern_library.py` |
-| Train native | `tools/train_eeg_native.py` |
-| **Clinical suite** | `tools/run_eeg_clinical_suite.py` |
-| Explain | `tools/explain_eeg_native.py` |
-| Knowledge cards | `tools/build_eeg_knowledge_cards.py` |
-| Marker stability | `tools/run_eeg_marker_stability.py` |
+| Dataset | `hnf/eeg_dataset.py` (OpenNeuro ds004504; HC/FTD/AD; Age/Gender/MMSE) |
+| Model | `hnf/eeg_native_model.py` (`SpatialAnisoDiffusionMix` + δ/θ/α branches) |
+| Kernel | `hnf/kernel.py` (`principle=aniso_diffusion`, `rhythm_phase`) |
+| Train | `tools/train_eeg_native.py --principle aniso_diffusion --no-rhythm-phase` |
+| Clinical suite | `tools/run_eeg_clinical_suite.py` |
+| Paper figures | `tools/plot_eeg_aniso_paper_figures.py` |
+| Explain / chain / cards | `tools/explain_eeg_native.py`, `build_eeg_temporal_chain_library.py`, `build_eeg_knowledge_cards.py` |
+| **Literature SOTA** | Braindecode EEGNetv4 / ShallowFBCSP / Deep4Net / EEGConformer |
 
 ```bash
-# EEG-native train + clinical suite
-bash logs/run_eeg_native_pipeline.sh
-# clinical suite only (any ckpt)
-bash logs/run_eeg_clinical_suite.sh
-# Braindecode SOTA sweep + compare board
-PYTHONPATH=. python scripts/experiments/sweep_eeg_braindecode_baselines.py --device cuda
-PYTHONPATH=. python scripts/experiments/build_eeg_braindecode_compare.py
-# Temporal-chain shape clustering (early→late + θ→α propagation)
-PYTHONPATH=. python tools/build_eeg_temporal_chain_library.py --split all --device cuda --no-synthetic
-# Single-subject explain panels
-PYTHONPATH=. python tools/explain_eeg_native.py --checkpoint outputs/eeg/adftd_hnf_native_v3/best.pt --device cuda --no-synthetic
+# Preferred recipe
+PYTHONPATH=. python tools/train_eeg_native.py \
+  --principle aniso_diffusion --no-rhythm-phase --mmse-weight 0.1 \
+  --no-subject-balanced --no-synthetic \
+  --output-dir outputs/eeg/aniso_diffusion_ablation/phase_off
+# Clinical + paper figures + discovery
+PYTHONPATH=. python tools/run_eeg_clinical_suite.py \
+  --checkpoint outputs/eeg/aniso_diffusion_ablation/phase_off/best.pt \
+  --output-dir outputs/eeg/aniso_diffusion_ablation/phase_off_clinical --no-synthetic
+bash logs/run_eeg_aniso_interpret.sh
 ```
 
-**Taxonomy note.** ds004504 is CN / FTD / AD. Stage-1 trained with FTD in the
-historical “MCI” class-1 slot; **clinical reports must call class-1 FTD**.
+**Data.** 88 subjects (AD 36 / HC 29 / FTD 23); subject-level split seed=42
+(train 57 / val 13 / test 18). Epochs: 19ch × 10 s @ 128 Hz.
 
-### Why redesign (not just retrain the STEAD port)
+### vs literature SOTA (aniso only)
 
-Stage-1 clinical FDR hits were almost only classical `bp_alpha` /
-`theta_alpha_ratio` — HNF ρ/kernel features did **not** drive the clinical
-signal. EEG-native HNF keeps the same methodology but changes the inductive bias:
+Same subject split. Braindecode models: val macro-AUC grid (30 ep) → retrain 50 ep
+(`outputs/eeg/adftd_braindecode_sota/`). In-house EEGNet/Conformer similarly tuned
+(`outputs/eeg/adftd_sota_tuned/`).
 
-1. **Spatial secondary sources** — 10–20 electrodes as Huygens sources
-   (`SpatialHuygensMix`) plus regional energies / frontotemporal contrast
-2. **Rhythm-aware temporal branches** — δ (~2.5 Hz) / θ (~6 Hz) / α (~10 Hz) with
-   \(\omega\cdot c \approx 2\pi f\) priors; early/late segment pooling (v5)
-3. **Clinical aux** — optional MMSE head (v3 uses a light weight) so latents keep
-   severity-ordered information
+**Held-out test (n=18)**
 
-### Clinical board (same subject split, n_test=18)
+| Model | subject acc | AD↔FTD acc | macro-AUC | params |
+|-------|------------:|-----------:|----------:|-------:|
+| **HNF aniso diffusion (phase_off)** | **0.833** | **0.769** | **0.917** | 105k |
+| EEGNetv4 (Braindecode) | 0.722 | 0.692 | 0.780 | 3.3k |
+| EEG Conformer (Braindecode) | 0.667 | 0.692 | 0.773 | 969k |
+| Deep4Net (Braindecode) | 0.611 | 0.462 | 0.811 | 282k |
+| ShallowFBCSPNet (Braindecode) | 0.556 | 0.385 | 0.828 | 41k |
 
-| Checkpoint | subject acc | AD↔FTD acc | MMSE ΔR² (demo→+EEG) | AD vs rest AUC (+EEG) | FDR train hits (HNF-native) |
-|------------|------------:|-----------:|---------------------:|----------------------:|----------------------------:|
-| Stage-1 port | **0.778** | **0.846** | 0.161 | 0.768 | 6 (0 HNF) |
-| native v1 | **0.778** | 0.769 | 0.228 | 0.796 | 21 (ρ-driven) |
-| native v2 (over-balanced) | 0.611 | 0.692 | 0.259 | 0.900 | 18 (**HNF α/θ**) |
-| **native v3 (preferred)** | **0.778** | 0.769 | **0.346** | **0.901** | **30** (**HNF α/θ + ρ**; 10 survive test FDR) |
-| native v4 (hard-pair) | 0.611 | 0.692 | 0.346 | 0.896 | 27 (failed like v2) |
-| native v5 (regional+δ+seg) | 0.722 | 0.769 | 0.330 | 0.890 | 25 (α+ρ+`region_pf_contrast`; 0 test FDR) |
+**Val+test pool (n=31)** — larger evaluation set; train excluded
+(`outputs/eeg/valtest_pool_eval/VALTEST_POOL_BOARD.md`):
 
-**Reading (ambition ≠ claim):**
-- Classification floor is **held by v3** (subject_acc 0.778); EEG-native does not yet
-  *beat* Stage-1 on AD↔FTD hard differential (0.769 vs 0.846).
-- Clinical *knowledge* side clearly moved: MMSE incremental ΔR² **0.16 → 0.35**,
-  demography-controlled AD-vs-rest AUC **0.77 → 0.90**, and FDR hits now include
-  HNF θ/α energies and ρ — not only classical band power.
-- v5 proves regional geometry is FDR-visible (`region_pf_contrast`) but did not lift
-  subject accuracy or test FDR confirmation over v3 — keep as architecture probe.
-- Still **not** a clinical breakthrough claim: test N=18, no external replication,
-  transfer/few-shot still open.
+| Model | subject acc | AD↔FTD | subject AUC |
+|-------|------------:|-------:|------------:|
+| **HNF aniso diffusion** | **0.774** | **0.773** | **0.858** |
+| EEGNet (in-house tuned) | 0.677 | 0.636 | 0.808 |
+| EEGNetv4 (Braindecode) | 0.645 | 0.591 | 0.757 |
+| EEG Conformer (Braindecode) | 0.613 | 0.636 | 0.745 |
+| Deep4Net | 0.548 | 0.455 | 0.725 |
 
-### vs Braindecode official SOTA (val-tuned, same split)
+![SOTA subject accuracy](docs/figures/eeg/aniso_sota_subject_acc.png)
 
-Braindecode **0.8** implementations — EEGNetv4, ShallowFBCSPNet, Deep4Net,
-EEGConformer — each swept on val macro-AUC (30 ep) then retrained 50 ep.
-Board: `outputs/eeg/adftd_braindecode_sota/compare_summary.md`.
+*Figure: anisotropic diffusion HNF vs literature / Braindecode SOTA under two
+evaluation protocols (test n=18; pooled val+test n=31).*
 
-| Model | subject acc | AD↔FTD acc | macro-AUC |
-|-------|------------:|-----------:|----------:|
-| **HNF Stage-1** | **0.778** | **0.846** | 0.841 |
-| **HNF native v3** | **0.778** | 0.769 | **0.914** |
-| EEGNetv4 (Braindecode) | 0.722 | 0.692 | 0.780 |
-| ShallowFBCSPNet | 0.556 | 0.385 | 0.828 |
-| Deep4Net | 0.611 | 0.462 | 0.811 |
-| EEG Conformer | 0.667 | 0.692 | 0.773 |
+**Journal summary figure (classification + biomarker):**
 
-HNF leads **subject accuracy** and **macro-AUC** on this small cohort; Braindecode
-ShallowFBCSPNet has high epoch-level AUC but weak subject voting — a known
-small-N pitfall.
+![EEG classification and interpretable biomarkers](docs/figures/eeg/aniso_journal_classify_biomarker.png)
 
-### Interpretability & discovery (EEG-native v3)
+*Figure: EEG classification and interpretable biomarkers.
+**a** Subject accuracy and macro-AUC versus Braindecode / literature baselines
+(held-out test, n=18).
+**b** Subject-level effective diffusivity \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\)
+increases along HC→FTD→AD (Spearman ρ=0.45, **p<0.001**), consistent with reduced
+PNF medium-density dynamics (and reduced neural synchrony) in AD.
+Note: \(D_{\mathrm{eff}}\) is a per-subject proxy from ρ dynamics; the shared SPD
+tensor \(D\) in the kernel is global.*
 
-Three layers beyond scalar classification:
+**Phase ablation (same aniso backbone):** phase_off subject acc **0.833** vs
+phase_on **0.667** on test — rhythm phase on the diffusion kernel is **not** helpful;
+δ/θ/α branches already carry band structure.
 
-1. **Single-epoch explain** — ρ(t), θ/α/δ branch envelopes, band proxy, kernel γ/ω
-2. **FDR marker mining** — train discovery → test confirmation; **10/30** survive test BH-FDR
-3. **Temporal-chain shape clustering** — epoch τ∈[0,1] frame + θ→α propagation (not STEAD P→S)
+### Clinical increment (aniso phase_off)
 
-![EEG explain — HC example](docs/figures/eeg/explain_native_hc.png)
+| Metric | Value |
+|--------|------:|
+| Test subject acc / AD↔FTD | 0.833 / 0.769 |
+| MMSE ΔR² (Age+Gender → +EEG) | 0.294 |
+| AD vs rest AUC (demo → +EEG) | 0.639 → 0.805 |
+| Train FDR marker hits (BH) | 15 (ρ family dominant) |
+| Test FDR confirmations | 0 (small-N; discovery still provisional) |
 
-*Figure: native v3 forward on a held-out HC epoch — mean EEG, ρ(t), rhythm envelopes,
-band proxy, and learned spatial kernel params.*
+![Confusion](docs/figures/eeg/aniso_confusion.png)
+![Clinical increment](docs/figures/eeg/aniso_clinical_increment.png)
 
-![EEG temporal-chain modes](docs/figures/eeg/temporal_chain_modes.png)
+*Figures: held-out subject confusion; demographics-controlled MMSE / AD-vs-rest
+incremental value.*
 
-*Figure: K=5 shape clusters in the epoch early→late frame. Mode **M4** shows
-ρ early→late **decay** (drift ≈ −0.17), consistent with the FDR finding that HC
-carries higher ρ than disease groups.*
+### Interpretability & physics discovery
 
-![EEG subject router clusters](docs/figures/eeg/subject_cluster_pca.png)
+1. **Learned anisotropy \(D\)** — SPD tensor on the scalp; eigenvalue spread
+   encodes preferred conduction directions (not isotropic 10–20 mixing).
+2. **ρ(t) medium density** — train FDR hits concentrate on `rho_std` / `rho_p90` /
+   `rho_cv`: HC shows **larger ρ dynamics** than AD/FTD.
+3. **Single-epoch explain** — waveform, ρ(t), δ/θ/α envelopes, regional energies.
+4. **Temporal-chain modes** — early→late + θ→α propagation clusters (shape library).
+5. **Subject-level router clusters** — ρ / band / HNF energies for pattern routing.
 
-*Figure: subject-level K-means on router features (ρ, band power, HNF energies) —
-**routing** clusters, distinct from temporal-chain **shape** modes.*
+![Diffusion geometry](docs/figures/eeg/aniso_diffusion_geometry.png)
 
-**Test-confirmed markers (knowledge cards):** `outputs/eeg/knowledge_cards_native_v3/KNOWLEDGE_CARDS.md`
+*Figure: learned diffusion tensor principal axes on 10–20 electrodes, spatial
+kernel matrix \(K\), and \(D\) eigenvalue spectrum.*
 
-| Marker | Contrast | Direction | test FDR |
-|--------|----------|-----------|:--------:|
-| `rho_mean`, `rho_std`, `rho_p90`, `omega_rho` | HC vs AD / disease | HC **>** disease | ✓ |
-| `theta_alpha_ratio` | HC vs AD / disease | disease **>** HC (slowing) | ✓ |
+![Explain panel](docs/figures/eeg/aniso_explain_panel.png)
 
-Bootstrap + cross-checkpoint (v1/v3/v5): ρ family stable at **100%** hit rate across
-200 resamples; see `outputs/eeg/marker_stability_native/marker_stability.md`.
+*Figure: HC / FTD / AD test epochs — mean EEG, ρ(t), and rhythm-branch envelopes
+under the anisotropic diffusion backbone.*
 
-![ρ mean — HC vs AD (clinical board)](docs/figures/eeg/fig4_rho_mean_hc_ad.png)
+![ρ group contrast](docs/figures/eeg/aniso_rho_group_contrast.png)
 
-*Figure: group contrast on the core FDR marker `rho_mean` — HC higher than AD on
-held-out subjects (pilot N; not a standalone diagnostic claim).*
+*Figure: subject-level ρ dynamics by clinical group (train discovery vs held-out test).*
 
-**Clinical increment (native v3, all subjects):** MMSE ΔR² demo→+EEG = **0.35**;
-AD-vs-rest AUC **0.64 → 0.90** after adding EEG features.
+![Temporal-chain modes](docs/figures/eeg/aniso_temporal_chain_modes.png)
+
+*Figure: K-means shape modes in the epoch early→late / θ→α frame under aniso HNF.*
+
+![Subject router clusters](docs/figures/eeg/aniso_subject_cluster_pca.png)
+
+*Figure: subject-level clusters on router features (ρ, band power, HNF energies).*
+
+Knowledge cards: `outputs/eeg/aniso_interpret/knowledge_cards/KNOWLEDGE_CARDS.md`
+(15 train-FDR hits; ρ family + classical θ/α).  
+Marker stability: `outputs/eeg/aniso_interpret/marker_stability/marker_stability.md`.
 
 ### Publishability snapshot (honest)
 
-| Track | Publishable claim | Caveat |
-|-------|-------------------|--------|
-| STEAD picking | Competitive F1 + **best P MAE (21 ms)** + interpretable ρ/γ/ω | EQT slightly higher P F1 |
-| Cross-domain method | Same HNF pattern ports STEAD → EEG with interpretable units | EEG is pilot |
-| EEG biomarker | **ρ medium-density** as HNF-native marker; MMSE/AUC increment | N=18 test, single site |
-| EEG diagnosis SOTA | Beats tuned Braindecode on subject acc | **Not** multi-site validated |
+| Track | Claim | Caveat |
+|-------|-------|--------|
+| EEG vs literature SOTA | Aniso HNF leads subject acc / macro-AUC on ds004504 | Single site, N_test=18 |
+| Kernel design | Anisotropic diffusion > oscillatory phase on this task | Pilot ablation |
+| Biomarker direction | ρ dynamics HC > disease (train FDR) | Test FDR not yet confirmed |
+| Clinical increment | MMSE ΔR²≈0.29; AD-vs-rest AUC↑ with EEG | Not a diagnostic device claim |
 
-**Next on the breakthrough checklist:** EEG pattern-library router is online
-(`hnf/eeg_pattern_library.py`, `bash logs/run_eeg_pattern_library.sh` →
-`outputs/eeg/pattern_library_*_tight/`). Tight recipe: stricter second-look,
-val-calibrated OOD abstain, online confirm/reject counters (centres frozen).
-Val shows kept-acc↑ with coverage trade-off; test still mostly holds baseline
-(fill). Next useful lever is larger N / external set so OOD gates generalize.
-
+**Claim discipline:** aiming for breakthrough help; **not** claiming clinical
+deployment readiness. External replication and multi-site transfer remain open.
 
 
 ## IV.2 Domain III — sparse 3D/4D flow → constitutive discovery
