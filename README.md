@@ -875,6 +875,33 @@ Knowledge cards: `outputs/eeg/aniso_interpret/knowledge_cards/KNOWLEDGE_CARDS.md
 (15 train-FDR hits; ρ family + classical θ/α).  
 Marker stability: `outputs/eeg/aniso_interpret/marker_stability/marker_stability.md`.
 
+### Longitudinal external check — OpenNeuro ds005385 (healthy aging)
+
+ds004504 has **no** within-subject follow-up. As a first longitudinal probe we use
+**Dortmund Vital Study** ([ds005385](https://openneuro.org/datasets/ds005385)): healthy adults,
+~5-year ses-1→ses-2 EyesClosed/acq-pre pairs (**no AD cases**; dementia excluded).
+
+Pilot: map 64ch → AHEPA-19, extract Domain-II spectral/spatial markers, report
+test–retest r / ICC and age correlations vs ds004504 disease directions.
+
+| Marker | test–retest r | ICC | age corr (ses1) | vs ds004504 disease dir |
+|--------|--------------:|----:|----------------:|-------------------------|
+| `theta_alpha_ratio` | **0.807** | **0.806** | 0.208 | age↑ matches disease↑ |
+| `bp_alpha` | **0.779** | **0.772** | −0.097 | age↓ matches disease↓ |
+| `front_post_alpha` | **0.848** | **0.848** | 0.361 | — |
+| `bp_theta` | 0.456 | 0.404 | 0.120 | age↑ matches disease↑ |
+| `cov_aniso` | 0.507 | 0.498 | 0.149 | — |
+
+Pilot **n=40** paired subjects. Board: [`outputs/eeg/longitudinal_ds005385/BOARD.md`](outputs/eeg/longitudinal_ds005385/BOARD.md).
+
+```bash
+PYTHONPATH=. python tools/download_eeg_ds005385.py --max-subjects 40
+PYTHONPATH=. python tools/run_eeg_longitudinal_ds005385.py --max-subjects 40
+```
+
+**Claim discipline:** longevity here means **marker reliability in healthy aging**, not
+AD longitudinal progression (that needs a clinical follow-up cohort).
+
 ### Publishability snapshot (honest)
 
 | Track | Claim | Caveat |
@@ -883,6 +910,7 @@ Marker stability: `outputs/eeg/aniso_interpret/marker_stability/marker_stability
 | Kernel design | Anisotropic diffusion > oscillatory phase on this task | Pilot ablation |
 | Biomarker direction | ρ dynamics HC > disease (train FDR) | Test FDR not yet confirmed |
 | Clinical increment | MMSE ΔR²≈0.29; AD-vs-rest AUC↑ with EEG | Not a diagnostic device claim |
+| Longitudinal (ds005385) | θ/α & front–post α markers stable over ~5y (r≈0.78–0.85, n=40) | Healthy aging only; not AD follow-up |
 
 **Claim discipline:** aiming for breakthrough help; **not** claiming clinical
 deployment readiness. External replication and multi-site transfer remain open.
@@ -894,6 +922,8 @@ deployment readiness. External replication and multi-site transfer remain open.
 baseline & literature-SOTA comparison + interpretability figures.
 **Boltzmann memory (R0–R1 aniso)** train + full model zoo + **tuned domain SOTA** +
 interpretability / knowledge mining + journal panel **complete** (2026-07-31).
+**Real SAOS + GPC discovery** (Leeds PS, Elliott et al. 2025): PNF≡NLS on spectra;
+tube–MWD alignment; transfer vs published NN ensemble **complete** (2026-08-03).
 
 | Artifact | Path |
 |----------|------|
@@ -902,7 +932,13 @@ interpretability / knowledge mining + journal panel **complete** (2026-07-31).
 | Aniso ML board | [`outputs/rheo/aniso_sota_full/BOARD.md`](outputs/rheo/aniso_sota_full/BOARD.md) |
 | R0 isotropic ablations | [`outputs/rheo/suite_final/BOARD.md`](outputs/rheo/suite_final/BOARD.md) |
 | Knowledge cards | [`outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md`](outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md) |
-| Journal figure | [`docs/figures/rheo/rheo_journal_memory_sota.png`](docs/figures/rheo/rheo_journal_memory_sota.png) |
+| Journal figure (synth) | [`docs/figures/rheo/rheo_journal_memory_sota.png`](docs/figures/rheo/rheo_journal_memory_sota.png) |
+| **Real SAOS board** (Leeds PS) | [`outputs/rheo/leeds_real_saos/BOARD.md`](outputs/rheo/leeds_real_saos/BOARD.md) |
+| Journal figure (real SAOS) | [`docs/figures/rheo/rheo_journal_leeds_saos.png`](docs/figures/rheo/rheo_journal_leeds_saos.png) |
+| Spectrum↔MWD mine | [`outputs/rheo/spectrum_mwd_mine/DISCOVERY.md`](outputs/rheo/spectrum_mwd_mine/DISCOVERY.md) |
+| Journal figure (spectrum–MWD) | [`docs/figures/rheo/rheo_journal_spectrum_mwd.png`](docs/figures/rheo/rheo_journal_spectrum_mwd.png) |
+| **Transfer vs Elliott NN** | [`outputs/rheo/mwd_transfer/TRANSFER.md`](outputs/rheo/mwd_transfer/TRANSFER.md) |
+| Journal figure (MWD transfer) | [`docs/figures/rheo/rheo_journal_mwd_transfer.png`](docs/figures/rheo/rheo_journal_mwd_transfer.png) |
 
 ### All-model performance (highlights)
 
@@ -925,9 +961,70 @@ Full table: [`MASTER_BOARD.md`](outputs/rheo/interpret_mine/MASTER_BOARD.md). Ke
 ![Rheology journal panel](docs/figures/rheo/rheo_journal_memory_sota.png)
 *Figure (a–d). Synthetic linear viscoelasticity (dim=2, K=2). (a) Model-zoo stress relative \(L_2\) error. (b) Anisotropic spectra \(G_{11}/G_{22}\): GT solid, PNF open markers; \(\lambda_{1,2}\) below axis; legend top-right. (c) Multi-step shear visualization: \(\dot\gamma\) (top); **GT | PNF | \(|\)RhINN−GT\(|\)** with one shared \(\sigma\) colorbar on the far right (error max in title). (d) Oscillatory residual \(\hat\sigma-\sigma\). Artifacts: [`MASTER_BOARD`](outputs/rheo/interpret_mine/MASTER_BOARD.md), [`KNOWLEDGE_CARDS`](outputs/rheo/interpret_mine/KNOWLEDGE_CARDS.md). Regenerate: `PYTHONPATH=. python tools/plot_rheo_journal_figure.py`*
 
+### Real SAOS — Leeds polystyrene melts (Elliott et al. 2025)
+
+Public frequency-sweep \(G'(\omega), G''(\omega)\) for 9 PS melts
+([DOI 10.5518/1689](https://doi.org/10.5518/1689)). Fixed log-spaced Maxwell library
+(\(K=8\)); fit modal amplitudes on \(\log_{10}(G',G'')\).
+
+| Method | mean rel_log ↓ | median rel_log ↓ | mean rel \(L_2\) ↓ |
+|--------|---------------:|-----------------:|-------------------:|
+| Classical Prony NLS | **0.0326** | **0.0409** | **0.1108** |
+| **PNF** | **0.0326** | **0.0409** | **0.1108** |
+
+**Takeaway:** on experimental PS SAOS, **PNF ≡ classical Prony NLS** (same fixed-λ library), extending the synthetic Boltzmann-memory result to real rheometry spectra.
+
+```bash
+PYTHONPATH=. python tools/download_rheo_leeds.py
+PYTHONPATH=. python tools/run_rheo_leeds_real.py --output-dir outputs/rheo/leeds_real_saos
+PYTHONPATH=. python tools/plot_rheo_leeds_figure.py
+```
+
+![Leeds SAOS panel](docs/figures/rheo/rheo_journal_leeds_saos.png)
+*Figure. Real PS melt SAOS (Elliott et al. 2025). (a) Fixed-λ library mean/median rel-log error. (b) Per-sample NLS vs PNF. (c–e) Example spectra \(G',G''\) with PNF overlay. Board: [`leeds_real_saos/BOARD.md`](outputs/rheo/leeds_real_saos/BOARD.md).*
+
+### Spectrum ↔ MWD discovery (paired GPC, n=9)
+
+Small-n protocol: Spearman + permutation tests; tube map \(M\propto\lambda^{1/3.4}\) vs amplitude-shuffle null; ω-window control for branching claims.
+
+| Finding | Result |
+|---------|--------|
+| **Tube alignment** | Mode mass ↔ GPC mass mean **r≈0.91** vs shuffle null **≈0.57** (most samples p\<0.05) |
+| **LOO Mw/Ð** | Descriptor regression **fails** at n=9 (honest negative) |
+| **Branching AUC** | Raw AUC=1 is **partly ω-window confound**; only A1PS remains a clear outlier after span control |
+
+```bash
+PYTHONPATH=. python tools/run_rheo_spectrum_mwd_mine.py --output-dir outputs/rheo/spectrum_mwd_mine
+PYTHONPATH=. python tools/plot_rheo_spectrum_mwd_figure.py
+```
+
+![Spectrum–MWD panel](docs/figures/rheo/rheo_journal_spectrum_mwd.png)
+*Figure. Interpretable spectrum↔MWD mine. Board: [`DISCOVERY.md`](outputs/rheo/spectrum_mwd_mine/DISCOVERY.md).*
+
+### Transfer vs Elliott NN (same Maxwell features)
+
+WLF→180°C, 81 fixed-τ modes, input \(\log_{10}G_k\). Black-box: ensemble of 9 published Keras models. Interpretable: tube projection + synth-pretrained Ridge (simplified entanglement forward).
+
+| Method | mean MWD RMSE ↓ | mean ‖Δ log₁₀ Mw‖ ↓ |
+|--------|----------------:|--------------------:|
+| **Elliott NN ensemble** | **0.046** | **0.038** |
+| Synth-pretrained Ridge | 0.155 | 0.336 |
+| Tube projection (zero-shot) | 0.195 | 0.655 |
+
+**Takeaway:** full MWD shape needs **nonlinear tube inversion** (Elliott); readable \(G_k\) still carry transferable Mw signal (Ridge ≫ naive tube). PS1 is hard for all methods.
+
+```bash
+# needs tensorflow (e.g. pip install tensorflow==2.13.1) + NN_Models from Leeds archive
+PYTHONPATH=. python tools/run_rheo_mwd_transfer.py --output-dir outputs/rheo/mwd_transfer
+PYTHONPATH=. python tools/plot_rheo_mwd_transfer_figure.py
+```
+
+![MWD transfer panel](docs/figures/rheo/rheo_journal_mwd_transfer.png)
+*Figure. Transfer vs Elliott NN. Board: [`TRANSFER.md`](outputs/rheo/mwd_transfer/TRANSFER.md).*
+
 ### Physics knowledge mining (interpretable)
 
-From PNF aniso checkpoint vs material GT (`λ=[0.5,5]`, diagonal \(A_k\)):
+From PNF aniso checkpoint vs material GT (`λ=[0.5,5]`, diagonal \(A_k\)) and Leeds real/GPC mines:
 
 | Card | Finding |
 |------|---------|
@@ -935,6 +1032,11 @@ From PNF aniso checkpoint vs material GT (`λ=[0.5,5]`, diagonal \(A_k\)):
 | **K2** anisotropy axes | Learned \(A_k\) nearly diagonal SPD; channel ratio ≈1.30 matches GT |
 | **K3** Boltzmann memory | Maxwell recurrence ≡ causal hereditary integral \(\int G(t-s)\dot\gamma(s)\,ds\) |
 | **K4** spectrum ID | On linear Prony data, PNF ≡ NLS; sparse libraries / black-box RhINN lag after tuning |
+| **K5** real SAOS | On Leeds PS melts, PNF ≡ frequency-domain Prony NLS (mean rel_log 0.0326) |
+| **K5b** tube–MWD | Maxwell mode mass ↔ GPC mass under \(M\propto\lambda^{1/3.4}\): r≈0.91 ≫ shuffle null (~0.57) |
+| **K6** small-n limit | LOO Mw/Ð from descriptors fails at n=9; need more data / synthetic pretrain |
+| **K7** branching caution | Spectrum-geometry “AUC=1” partly ω-window confound |
+| **K8** vs Elliott NN | Same Maxwell feats: NN RMSE 0.046 ≪ synth-Ridge 0.155 ≪ tube 0.195 |
 
 Run tuned board: `PYTHONPATH=. python tools/tune_rheo_domain_sota.py --output-dir outputs/rheo/domain_sota_tuned`
 

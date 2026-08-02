@@ -144,17 +144,37 @@ ahead of tuned EUCLID/RhINN. Untuned RhINN (0.78) was not a fair comparison.
 **Interpretability mined from PNF:** recovered \(\lambda\approx[0.50,4.99]\) vs GT \([0.5,5]\);
 channel spectra \(G_{11}/G_{22}\) (journal b); startup-shear case recovers anisotropic \(\sigma\) (journal c).
 
+### Real SAOS — Leeds PS melts (Elliott et al. 2025)
+
+Data: `external_data/rheo_leeds_ps/Rheo_Data/` ([DOI 10.5518/1689](https://doi.org/10.5518/1689))  
+Board: `outputs/rheo/leeds_real_saos/BOARD.md`  
+Figure: `docs/figures/rheo/rheo_journal_leeds_saos.{png,pdf}`
+
+Fixed log-λ Maxwell library (\(K=8\)) on experimental \(G'(\omega),G''(\omega)\):
+
+| Method | mean rel_log | median rel_log | mean rel \(L_2\) |
+|--------|-------------:|---------------:|-----------------:|
+| Classical Prony NLS | **0.0326** | **0.0409** | **0.1108** |
+| **PNF** | **0.0326** | **0.0409** | **0.1108** |
+
+**Takeaway:** on real PS melt SAOS, PNF ≡ frequency-domain Prony NLS.
+
 | File | Role |
 |------|------|
 | `hnf/rheo_memory.py` | `PronyBoltzmannKernel` (λ_k, G_k / A_k, G_∞) |
 | `hnf/rheo_baselines.py` | isotropic / diagonal Prony, LSTM, TCN, FIR |
 | `hnf/rheo_domain_sota.py` | classical NLS / EUCLID-lite / RhINN |
+| `hnf/rheo_leeds.py` | Leeds PS SAOS loader |
+| `hnf/rheo_freq_fit.py` | frequency-domain Prony NLS / PNF fit |
 | `hnf/rheo_synth.py` | startup / oscillatory / multi-step protocols |
 | `hnf/rheo_dataset.py` | fixed-material dataset + `RheoMemoryModel` |
+| `tools/download_rheo_leeds.py` | download Leeds Rheo_Data.zip |
 | `tools/train_rheo_memory.py` | identify shared Prony spectrum |
 | `tools/run_rheo_aniso_sota.py` | full aniso train + SOTA board |
 | `tools/tune_rheo_domain_sota.py` | fair val-tune → test-once domain board |
+| `tools/run_rheo_leeds_real.py` | real SAOS PNF vs NLS board |
 | `tools/plot_rheo_journal_figure.py` | master board + knowledge cards + journal a–d |
+| `tools/plot_rheo_leeds_figure.py` | real SAOS journal panel |
 
 ```bash
 # anisotropic full + SOTA board
@@ -165,6 +185,10 @@ PYTHONPATH=. python tools/tune_rheo_domain_sota.py \
   --output-dir outputs/rheo/domain_sota_tuned
 # master board + knowledge cards + journal figure a–d
 PYTHONPATH=. python tools/plot_rheo_journal_figure.py
+# real PS SAOS (Leeds)
+PYTHONPATH=. python tools/download_rheo_leeds.py
+PYTHONPATH=. python tools/run_rheo_leeds_real.py --output-dir outputs/rheo/leeds_real_saos
+PYTHONPATH=. python tools/plot_rheo_leeds_figure.py
 # single aniso train
 PYTHONPATH=. python tools/train_rheo_memory.py \
   --output-dir outputs/rheo/memory_r1 --anisotropic --dim 2 --n-modes 2 \
