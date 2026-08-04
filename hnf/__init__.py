@@ -3,6 +3,7 @@
 
 from hnf.kernel import HuygensKernel
 from hnf.bayesian_kernel import BayesianHuygensKernel
+from hnf.kernel_bank import DifferentiableKernelBank, KernelBankWaveBlock
 from hnf.layers import HuygensWaveLayer, HuygensAttention
 from hnf.fmm import FastMultipoleMethod, DirectPropagation
 from hnf.density import DensityNet
@@ -32,6 +33,8 @@ from hnf.visualize import plot_reconstruction, plot_field_comparison, plot_obser
 __all__ = [
     "HuygensKernel",
     "BayesianHuygensKernel",
+    "DifferentiableKernelBank",
+    "KernelBankWaveBlock",
     "HuygensWaveLayer",
     "HuygensAttention",
     "FastMultipoleMethod",

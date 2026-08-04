@@ -168,8 +168,7 @@ class RawOnsetEncoder(nn.Module):
         onset = F.relu(h[:, 1:] - h[:, :-1])
         peak = h.max(dim=-1).values
         onset_peak = F.pad(onset, (0, 1)).max(dim=-1).values
-        # peak may be negative (conv output is unbounded); log of it would be NaN.
-        return torch.log(peak.clamp_min(0.0) + 1e-8), torch.log(onset_peak.clamp_min(0.0) + 1e-8)
+        return torch.log(peak + 1e-8), torch.log(onset_peak + 1e-8)
 
 
 class OnsetAwareDetHead(nn.Module):
@@ -195,11 +194,10 @@ class OnsetAwareDetHead(nn.Module):
         max_e = energy_t.max(dim=1).values
         d_e = energy_t[:, 1:] - energy_t[:, :-1]
         max_onset = F.pad(d_e, (0, 1)).max(dim=1).values
-        # energy can decay monotonically, making max_onset negative -> log gives NaN.
         feats = [
             wave_energy,
-            torch.log(max_e.clamp_min(0.0) + 1e-8).unsqueeze(-1),
-            torch.log(max_onset.clamp_min(0.0) + 1e-8).unsqueeze(-1),
+            torch.log(max_e + 1e-8).unsqueeze(-1),
+            torch.log(max_onset + 1e-8).unsqueeze(-1),
         ]
         if self.use_raw_onset and raw_onset_feats is not None:
             feats.extend([f.unsqueeze(-1) for f in raw_onset_feats])
@@ -653,6 +651,8 @@ class STEADHNFPickingModel(nn.Module):
         sampler_hidden: int = 32,
         sampler_temperature: float = 0.05,
         sampler_mode: str = "learnable",
+        kernel_bank_size: int = 1,
+        kernel_bank_top_m: int = 4,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -671,6 +671,8 @@ class STEADHNFPickingModel(nn.Module):
         self.n_samples = max(1, int(n_samples))
         self.learnable_sampler = bool(learnable_sampler)
         self.sampler_out_len = int(sampler_out_len)
+        self.kernel_bank_size = max(1, int(kernel_bank_size))
+        self.kernel_bank_top_m = max(1, int(kernel_bank_top_m))
         # Legacy single principle; obliquity_mode overrides per-block routing.
         if obliquity_mode == "none" and principle == "huygens_fresnel":
             obliquity_mode = "full_fresnel"
@@ -710,6 +712,8 @@ class STEADHNFPickingModel(nn.Module):
                 obliquity_scale=obliquity_scale,
                 bayesian_mc=self.bayesian_mc,
                 n_samples=self.n_samples,
+                kernel_bank_size=self.kernel_bank_size,
+                kernel_bank_top_m=self.kernel_bank_top_m,
             )
             self.shared_layers = None
             self.shared_det_layers = None
@@ -733,6 +737,8 @@ class STEADHNFPickingModel(nn.Module):
                         obliquity_mix=sh_mix,
                         bayesian_mc=self.bayesian_mc,
                         n_samples=self.n_samples,
+                        kernel_bank_size=self.kernel_bank_size if i == 0 else 1,
+                        kernel_bank_top_m=self.kernel_bank_top_m,
                     )
                     for i in range(num_shared_layers)
                 ]
@@ -1230,36 +1236,6 @@ class STEADHNFPickingModel(nn.Module):
         tlen = x_pick.size(1)
         return (coarse_idx.float() + delta).round().long().clamp(0, tlen - 1)
 
-    @torch.no_grad()
-    def forward_det_only(
-        self,
-        x: torch.Tensor,
-        t: torch.Tensor,
-        *,
-        bypass_noise_cancel: bool = True,
-    ) -> torch.Tensor:
-        """Detection logit only — skips the P/S branches for cheap gating.
-
-        Costs roughly a quarter of a full forward, so a stream dominated by
-        noise can be rejected before paying for the picking branches.
-        """
-        if self.temporal_sampler is not None:
-            samp = self.temporal_sampler(x)
-            x = samp["x"]
-            t = samp["t"]
-        prev = getattr(self, "bypass_noise_cancel", False)
-        self.bypass_noise_cancel = bool(bypass_noise_cancel)
-        try:
-            x_det, _x_pick, _nc = self._apply_noise_cancel(x, t)
-        finally:
-            self.bypass_noise_cancel = prev
-        rho_det = self.medium_net(x_det)
-        h_real = self.source_embed(x_det)
-        h_imag = torch.zeros_like(h_real)
-        layers = self.shared_det_layers if getattr(self, "shared_det_layers", None) is not None else None
-        h_real, h_imag = self._encode_shared_wavefield(h_real, h_imag, t=t, rho=rho_det, layers=layers)
-        return self._det_logits(h_real, h_imag, x=x_det)
-
     def forward_pick_only(self, x: torch.Tensor, t: torch.Tensor) -> dict[str, torch.Tensor]:
         """P/S + rho only — skips detection branch to save memory at inference."""
         if self.temporal_sampler is not None:
@@ -1422,14 +1398,14 @@ class STEADHNFPickingModel(nn.Module):
                 nc_out["n_sim"],
                 nc_out["u_denoised"],
                 nc_out["s_noise"],
+                nc_out.get("preserve_gate"),
             )
             h_real = h_real + gate * cue
 
         p_seed_real = h_real
-        if nc_out is not None and getattr(self, "p_onset_refine", None) is not None:
+        if nc_out is not None and self.p_onset_refine is not None:
             p_hint, p_gate = self.p_onset_refine(x, nc_out.get("preserve_gate"))
             p_seed_real = p_seed_real + p_gate * p_hint
-
         p_real, p_imag = self._propagate(p_seed_real, h_imag, self.p_layers, t, rho)
         s_real, s_imag = self._propagate(h_real, h_imag, self.s_layers, t, rho)
 
@@ -1518,6 +1494,8 @@ def build_picking_model(
     sampler_hidden: int = 32,
     sampler_temperature: float = 0.05,
     sampler_mode: str = "learnable",
+    kernel_bank_size: int = 1,
+    kernel_bank_top_m: int = 4,
 ) -> STEADHNFPickingModel:
     """Factory for STEAD/OBS HNF picking models."""
     return STEADHNFPickingModel(
@@ -1573,6 +1551,8 @@ def build_picking_model(
         sampler_hidden=sampler_hidden,
         sampler_temperature=sampler_temperature,
         sampler_mode=sampler_mode,
+        kernel_bank_size=kernel_bank_size,
+        kernel_bank_top_m=kernel_bank_top_m,
     )
 
 

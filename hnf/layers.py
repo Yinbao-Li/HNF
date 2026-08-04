@@ -200,6 +200,9 @@ class HuygensWaveBlock(nn.Module):
     """
     惠更斯次波传播块: u_out = u + proj(Re(K @ u_complex))
     使用物理时间距离、复相位传播与可选非均匀介质 rho。
+
+    If ``kernel_bank_size > 1``, propagation uses a DifferentiableKernelBank
+    (soft mixture of Huygens kernels) instead of a single kernel.
     """
 
     def __init__(
@@ -220,25 +223,52 @@ class HuygensWaveBlock(nn.Module):
         bayesian_mc: bool = False,
         n_samples: int = 32,
         rhythm_phase: bool = True,
+        kernel_bank_size: int = 1,
+        kernel_bank_top_m: int = 4,
     ):
         super().__init__()
-        self.kernel = build_huygens_kernel(
-            gamma=gamma,
-            omega=omega,
-            causal=causal,
-            wave_speed=wave_speed,
-            learnable_kernel_params=learnable_kernel_params,
-            learnable_wave_speed=learnable_kernel_params,
-            distance_mode=distance_mode,
-            local_window_sec=local_window_sec,
-            sparse_band=sparse_band,
-            principle=principle,
-            obliquity_scale=obliquity_scale,
-            obliquity_mix=obliquity_mix,
-            bayesian_mc=bayesian_mc,
-            n_samples=n_samples,
-            rhythm_phase=rhythm_phase,
-        )
+        self.bank = None
+        self.kernel_bank_size = int(kernel_bank_size)
+        if self.kernel_bank_size > 1:
+            if bayesian_mc:
+                raise ValueError("kernel_bank_size>1 is not compatible with bayesian_mc yet")
+            from hnf.kernel_bank import DifferentiableKernelBank
+
+            self.bank = DifferentiableKernelBank(
+                self.kernel_bank_size,
+                gamma=gamma,
+                omega=omega,
+                wave_speed=wave_speed,
+                causal=causal,
+                distance_mode=distance_mode,
+                local_window_sec=local_window_sec,
+                sparse_band=sparse_band,
+                principle=principle,
+                obliquity_scale=obliquity_scale,
+                obliquity_mix=obliquity_mix,
+                learnable_kernel_params=learnable_kernel_params,
+                top_m=int(kernel_bank_top_m),
+            )
+            # Compat: expose first member as `.kernel` for tools that expect it.
+            self.kernel = self.bank.kernels[0]
+        else:
+            self.kernel = build_huygens_kernel(
+                gamma=gamma,
+                omega=omega,
+                causal=causal,
+                wave_speed=wave_speed,
+                learnable_kernel_params=learnable_kernel_params,
+                learnable_wave_speed=learnable_kernel_params,
+                distance_mode=distance_mode,
+                local_window_sec=local_window_sec,
+                sparse_band=sparse_band,
+                principle=principle,
+                obliquity_scale=obliquity_scale,
+                obliquity_mix=obliquity_mix,
+                bayesian_mc=bayesian_mc,
+                n_samples=n_samples,
+                rhythm_phase=rhythm_phase,
+            )
         self.proj_real = nn.Linear(dim, dim, bias=False)
         self.proj_imag = nn.Linear(dim, dim, bias=False)
         self.norm_real = nn.LayerNorm(dim)
@@ -260,7 +290,10 @@ class HuygensWaveBlock(nn.Module):
             t_f = t.float() if t is not None else None
             rho_f = rho.float() if rho is not None else None
             h_c = torch.complex(h_r, h_i)
-            out_c = self.kernel.forward_apply(h_c, h_r, t=t_f, rho=rho_f)
+            if self.bank is not None:
+                out_c = self.bank.forward_apply(h_c, h_r, t=t_f, rho=rho_f)
+            else:
+                out_c = self.kernel.forward_apply(h_c, h_r, t=t_f, rho=rho_f)
             out_real = self.dropout(self.proj_real(out_c.real))
             out_imag = self.dropout(self.proj_imag(out_c.imag))
             h_real = self.norm_real(h_r + out_real)

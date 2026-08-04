@@ -70,10 +70,17 @@ class DeepHuygensStack(nn.Module):
         bayesian_mc: bool = False,
         n_samples: int = 32,
         rhythm_phase: bool = True,
+        kernel_bank_size: int = 1,
+        kernel_bank_top_m: int = 4,
+        bank_on_first_layer_only: bool = True,
     ):
         super().__init__()
-        self.layers = nn.ModuleList(
-            [
+        layers = []
+        for i in range(num_layers):
+            use_bank = int(kernel_bank_size) if (
+                int(kernel_bank_size) > 1 and (i == 0 or not bank_on_first_layer_only)
+            ) else 1
+            layers.append(
                 HuygensWaveBlock(
                     dim=dim,
                     gamma=gamma * (gamma_decay ** i),
@@ -89,10 +96,11 @@ class DeepHuygensStack(nn.Module):
                     bayesian_mc=bayesian_mc,
                     n_samples=n_samples,
                     rhythm_phase=rhythm_phase,
+                    kernel_bank_size=use_bank,
+                    kernel_bank_top_m=kernel_bank_top_m,
                 )
-                for i in range(num_layers)
-            ]
-        )
+            )
+        self.layers = nn.ModuleList(layers)
 
     def forward(
         self,
@@ -127,6 +135,8 @@ class MultiScaleHuygensEncoder(nn.Module):
         obliquity_scale: float = 1.0,
         bayesian_mc: bool = False,
         n_samples: int = 32,
+        kernel_bank_size: int = 1,
+        kernel_bank_top_m: int = 4,
     ):
         super().__init__()
         if not scale_specs:
@@ -171,6 +181,9 @@ class MultiScaleHuygensEncoder(nn.Module):
                     obliquity_scale=obliquity_scale,
                     bayesian_mc=bayesian_mc,
                     n_samples=n_samples,
+                    kernel_bank_size=kernel_bank_size,
+                    kernel_bank_top_m=kernel_bank_top_m,
+                    bank_on_first_layer_only=True,
                 )
             )
 

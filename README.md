@@ -554,6 +554,27 @@ is slightly better on S MAE at the cost of lower P F1.
 
 † Subset from `outputs/paper_stead_triple_compare_50ep/` (same protocol, faster iteration).
 
+#### Sample efficiency / scaling law (from-scratch)
+
+Matched event budgets \(N\in\{50,200,500\}\) @ 30 epochs and
+\(N\in\{1\mathrm{k},3\mathrm{k},10\mathrm{k},30\mathrm{k}\}\) @ 12 epochs; shared eval
+subset (seed=11). Fit \(1-F1=c+a\,N^{-\alpha}\); report \(N\) to reach F1≥0.90/0.95
+plus nominal params (DoF proxy). No 100k/240k leg in the default sweep.
+
+```bash
+bash logs/run_stead_scaling_law.sh                 # 1k–30k @12ep
+bash logs/run_stead_scaling_law_lowN_30ep.sh       # 50/200/500 @30ep
+bash logs/run_stead_scaling_law_midN_50ep.sh       # 50–1000 @50ep → outputs/stead_scaling_law_50ep/
+# → outputs/stead_scaling_law/SCALING.md
+# → docs/figures/stead/stead_journal_scaling_law.{png,pdf}
+```
+
+| Model | n_params (nominal DoF) |
+|-------|-----------------------:|
+| HNF (run28) | ~192k |
+| PhaseNet (SeisBench) | ~268k |
+| EQTransformer (SeisBench) | ~377k |
+
 **Protocol note:** tol=0.5 s is the standard STEAD/EQT window. Tightening to 0.3 s
 barely moves HNF P F1 (P MAE ~21 ms ≪ 300 ms); S F1 drops ~1–2% uniformly across models.
 
