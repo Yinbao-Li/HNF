@@ -1,0 +1,569 @@
+% =============================================================================
+%  Causal Physics as a Computational Primitive
+%
+%  Nature-style Article
+%  Compile: pdflatex → bibtex → pdflatex × 2
+% =============================================================================
+
+\documentclass[twocolumn, 10pt]{article}
+
+% ---------- packages ----------
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1.8cm,columnsep=0.6cm]{geometry}
+\usepackage{times,mathptmx}
+\usepackage{microtype}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{siunitx}
+\usepackage{url}
+\usepackage[colorlinks=true, citecolor=blue, urlcolor=blue]{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{lineno}
+\usepackage{svg}
+\usepackage{adjustbox}
+
+
+% 更接近Nature风格的页面设置
+\usepackage[
+    a4paper,            % 或 letterpaper，根据您投稿要求
+    top=1.2cm,          % 上边距 1.2cm
+    bottom=1.2cm,       % 下边距 1.2cm
+    left=1.6cm,         % 左边距 1.6cm（比原版小）
+    right=1.6cm,        % 右边距 1.6cm
+    columnsep=0.8cm     % 栏间距保持或稍宽
+]{geometry}
+
+\linenumbers
+
+% ---------- custom commands ----------
+\newcommand{\pnf}{\textsc{PNF}}
+\newcommand{\hnf}{\textsc{HNF}}
+\newcommand{\stead}{\textsc{STEAD}}
+\newcommand{\eqt}{\textsc{EQTransformer}}
+\newcommand{\pnet}{\textsc{PhaseNet}}
+
+% ---------- title ----------
+\title{
+  Causal Physics as a Computational Primitive
+  %Physics as Computation: Embedding First-Principles Operators into Neural Architectures
+}
+
+% ---------- author ----------
+\author{
+  Yinbao Li\textsuperscript{1,*}, Chang Liu\textsuperscript{2} \\
+  \textsuperscript{1}School of Engineering, Australian National University, Canberra, Australia \\
+  \textsuperscript{2}Bobot Lab, Entropick Technology, Beijing, China \\
+  \texttt{*boblee@entropick.cn} %\\
+  %\texttt{\href{https://github.com/Yinbao-Li/HNF}{github.com/Yinbao-Li/HNF}}
+}
+
+\date{}
+
+% =============================================================================
+\begin{document}
+% =============================================================================
+
+\maketitle
+
+% =============================================================================
+%  SUMMARY PARAGRAPH (Abstract)
+% =============================================================================
+\begin{abstract}
+\noindent
+A central obstacle for AI-assisted scientific discovery is that black-box predictors and many ``interpretable'' wrappers still treat known physics as an afterthought: either ignored, recovered only as a soft penalty, or explained post hoc. We instead cast known causal physics as a \emph{differentiable physical probe}---a fixed, readable Green's-function kernel that interrogates data rather than being rediscovered from it. The probe is the causal integral transform
+\(u(t)=\int_{0}^{t}\kappa(t-\tau)\,s(\tau)\,d\tau\),
+instantiated as wave, diffusion, and memory kernels inside one architecture (Physical Neural Field, PNF). Because the functional form is fixed by known physics while a small set of physically meaningful parameters remains learnable, the model is \emph{interpretable by construction} and remains effective on small, scientific datasets. On STEAD, PNF matches or exceeds EQTransformer and PhaseNet on most detection and picking metrics with fewer parameters, while lagging on selected scores (e.g., P-wave F1 versus EQTransformer; S-wave MAE versus PhaseNet)---an explicit accuracy--interpretability trade-off rather than a claim of universal superiority. The same probe then yields discoveries that follow the locked figure evidence: wave-kernel morphology facies associate with attenuation-related structure (Cram\'er's~$V\approx0.37$, FDR-adjusted $p<0.001$) and leave path residuals unexplained by classical $V_S$/$Q_S$; a diffusion-kernel leftover orthogonal to classical EEG voltmeter features tracks held-out MMSE under neurodegeneration (Spearman $\rho=-0.37$, $p=0.038$, $n=31$) yet is null on healthy-lifespan LEMON controls; and memory-kernel mode masses align with GPC molecular-weight distributions far above a within-sample shuffle null (mean $r=0.911$ vs.\ $0.565$). Across domains, known physics is the instrument; unknown structure is what the instrument reads. This \textbf{physics-as-computation} paradigm prioritizes scientifically usable, physically consistent representations over opaque peak accuracy alone.
+\end{abstract}
+
+
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[trim=0mm 0mm 0mm 25mm,
+    clip=true, width=0.99\textwidth]{fig21.pdf}
+  \caption{\textbf{Physics Neural Field (PNF): principle, latents, and discovery paradigm.}
+  \textbf{a},~Huygens principle as a learnable kernel. Left: secondary wavelets on the forward light cone (orange rays) interfere to build the wavefront. Right: real (teal) and imaginary (orange) parts of
+  \(K\propto e^{-\gamma r^{2}}e^{i\omega r}/(r+\varepsilon)\,\chi\), with readable parameters \(\gamma\) (attenuation), \(\omega\) (oscillation) and \(c\) (speed); \(\chi\) enforces causal/light-cone support.
+  \textbf{b},~Forward path for STEAD three-component picking. Channels \(E,N,Z\) are embedded (\(h\)) and probed (\(\rho(t)\)), then mixed in a Huygens block with fine and coarse \(\omega\) branches to yield detection, \(P\) and \(S\) probabilities. Lower inset: schematic Huygens wavefield from a buried source through layered crust to surface probes.
+  \textbf{c},~Interpretable latents on one seismic example (time in seconds). From top: raw 3C traces with ground-truth \(P\)/\(S\) (dashed); learned density \(\rho(t)\); kernel amplitude \(|K|\) at the ground-truth \(P\) index; output \(P\) (teal) and \(S\) (orange) pick probabilities.
+  \textbf{d},~Discovery paradigm. Top: causal integral operator \(u=\mathcal{K}_{\theta}[s]=\int_{\tau\le t}K_{\theta}(t-\tau)\,s(\tau)\,d\tau\) with light-cone support and readable \(\theta\). Middle: kernel family---wave/seismic \(K_{\gamma,\omega,c}\); diffusion/EEG \(K_{D_{\parallel},D_{\perp},\alpha}\); memory/rheology \(K=\sum_{k}G_{k}e^{-t/\lambda_{k}}\). Bottom: workflow \emph{Learn} \(\theta\) \(\rightarrow\) \emph{Probe} phase-conditioned latents (\(\gamma,\omega,c,\rho\)) \(\rightarrow\) \emph{Discover} via a physics decoder (\(v_{P}\), \(M_{w}\), \(\lambda_{k}\), \(\alpha\)).}
+  \label{fig:pnf-principle}
+\end{figure*}
+
+\begin{table*}[t]
+\centering
+%\footnotesize
+\caption{STEAD benchmark performance on the full test set. For each task, F1, Precision (P), and Recall (R) are reported. Best results are bolded; second-best underlined.}
+\label{tab:stead}
+\begin{tabular}{l c c c c c c c c c c c c}
+\toprule
+\multirow{3}{*}{Model} & \multirow{3}{*}{\# Params} & \multicolumn{2}{c}{Det} & \multicolumn{2}{c}{P-wave} & \multicolumn{2}{c}{S-wave} & \multicolumn{2}{c}{MAE (s)} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6} \cmidrule(lr){7-8} \cmidrule(lr){9-10}
+ & & F1 & P/R & F1 & P/R & F1 & P/R & P & S \\
+\midrule
+EQT & 377k & \textbf{0.9989} & 0.9992/0.9989 & \textbf{0.9897} & 0.9993/0.9794 & \underline{0.9731} & 0.9994/0.9470 & \underline{0.0462} & 0.0874 \\
+PhaseNet & 269k & 0.9969 & 0.9969/0.9975 & 0.9512 & 0.9984/0.9093 & 0.9618 & 0.9982/0.9283 & 0.0723 & \textbf{0.0801} \\
+\textbf{PNF} & 192k & \textbf{0.9989} & 0.9994/0.9984 & \underline{0.9852} & 0.9942/0.9763 & \textbf{0.9770} & 0.9900/0.9643 & \textbf{0.0169} & \underline{0.0878} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[
+        trim=10mm 0mm 0mm 20mm,
+        clip,
+        width=0.95\textwidth
+    ]{fig11.pdf}
+  \caption{\textbf{Data-driven physics discovery: waveform morphology facies linked to attenuation structure.}
+  \textbf{a},~STEAD local-earthquake split (\(1.03\,\mathrm{M}\) event traces; noise excluded): train \(880{,}875\) (\(85.5\%\)), validation \(46{,}316\) (\(4.5\%\)), test \(103{,}040\) (\(10.0\%\)).
+  \textbf{b},~Geographic distribution of five frozen ceiling facies (not \(k\)-means labels). \(\mathrm{impulsive\_fastQ}\) is enriched in the western United States / northeast Pacific; \(\mathrm{slow\_coda}\) in Central America / Pacific. Marker size and opacity emphasise the two end-member classes.
+  \textbf{c},~Class-mean normalised envelopes (solid) and delay-time densities \(\rho(\tau)\) (dashed) on causal time \(\tau\), with \(P=0\) and \(S=1\). Shading shows trace-to-trace spread (\(n=8\) examples per class). \(\mathrm{impulsive\_fastQ}\): sharp onset and short coda; \(\mathrm{emergent}\): gradual onset; \(\mathrm{multipath}\): multi-lobe \(\rho(\tau)\); \(\mathrm{slow\_coda}\): late sustained energy; \(\mathrm{standard}\): clean \(P\)/\(S\) peaks.
+  \textbf{d},~Class characters: \(\rho(\tau)\) shape, median distance-detrended coda residual \(\beta_{\mathrm{res}}\), regional enrichment, and the implied \(Q\) sense (\(\downarrow Q\), faster decay; \(\uparrow Q\), slower decay).
+  \textbf{e},~Violin plots of \(\beta_{\mathrm{res}}\) by class (white marker: median; bar: interquartile range). \(\mathrm{impulsive\_fastQ}\) is shifted negative (faster coda decay / higher apparent \(Q\)); \(\mathrm{slow\_coda}\) is shifted positive (slower decay / lower apparent \(Q\)). Annotated \(d\) values are Cohen's \(d\) versus all other classes.}
+  \label{fig:shape-geo-coda}
+\end{figure*}
+
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[trim=0mm 0mm 0mm 10mm,
+    clip=true, width=\textwidth]{Fig_main_single.pdf}
+  \caption{\textbf{From waveform facies to a structure-controlled path residual.}
+  \textbf{(a)}~Pipeline: local earthquake waveforms yield frozen, interpretable
+  observables and five facies; coda slope is distance-detrended to $\beta$, then
+  residualized against structure and station effects to give path-midpoint
+  leftover $\beta_{\mathrm{res}}$. Absorbing ($\beta_{\mathrm{res}}{<}0$) versus
+  ringing ($\beta_{\mathrm{res}}{>}0$) envelopes, and the same-station control
+  geometry, are shown schematically.
+  \textbf{(b)}~Same-station median $\Delta\beta$ for SoCal and Cascadia sites
+  (negative = absorbing, positive = ringing).
+  \textbf{(c--e)}~Independence checks: $\beta_{\mathrm{res}}$ versus classical
+  coda-decay slope $q_c$ ($r{=}0.64$), Berg et al.\ (2021) path-mid $V_S$
+  ($r{=}{-}0.08$), and Lin et al.\ (2023) path-mid $Q_S$ ($r{=}{-}0.07$);
+  highlighted cells \#2 (Salton) and \#5 (ETR).
+  \textbf{(f)}~SoCal map of path-midpoint $\beta_{\mathrm{res}}$.
+  \textbf{(g)}~Out-of-region Cascadia replica with the same color scale.
+  \textbf{(h)}~Synthesis of absorbing versus ringing domains and leftover cell
+  $\Delta\beta$ after removing $q_c$, $V_S$, or $Q_S$, with a Salton-path
+  prediction.
+  }
+  \label{fig:main_single}
+\end{figure*}
+
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[trim=0mm 0mm 0mm 10mm,
+    clip=true, width=\textwidth]{eeg_impact_discovery.pdf}
+  \caption{\textbf{Voltmeter-orthogonal EEG medium leftover is pathology-coupled.}
+  \textbf{(a)}~Cohort composition for the clinical AHEPA set ($n{=}88$; HC/FTD/AD)
+  and the healthy-lifespan LEMON set ($n{=}202$; young/old).
+  \textbf{(b)}~Analysis pipeline: eyes-closed 19-channel EEG is summarized by a
+  classical voltmeter (age, sex, $\theta/\alpha$, band-power $\alpha$) and a frozen
+  spatial probe yielding $D_{\mathrm{eff}}$ and $\rho(t)$. A train-only residualizer
+  defines
+  $\mathrm{leftover}=D_{\mathrm{eff}}-f_{\mathrm{train}}(\mathrm{volt})$,
+  applied out of sample without refit. Controls: diffusion Green kernel (phase off),
+  oscillatory phase on the kernel (physics kill), and agreement of two spatial kernels.
+  \textbf{(c)}~Held-out case epochs (HC, FTD, AD): stacked 10--20 channels,
+  medium density $\rho(t)$, scalp RMS topography, and band-power share.
+  \textbf{(d)}~Held-out association between train-fit leftover and
+  MMSE residualized on the voltmeter
+  (Spearman $\rho{=}{-}0.37$, $p{=}0.038$, $n{=}31$).
+  \textbf{(e)}~Probe-physics control: in-split MMSE $\Delta R^{2}$ relative to the
+  voltmeter is largest for the Fresnel probe, reduced for anisotropic diffusion with
+  phase off, and near zero with phase on.
+  \textbf{(f)}~Fresnel and anisotropic leftovers collapse onto one axis on held-out
+  subjects (Spearman $\rho{=}0.92$, $p{=}1{\times}10^{-13}$, $n{=}31$).
+  \textbf{(g)}~Discovery summary: leftover tracks cognition under neurodegeneration
+  (AHEPA, $|\rho|$ vs.\ MMSE$|\,\mathrm{demo}$), but is null against healthy aging,
+  GM/ICV, and TMT on LEMON.
+  }
+  \label{fig:eeg_impact_discovery}
+\end{figure*}
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[trim=0mm 0mm 0mm 15mm,
+    clip=true, width=\textwidth]{rheo_impact_discovery.pdf}
+  \caption{\textbf{Readable PNF amplitudes are molecularly aligned with MWD.}
+  \textbf{(a)}~Cohorts: Leeds paired SAOS$\cap$GPC melts ($n{=}9$; linear vs.\ branched)
+  and roles of paired versus external probes (UMN SAOS, PolyWeight OOD);
+  only paired samples enter the discovery test.
+  \textbf{(b)}~Pipeline: SAOS master curves $\rightarrow$
+  \textbf{PNF} (fixed-$\tau$ library $\rightarrow G_k$) $\rightarrow$
+  tube map $M\propto\lambda^{1/\alpha}$ aligning mode mass with GPC $\rightarrow$
+  discovery test of
+  $\mathrm{corr}(G_k/\sum G,\,\mathrm{GPC\ mass})$
+  against a within-sample shuffle-$G_k$ null;
+  controls include $\alpha$/free-$\lambda$ robustness and Elliott NN
+  (\emph{for compare}).
+  \textbf{(c)}~Key cases (PS3, PS1, A1PS): measured $G'$, $G''$ with PNF
+  reconstruction and topology insets; corresponding GPC $w(M)$ with
+  per-sample tube $r$, null mean, and significance.
+  \textbf{(d)}~Per-sample tube correlation: observed $\gg$ shuffle null
+  (mean $r{=}0.911$ vs.\ $0.565$; $\Delta{=}0.35$; $89\%$ of samples $p{<}0.05$).
+  \textbf{(e)}~Robustness across tube exponent $\alpha\in\{3.0,3.4,3.7\}$,
+  free-$\lambda$, and SAOS-bin proxy; absolute $r$ is partly structural,
+  so $\Delta$ versus null is the primary evidence.}
+  \label{fig:rheo-impact-discovery}
+\end{figure*}
+
+
+\noindent
+
+% =============================================================================
+%  INTRODUCTION
+% =============================================================================
+\section*{Introduction}
+
+Scientific machine learning faces a methodological fork. Purely data-driven networks can achieve strong predictive scores, yet their representations rarely obey known causal physics and are difficult to trust as instruments of discovery. Physics-informed neural networks (PINNs)\cite{raissi2019pinn,karniadakis2021} improve consistency by adding PDE residuals as soft penalties, but physical adherence remains approximate, optimizable against data fit, and often post hoc in interpretation\cite{doumèche2025convergence}. A third family---partially interpretable hybrids---attaches saliency, probes, or symbolic heads to otherwise opaque backbones; the ``explanation'' is then correlative rather than constitutive of the computation.
+
+We take a stricter stance. \textbf{The primary contribution of this work is a differentiable physical probe}: known causal Green's functions are hard-wired as architectural primitives so that learning is confined to a small set of physically meaningful parameters. The model does not rediscover wave, diffusion, or Boltzmann memory laws from scratch; it \emph{uses} those laws to interrogate measurements. The resulting latents (\(\rho(t)\), kernel parameters, mode amplitudes) are readable because they inherit semantics from the probe, not because an external explainer is applied after training. This differs from both black-box predictors and soft physics-informed regularizers, and from differentiable simulators optimized for control\cite{hu2020difftaichi}: here the goal is discovery under known physics, not only prediction or actuation.
+
+The shared primitive is the causal integral transform
+\[
+u(t)=\int_{0}^{t}\kappa(t-\tau)\,s(\tau)\,d\tau,
+\]
+the linear response that appears throughout wave propagation, diffusion, and viscoelastic memory\cite{akei2002,morse1953}. We instantiate three domain kernels with fixed functional form and learnable physical parameters (Fig.~\ref{fig:pnf-principle}):
+\begin{enumerate}
+\item \textbf{Wave kernel} \(K_w(r)=\frac{1}{r^2+\varepsilon}e^{-\gamma r^{2}}e^{i\omega r}\) (with causal/light-cone support), probing seismic waveforms for propagation structure.
+\item \textbf{Diffusion kernel} \(K_d(r,t)=\frac{1}{(4\pi Dt)^{d/2}}e^{-r^{2}/(4Dt)}\), probing EEG montages for medium-like spatial responses.
+\item \textbf{Memory kernel} \(K_m(t)=\sum_k G_ke^{-t/\lambda_k}\) (Prony/Maxwell), probing rheological spectra for readable relaxation masses.
+\end{enumerate}
+Kernel shapes are derived from known physics; Softplus-constrained parameters (\(\gamma,\omega,D,\lambda_k,\ldots\)) remain trainable. We call the architecture Physical Neural Field (\pnf{}).
+
+A practical corollary of this strong inductive bias is \textbf{sample efficiency on scientific datasets}. Large catalogues such as STEAD allow competitive benchmarking, but many discovery settings---clinical EEG cohorts, paired rheology--chromatography melts---are small. Because capacity is not spent relearning causal Green's functions, the same probe can still extract usable structure when \(n\) is modest. Domains~II--III are therefore not side applications; they are stress tests of interpretability under data scarcity.
+
+We evaluate three complementary claims, always following the locked figure and table evidence: (I)~on STEAD, \pnf{} is competitive with EQTransformer and PhaseNet on most metrics while remaining physically structured, with explicit lags on selected scores; (II)~a diffusion leftover orthogonal to classical EEG voltmeter features is pathology-coupled on AHEPA held-out subjects and null on healthy-lifespan LEMON; (III)~memory-kernel mode masses align with GPC molecular-weight distributions far above a within-sample shuffle null. Across domains, known physics is the instrument; unknown structure is the reading.
+
+Figure~\ref{fig:pnf-principle} summarises the paradigm: learn readable \(\theta\), probe phase-conditioned latents, and discover structure that the known law alone does not explain. Anisotropic extensions (scalar\(\to\)SPD tensors) follow a unified principle and are detailed in Methods.
+
+% =============================================================================
+%  RESULTS
+% ============================================================================
+
+\section*{Results}
+
+\subsection*{A unified computational primitive for physical dynamics}
+
+The causal integral transform defines the core primitive,
+\[
+\mathcal{T}[\kappa, s](t)=\int_{0}^{t}\kappa(t-\tau)\,s(\tau)\,d\tau,
+\]
+implemented in discrete form as a differentiable matrix--vector map \(v=Ku\). Wave, diffusion, and memory kernels share causal support but differ in Green's-function shape (Fig.~\ref{fig:pnf-principle}d). Parameters are Softplus-constrained and trained by gradient descent; the functional forms are not free neural approximations of the governing physics.
+
+\subsection*{Domain I: Seismic phase picking and subsurface structure}
+
+We evaluate \pnf{} on STEAD\cite{stead2019} under the standard \(0.5\,\mathrm{s}\) tolerance protocol\cite{mousavi2020eqt}. Table~\ref{tab:stead} compares full test-set detection and picking against EQTransformer\cite{mousavi2020eqt} and PhaseNet\cite{zhu2018phasenet}.
+
+\paragraph{Competitive picking with an explicit accuracy--interpretability balance.}
+With \(192\mathrm{k}\) parameters (about half of EQTransformer), \pnf{} matches EQTransformer on detection F1 (\(0.9989\)), improves S-wave F1 (\(0.9770\) vs.\ \(0.9731\) / \(0.9618\)), and achieves the lowest P-wave MAE (\(0.0169\,\mathrm{s}\)). It does not dominate every cell: P-wave F1 (\(0.9852\)) trails EQTransformer (\(0.9897\)), and S-wave MAE (\(0.0878\,\mathrm{s}\)) trails PhaseNet (\(0.0801\,\mathrm{s}\)). We treat these lags as informative. A hard-wired Huygens--Fresnel kernel restricts the hypothesis class relative to unconstrained convolutional/attentive pickers; the model trades a fraction of peak picking score for readable latents that enable the structural discoveries below.
+
+\paragraph{Frozen waveform facies from probe latents---not post-hoc clusters.}
+Internal states carry predefined physics semantics (Fig.~\ref{fig:pnf-principle}c). From a frozen run-28 checkpoint we export causal-chain observables---coda slope, onset sharpness, and multi-lobe structure in delay-time density \(\rho(\tau)\)---and assign each local-earthquake waveform to one of five facies using ceilings fixed \emph{before} any regional map was inspected (Fig.~\ref{fig:shape-geo-coda}): \textit{impulsive\_fastQ}, \textit{emergent}, \textit{multipath}, \textit{slow\_coda}, and \textit{standard}. These are not \(k\)-means labels. Facies associate with geography (Cram\'er's \(V\approx0.37\), FDR-adjusted \(p<0.001\)) and with distance-detrended coda behaviour: \textit{impulsive\_fastQ} shifts toward faster decay (Cohen's \(d\approx-0.82\)), whereas \textit{slow\_coda} shifts toward slower decay (\(d\approx+1.19\)). Multipath traces show multi-lobe \(\rho(\tau)\); impulsive traces combine sharp onsets with short coda. The probe therefore yields an interpretable taxonomy of coda shape rather than an opaque embedding cluster.
+
+\paragraph{Path-midpoint leftovers beyond distance, station, \(V_S\), and \(Q_S\).}
+Figure~\ref{fig:main_single} converts the same observables into a structure-controlled leftover. Coda slope is first distance-detrended to \(\beta\) against \(\log_{10}(\mathrm{dist}+1)\). A ridge expectation (\(\lambda=8\)) then removes \(\log_{10}\) distance, depth, magnitude, log-distance to nearest Quaternary fault, and station fixed effects; the residual \(\beta_{\mathrm{res}}\) is mapped at geographic path midpoints. In southern California (fixed stations; path distances \(20\)--\(120\,\mathrm{km}\)), two cells illustrate opposite path behaviour under same-station controls: Salton--Imperial midpoints decay faster than the same stations' other paths (site-median \(\Delta\beta\approx-0.032\); \(20\) stations), whereas eastern Transverse Ranges midpoints ring longer (\(\Delta\beta\approx+0.025\); \(15\) stations) (Fig.~\ref{fig:main_single}b,f,h).
+
+Independence checks (Fig.~\ref{fig:main_single}c--e) are central to the claim. \(\beta_{\mathrm{res}}\) correlates with classical single-trace coda slope \(q_c\) (\(r=0.64\)), so part of the leftover is conventional coda decay---yet residualising on \(q_c\) still leaves coherent cell anomalies, and multipath versus slow-coda facies continue to separate inside matched \(q_c\) terciles. Sampling Berg et al.\ upper-crust \(V_S\) at path midpoints yields near-null correlation (\(r=-0.08\)); the Salton and Transverse Ranges cells occupy the same \(V_S\) band yet opposite \(\beta_{\mathrm{res}}\)\cite{berg2021}. Lin \& Jordan direct-wave \(Q_S\) is likewise nearly orthogonal (\(r=-0.07\)); removing \(Q_S\) leaves cell \(\Delta\beta\) essentially intact, and the Salton cell can combine relatively high direct-wave \(Q_S\) with faster coda decay\cite{lin2023}. This is the intended scientific reading: coda-facies leftovers retain path information that velocity and direct-wave attenuation maps do not absorb---consistent with the broader argument that direct-wave \(Q\) and coda attenuation need not share a map\cite{lin2023}.
+
+\paragraph{Out-of-region replication and a falsifiable prediction.}
+The identical frozen ceilings and residualization pipeline applied to Cascadia STEAD paths recovers a Salton-signed faster-decay residual near Mount St.~Helens and a ringing residual near Seattle (Fig.~\ref{fig:main_single}g), providing an out-of-region replica without refitting facies rules. A pre-registered style prediction follows from the SoCal cells: new paths whose midpoints fall in the Salton cell should show same-station \(\Delta\beta\le-0.02\) once \(\ge8\) stations are available; the Seattle cell predicts the opposite inequality.
+
+\paragraph{Velocity inversion via Physics Decoder.}
+A lightweight Physics Decoder (2-layer MLP on frozen \pnf{} latents) maps probe features to layered \((v_P,v_S)\) models and initialises differentiable FWI. On the reported protocol, \(69.6\%\) of real STEAD events (\(n=500\), Wilcoxon \(p<0.001\)) improve convergence relative to perturbed baselines, with mean travel-time misfit reduced from \(11.22\) to \(3.08\). This supports transferability of probe latents beyond picking, while remaining an initialisation aid rather than an oracle travel-time solver.
+
+\subsection*{Domain II: A physical probe for pathology-coupled EEG medium}
+
+Domain~II tests whether the \emph{same} causal primitive, instantiated as a spatial diffusion/Fresnel probe, can extract scientifically usable structure from modest clinical EEG (Fig.~\ref{fig:eeg_impact_discovery}). The design is deliberately not a classifier leaderboard: we ask whether a train-only residualizer
+\(\mathrm{leftover}=D_{\mathrm{eff}}-f_{\mathrm{train}}(\mathrm{volt})\)
+isolates probe variance orthogonal to classical voltmeter features (age, sex, \(\theta/\alpha\), band-power \(\alpha\)), and whether that leftover is pathology-coupled.
+
+\paragraph{Held-out association under neurodegeneration.}
+On AHEPA held-out subjects, train-fit leftover associates with MMSE residualized on the voltmeter (Spearman \(\rho=-0.37\), \(p=0.038\), \(n=31\); Fig.~\ref{fig:eeg_impact_discovery}d)\cite{jeong2004}. Case epochs illustrate readable \(\rho(t)\) and topography alongside band summaries (Fig.~\ref{fig:eeg_impact_discovery}c).
+
+\paragraph{Mechanism and construct controls.}
+Following Fig.~\ref{fig:eeg_impact_discovery}e, in-split MMSE \(\Delta R^{2}\) relative to the voltmeter is largest for the Fresnel probe, reduced for anisotropic diffusion with phase off, and near zero when oscillatory phase is added to the Green kernel (physics kill). Fresnel and anisotropic leftovers collapse onto one held-out axis (Spearman \(\rho=0.92\), \(p=1\times10^{-13}\), \(n=31\); Fig.~\ref{fig:eeg_impact_discovery}f), supporting a shared residual medium rather than kernel-specific artefact.
+
+\paragraph{Healthy-lifespan negative control.}
+On independent LEMON adults (\(n=202\)), the leftover is null against healthy aging, GM/ICV, and TMT (Fig.~\ref{fig:eeg_impact_discovery}g). This is discriminant validation, not a second clinical replication of the MMSE association: the effect is required under neurodegeneration and absent in healthy lifespan structure/cognition under the reported residualization. Absolute probe scale remains domain-shifted across cohorts and is treated as a methods constraint, not a transportable biomarker without calibration.
+
+Together, Domains~I--II illustrate the intended contribution: an interpretable probe that remains informative when labels are scarce, with claims scoped to the locked multi-cohort logic rather than unrestricted generalization.
+
+\subsection*{Domain III: Molecular alignment from rheological spectra}
+
+Domain~III stresses the same thesis on an even smaller paired scientific set: Leeds polystyrene SAOS\(\cap\)GPC melts (\(n=9\)), with external SAOS-only and OOD roles shown in Fig.~\ref{fig:rheo-impact-discovery}a but excluded from the discovery test. The memory kernel is identified as a fixed-\(\tau\) Prony/Maxwell library (PNF) on SAOS master curves; mode masses \(G_k/\sum G\) are compared to GPC mass under the tube-style map \(M\propto\lambda^{1/\alpha}\) against a within-sample shuffle-\(G_k\) null (Fig.~\ref{fig:rheo-impact-discovery}b).
+
+\paragraph{Readable amplitudes align with MWD above shuffle null.}
+Key cases show SAOS reconstruction together with GPC and per-sample tube \(r\) (Fig.~\ref{fig:rheo-impact-discovery}c). Across samples, observed tube correlations (mean \(r=0.911\)) exceed the shuffle null (mean \(r=0.565\); \(\Delta=0.35\); 89\% of samples \(p<0.05\); Fig.~\ref{fig:rheo-impact-discovery}d). Robustness holds across \(\alpha\in\{3.0,3.4,3.7\}\), free-\(\lambda\), and a SAOS-bin proxy (Fig.~\ref{fig:rheo-impact-discovery}e). As emphasised in the figure, absolute \(r\) is partly structural; \textbf{\(\Delta\) versus null is the primary evidence}. Elliott NN is retained only for comparison, not as a performance ceiling.
+
+This domain is the clearest demonstration of small-data interpretability: with nine paired melts, a physically constrained memory probe yields a falsifiable molecular alignment claim that unconstrained spectral fitting would not automatically render readable.
+
+\subsection*{Cross-domain synthesis}
+
+Across domains, the locked evidence supports one methodological pattern. (i)~Hard-wired causal kernels produce competitive large-data performance with an explicit metric trade-off (Table~\ref{tab:stead}). (ii)~Readable latents enable discovery pipelines---facies/path residuals, voltmeter-orthogonal leftovers, tube-aligned mode masses---rather than post-hoc attribution of opaque embeddings. (iii)~Small scientific cohorts (EEG, rheology) remain usable precisely because the probe encodes known physics. Validation styles differ by necessity: STEAD is benchmark comparison; EEG combines held-out association with a healthy negative control; rheology relies on within-sample mechanistic nulls and parameter robustness. These are complementary pillars of scientific argument, not interchangeable substitutes for one another.
+
+
+% =============================================================================
+%  DISCUSSION
+% =============================================================================
+\section*{Discussion}
+
+\paragraph{Contribution: an interpretable differentiable physics probe.}
+The central contribution is methodological. We propose that known causal Green's functions can serve as \emph{computational instruments}: fixed-form, differentiable probes whose parameters remain scientifically readable. This is distinct from black-box predictors, from PINNs that encode physics as soft, violable penalties\cite{raissi2019pinn,karniadakis2021}, and from post-hoc explanation of opaque embeddings. Interpretability here is constitutive---the computation \emph{is} the probe---rather than decorative.
+
+\paragraph{Physics as probe, not as constraint.}
+When physics is only a constraint, success is a prediction that approximately obeys a law. When physics is a probe, success is a measurement of structure the law alone does not name. In seismology, wave-kernel latents organise morphology facies and path leftovers beyond \(V_S\)/\(Q_S\) summaries (Figs.~\ref{fig:shape-geo-coda}--\ref{fig:main_single}). In EEG, diffusion/Fresnel leftovers isolate voltmeter-orthogonal variance that is pathology-coupled yet null in healthy lifespan controls (Fig.~\ref{fig:eeg_impact_discovery}). In rheology, Prony mode masses align with MWD above shuffle nulls (Fig.~\ref{fig:rheo-impact-discovery}). In each case the known law is the instrument; the specimen is the data; the reading is the discovery claim.
+
+\paragraph{Small-data regimes as a design target.}
+Domains~II--III are intentionally small. Their value is not that they replace large-scale clinical or materials programmes, but that a strong physical prior can still yield falsifiable structure when paired labels are scarce. Sample efficiency is therefore listed as an advantage of the probe design, not as a claim that small \(n\) alone suffices for Nature-level closure.
+
+\paragraph{The cost of a strong prior: accuracy--interpretability balance.}
+Table~\ref{tab:stead} makes the trade-off quantitative. \pnf{} wins or ties on several STEAD metrics with fewer parameters, yet trails EQTransformer on P-wave F1 and PhaseNet on S-wave MAE. We interpret these gaps as the price of restricting the hypothesis class to causal wave kernels with readable parameters. For settings where mechanistic auditability matters---hazard assessment, clinical EEG, materials identification---that exchange can be favourable; for pure leaderboard picking it may not be. The paper's thesis is not that interpretability dominates all metrics, but that it should be reported as an explicit scientific trade-off.
+
+\paragraph{From physics-informed to physics-as-computation.}
+PINNs ask models to obey physics. PNF asks models to \emph{compute with} physics. The difference is architectural rather than merely quantitative: soft penalties can be traded away; hard-wired kernels cannot without changing the instrument. We envision a library of composable causal primitives for linear and eventually nonlinear regimes, always with readable parameters and domain-appropriate null controls.
+
+\paragraph{Limitations and outlook.}
+Several limits are intrinsic to the present evidence. Seismic processing remains tied to fixed temporal grids; the Physics Decoder aids FWI initialisation but does not match oracle travel-time solvers. Cascadia replicates the residualization pipeline but lacks Berg/Lin cubes for the same independence battery applied in SoCal. EEG associations use modest held-out \(n=31\); predictive \(\Delta R^{2}\) should not be overstated relative to correlation evidence in Fig.~\ref{fig:eeg_impact_discovery}. LEMON is a negative control, not a second AD/FTD replication site. Rheology rests on \(n=9\) paired melts; absolute tube \(r\) is partly structural (SAOS-bin proxy). Extending probes to full 2-D/3-D inversion and broader nonlinear kernels remains future work.
+
+\section*{Methods}
+
+\subsection*{Causal integral transform as a computational primitive}
+
+The shared operator is the causal convolution
+\begin{equation}
+u(t)=\int_{0}^{t}\kappa(t-\tau)\,s(\tau)\,d\tau,
+\label{eq:causal}
+\end{equation}
+discretised as a differentiable map \(v=Ku\). Kernel \emph{shapes} are fixed Green's functions of known linear physics; a small set of physically meaningful parameters is Softplus-constrained and trained by gradient descent. This makes \pnf{} compute \emph{with} known causal physics rather than rediscovering it with an unconstrained network.
+
+\subsection*{Wave kernel (seismic)}
+
+The production seismic probe is a Huygens--Fresnel wave kernel with causal/light-cone support\cite{akei2002,morse1953},
+\begin{equation}
+K_w(r)\propto \frac{e^{-\gamma r^{2}}e^{i\omega r}}{r+\varepsilon}\,\chi(\theta)\,M(r),
+\end{equation}
+where \(r\) is temporal lag (equivalently a travel-time proxy), \(M(r)\) enforces \(r>0\) and finite speed, \(\gamma\) controls attenuation/locality, \(\omega\) sets oscillation, and \(\chi(\theta)=\tfrac12(1+\cos\theta)\) is an obliquity factor. Fine and coarse \(\omega\) branches specialise P- and S-sensitive pathways (Fig.~\ref{fig:pnf-principle}b). Anisotropic extensions replace scalar metrics by SPD direction-dependent distances \(r_{\mathrm{eff}}=\sqrt{\Delta\mathbf{x}^{\top}\mathbf{M}\Delta\mathbf{x}}\) with \(\mathbf{M}=\mathbf{L}\mathbf{L}^{\top}\).
+
+\subsection*{Diffusion kernel (EEG)}
+
+The EEG probe uses spatial diffusion / Fresnel Green's functions on the 10--20 montage\cite{lopes1997},
+\begin{equation}
+K_d(\mathbf{r},t)=\frac{1}{(4\pi t)^{d/2}\sqrt{\det\mathbf{D}}}
+\exp\!\Big(-\frac{\mathbf{r}^{\top}\mathbf{D}^{-1}\mathbf{r}}{4t}\Big)H(t),
+\end{equation}
+with \(d=2\) and learnable SPD \(\mathbf{D}\). We report an effective scalar \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\) (clipped at \(10^{-6}\)) as the probe summary used by the residualizer. Oscillatory phase can be added to the Green kernel as a physics-kill control (``phase on''); the discovery board uses phase-off diffusion alongside a Fresnel spatial probe.
+
+\subsection*{Memory kernel (rheology)}
+
+Linear viscoelastic SAOS identification uses a Prony/Maxwell memory
+\begin{equation}
+K_m(t)=\sum_{k=1}^{K}G_ke^{-t/\lambda_k},
+\end{equation}
+with a fixed log-spaced \(\lambda\) library (\(K=8\)) matched to each sample's \(\omega\) band (PNF; same physics as classical Prony NLS)\cite{ferry1980}. Complex moduli follow
+\(G'(\omega)=G_{\infty}+\sum_k G_k\frac{(\omega\lambda_k)^{2}}{1+(\omega\lambda_k)^{2}}\) and
+\(G''(\omega)=\sum_k G_k\frac{\omega\lambda_k}{1+(\omega\lambda_k)^{2}}\).
+Fits minimise log-modulus residuals. Free-\(\lambda\) fits and SAOS-bin proxies are reserved for robustness (Fig.~\ref{fig:rheo-impact-discovery}e). Tube-style maps use \(M\propto\lambda^{1/\alpha}\) with primary \(\alpha=3.4\)\cite{doi1986}. Anisotropic materials extend \(G_k\to\mathbf{W}_k=\mathbf{L}_k\mathbf{L}_k^{\top}\).
+
+\subsection*{Network architecture}
+
+Seismic and EEG pipelines share five stages (Fig.~\ref{fig:pnf-principle}):
+(1)~source embedding to latent width \(D=64\) (3C E/N/Z for STEAD; 19 EEG channels);
+(2)~causal CNN estimate of medium density \(\rho(t)\);
+(3)~kernel propagation (\(L=2\) shared layers; seismic causal local window \(15\,\mathrm{s}\), sparse-banded; multi-scale Huygens--Fresnel branches);
+(4)~task branches with dedicated kernel parameters;
+(5)~heads (detection + P/S probabilities for STEAD; clinical heads for EEG pretraining).
+Rheology discovery reported here uses frequency-domain PNF spectrum identification on SAOS master curves rather than the full waveform stack; the memory kernel and readable \(G_k\) are the same physical object.
+
+\subsection*{STEAD training and benchmark protocol}
+
+Canonical checkpoint: multi-scale Huygens--Fresnel \pnf{} trained for 50 epochs (best validation near epoch~37; \(\approx192\mathrm{k}\) parameters). Inputs are STEAD three-component windows resampled to length 800 covering \(60\,\mathrm{s}\) (native STEAD \(100\,\mathrm{Hz}\)). Optimiser Adam with cosine annealing; batch size 32; embedding width 64; two shared and two branch layers; causal local window \(15\,\mathrm{s}\); sparse-banded multi-scale kernel. The loss combines detection cross-entropy (event-class upweight), P/S pick cross-entropy with positive-class upweighting, a P-before-S order term, noise-cancel regularisers (consistency/phase/preserve), a wrong-peak penalty, mild \(\rho\) sparsity, a weak kernel physical prior, and a noise-pick penalty (numerical weights in Supplementary Information~A). Full test comparison against EQTransformer and PhaseNet uses the STEAD EQTransformer test split and \(0.5\,\mathrm{s}\) tolerance\cite{mousavi2020eqt,zhu2018phasenet}; baselines are evaluated at native \(6000\) samples/\(60\,\mathrm{s}\) via SeisBench peak-normalised inputs, while \pnf{} uses the 800-sample causal grid. Metrics in Table~\ref{tab:stead} are the locked paper numbers.
+
+\subsection*{Seismic discovery: facies and path residuals}
+
+\paragraph{Frozen picker and facies ceilings.}
+All morphology analyses use the frozen multi-scale Huygens--Fresnel checkpoint (run-28; \(\approx192\mathrm{k}\) parameters). Causal-chain exports provide (i)~coda slope from the waveform envelope, (ii)~onset sharpness, and (iii)~peak count / multi-lobe structure in delay-time density \(\rho(\tau)\) after resampling each event into a causal frame with \(P\) at \(\tau=0\) and \(S\) at \(\tau=1\). Facies ceilings were locked before regional maps were inspected: peak-count threshold \(1.0\); coda-fast/slow bounds \(-0.198\) and \(-0.113\); onset-high/low \(0.877\) and \(0.733\). Labels are rule-based (impulsive\_fastQ, emergent, multipath, slow\_coda, standard), not unsupervised cluster IDs (Fig.~\ref{fig:shape-geo-coda}).
+
+\paragraph{From coda slope to \(\beta_{\mathrm{res}}\).}
+Let \(s\) denote a coda-decay slope on the envelope. Distance-detrended
+\(\beta\) is the residual of \(s\) on \(\log_{10}(\mathrm{distance}+1)\). Structure expectation is a ridge regression (\(\lambda=8\)) of \(\beta\) on \(\log_{10}\) distance, event depth, magnitude, \(\log(1+d_{\mathrm{fault}})\) to the nearest USGS Quaternary fault polyline (densified; local km scaling), and station fixed effects. The leftover \(\beta_{\mathrm{res}}\) is evaluated at the geographic mean of source and receiver (path midpoint) and aggregated on \(0.25^\circ\) grids for maps (Fig.~\ref{fig:main_single}).
+
+\paragraph{Same-station cell tests.}
+For a candidate cell, we compare in-cell traces to traces recorded at the \emph{same} station whose midpoints lie outside the cell and a \(0.5\)-cell buffer. We report site-median \(\Delta\beta\), sign agreement, Cohen's \(d\), and Mann--Whitney \(p\) on pooled paired traces. Discovery threshold used in the locked board: \(\ge8\) stations and \(p<0.05\). Salton--Imperial and eastern Transverse Ranges cells are the SoCal exemplars in Fig.~\ref{fig:main_single}.
+
+\paragraph{Classical \(q_c\) and published structure cubes.}
+Classical coda slope \(q_c\) uses a mean-square envelope, 21-sample smoother, and the slope of \(\log_{10}E(t)\) from the first post-peak drop below \(55\%\) of peak energy through \(+8\,\mathrm{s}\). Berg et al.\ upper-crust \(V_S\) is sampled from IRIS EMC \texttt{SoCal-BergEtAl2021} by trilinear interpolation; we use the \(0\)--\(8\,\mathrm{km}\) column mean at path midpoints\cite{berg2021}. Lin \& Jordan SCAT \(Q_S\) grids are interpolated only on resolved nodes (\texttt{resolution=1}); unresolved nodes are not infilled with a 1-D average; \(0\)--\(8\,\mathrm{km}\) column means enter the independence tests\cite{lin2023}.
+
+\paragraph{Cascadia expansion and jackknife.}
+Cascadia uses the same frozen ceilings on STEAD paths inside \(45.2\)--\(48.8^\circ\mathrm{N}\), \(124.6\)--\(120.2^\circ\mathrm{W}\), with station-year filters (minimum \(2\) station-years / \(8\) traces); \(16\mathrm{k}\) labelled traces reduce to \(9393\) after distance/fixed-station filters. Jackknife checks for the St~Helens cell include dropping top source bins, capping traces per bin, leave-one-year-out (\(2005\)--\(2018\)), and magnitude floors.
+
+\subsection*{EEG cohorts, residualizer, and controls}
+
+\paragraph{Cohorts and tensors.}
+Clinical EEG uses OpenNeuro ds004504 (AHEPA; \(n=88\) subjects spanning AD/HC/FTD as in Fig.~\ref{fig:eeg_impact_discovery}a)\cite{miltiadous2023}. Subject split seed \(42\) yields train/val/test \(57/13/18\); discovery associations use held-out val+test (\(n=31\)). Epochs are eyes-closed \(19\)-channel segments of \(10\,\mathrm{s}\) at \(128\,\mathrm{Hz}\) (default stride \(5\,\mathrm{s}\) when multiple epochs per recording are formed). Healthy-lifespan negative controls use LEMON (\(n=202\))\cite{babayan2019}.
+
+\paragraph{Probe summary and voltmeter.}
+The spatial probe yields a medium density trajectory \(\rho(t)\) and scalar \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\) (clip \(10^{-6}\)). Voltmeter covariates are age, sex, \(\theta/\alpha\), and band-power \(\alpha\)---features already used in conventional EEG cognitive analyses\cite{jeong2004}.
+
+\paragraph{Train-only residualizer.}
+Fit \(D_{\mathrm{eff}}\sim\) voltmeter by OLS on train subjects only; define leftover \(=D_{\mathrm{eff}}-f_{\mathrm{train}}(\mathrm{volt})\); apply without refit on held-out subjects (Fig.~\ref{fig:eeg_impact_discovery}b). Dual-probe analyses correlate Fresnel and anisotropic leftovers on the same held-out set. Phase-on Green kernels serve as physics kills relative to phase-off / Fresnel probes (Fig.~\ref{fig:eeg_impact_discovery}e--f).
+
+\paragraph{LEMON discipline.}
+Within-LEMON residualization is required. Absolute \(D_{\mathrm{eff}}\) is domain-shifted (LEMON mean \(\approx0.35\) vs AHEPA \(\approx1.42\)); raw transport of AHEPA train-\(\beta\) is disallowed. LEMON tests null association with healthy aging, GM/ICV, and TMT (discriminant validity), not external replication of the AD/FTD MMSE effect. Primary cognition endpoint: Spearman \(\rho\) of train-fit leftover vs MMSE residualized on the voltmeter\cite{folstein1975}; predictive \(\Delta R^{2}\) is secondary.
+
+\subsection*{Rheology cohorts and tube--MWD test}
+
+\paragraph{Paired melts.}
+Leeds polystyrene SAOS\(\cap\)GPC (\(n=9\); DOI 10.5518/1689; A1PS, M1, M2, PS1--PS3, PS8, PSA, PScom)\cite{elliott2025}. Only paired samples enter discovery; UMN SAOS and PolyWeight are external roles (Fig.~\ref{fig:rheo-impact-discovery}a).
+
+\paragraph{PNF spectrum fit.}
+For each melt, identify \(\{G_k\}_{k=1}^{K}\) on a fixed log-spaced \(\lambda\) library (\(K=8\)) by minimising log-modulus error on \(G'(\omega)\) and \(G''(\omega)\) (multi-start LBFGS; Softplus/exp positivity). This is the frequency-domain PNF / Prony NLS probe used throughout Domain~III.
+
+\paragraph{Tube alignment and null.}
+Mode mass \(w_k=G_k/\sum G\) is compared to GPC mass under \(M\propto\lambda^{1/\alpha}\) with median log-\(M\)/log-\(\lambda\) anchoring (primary \(\alpha=3.4\)\cite{doi1986}). Significance: within-sample shuffle of \(G_k\) (\(n_{\mathrm{shuffle}}=800\)). Robustness: \(\alpha\in\{3.0,3.4,3.7\}\), free-\(\lambda\), SAOS-bin proxy without Prony. Locked hardening board: mean \(r=0.911\) vs null \(0.565\) (\(\Delta\approx0.35\); \(8/9\) with \(p<0.05\)). Primary evidence is \(\Delta\) vs null; Elliott NN MWD maps are comparison only\cite{elliott2025}.
+
+\subsection*{Statistics}
+
+Geographic facies association uses Cram\'er's \(V\) with Benjamini--Hochberg FDR control. Effect sizes for \(\beta_{\mathrm{res}}\) contrasts use Cohen's \(d\). EEG associations report Spearman \(\rho\) with two-sided \(p\)-values on held-out subjects; dual-probe agreement likewise. Rheology reports Pearson tube \(r\), shuffle \(p\)-values, and bootstrap CIs on mean \(r\) where stated in hardening boards. We distinguish held-out association, healthy negative controls, within-sample mechanistic nulls, and large-catalogue benchmark comparison as non-interchangeable validation modes.
+
+\subsection*{Physics Decoder (velocity initialisation)}
+
+A two-layer MLP maps frozen seismic latents (\(\rho(t)\), envelope, kernel parameters, pick probabilities) to layered \((v_P,v_S)\) models and initialises differentiable FWI. Evaluation uses \(n=500\) real STEAD events against perturbed baselines (Wilcoxon); travel-time misfit improvements in the main text are the locked numbers. The decoder is an initialisation aid, not an oracle travel-time solver.
+
+\subsection*{Compute}
+
+Seismic and EEG training used NVIDIA A100-class GPUs. Rheology spectrum fits are CPU/GPU-light frequency-domain optimisations (LBFGS/Adam or scipy NLS).
+
+% =============================================================================
+\section*{Data and Code Availability}
+
+STEAD is publicly available\cite{stead2019}. Clinical EEG: OpenNeuro ds004504 (AHEPA)\cite{miltiadous2023}; healthy-lifespan controls: LEMON\cite{babayan2019}. Rheology: Leeds paired SAOS\(\cap\)GPC (DOI 10.5518/1689)\cite{elliott2025}, with UMN/PolyWeight roles as in Fig.~\ref{fig:rheo-impact-discovery}. Code: \url{https://github.com/Yinbao-Li/HNF}.
+
+% =============================================================================
+\begin{thebibliography}{99}
+
+\bibitem{akei2002} Aki, K. \& Richards, P. G. \emph{Quantitative Seismology}, 2nd edn. (University Science Books, 2002).
+
+\bibitem{lopes1997} Lopes da Silva, F. H. \emph{et al.} Neural mechanisms underlying brain waves. \emph{Electroencephalogr. Clin. Neurophysiol.} \textbf{103}, 201--212 (1997).
+
+\bibitem{morse1953} Morse, P. M. \& Ingard, K. U. \emph{Theoretical Acoustics} (Princeton University Press, 1953).
+
+\bibitem{raissi2019pinn} Raissi, M., Perdikaris, P. \& Karniadakis, G. E. Physics-informed neural networks: a deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. \emph{J. Comput. Phys.} \textbf{378}, 686--707 (2019).
+
+\bibitem{karniadakis2021} Karniadakis, G. E. \emph{et al.} Physics-informed machine learning. \emph{Nat. Rev. Phys.} \textbf{3}, 422--440 (2021).
+
+\bibitem{hu2020difftaichi} Hu, Y. \emph{et al.} DiffTaichi: differentiable programming for physical simulation. \emph{ICLR} (2020).
+
+\bibitem{doumèche2025convergence} Doumèche, N., Biau, G. \& Boyer, C. On the convergence of PINNs. \emph{Bernoulli} \textbf{31}, 2127--2151 (2025).
+
+\bibitem{stead2019} Mousavi, S. M. \emph{et al.} STanford EArthquake Dataset (STEAD): a global reference for seismic signal analysis. \emph{Seismol. Res. Lett.} \textbf{90}, 1970--1980 (2019).
+
+\bibitem{mousavi2020eqt} Mousavi, S. M., Ellsworth, W. L., Zhu, W., Chuang, L. Y. \& Beroza, G. C. Earthquake transformer---an attentive deep-learning model for simultaneous earthquake detection and phase picking. \emph{Nat. Commun.} \textbf{11}, 3952 (2020).
+
+\bibitem{zhu2018phasenet} Zhu, W. \& Beroza, G. C. PhaseNet: a deep-neural-network-based seismic arrival-time picking method. \emph{Geophys. J. Int.} \textbf{216}, 261--273 (2018).
+
+\bibitem{jeong2004} Jeong, J. EEG dynamics in patients with Alzheimer's disease. \emph{Clin. Neurophysiol.} \textbf{115}, 1490--1505 (2004).
+
+\bibitem{folstein1975} Folstein, M. F., Folstein, S. E. \& McHugh, P. R. ``Mini-mental state'': a practical method for grading the cognitive state of patients for the clinician. \emph{J. Psychiatr. Res.} \textbf{12}, 189--198 (1975).
+
+\bibitem{babayan2019} Babayan, A. \emph{et al.} A mind-brain-body dataset of MRI, EEG, cognition, emotion, and peripheral physiology in young and old adults. \emph{Sci. Data} \textbf{6}, 61 (2019).
+
+\bibitem{miltiadous2023} Miltiadous, A. \emph{et al.} A dataset of EEG recordings from Alzheimer's and Frontotemporal Dementia patients (OpenNeuro ds004504). (2023).
+
+\bibitem{berg2021} Berg, E. M. \emph{et al.} Southern California upper-crust \(V_S\) model (IRIS EMC \texttt{SoCal-BergEtAl2021}); path-midpoint comparisons as in Fig.~\ref{fig:main_single}. \emph{Geophys. Res. Lett.} (2021). doi:10.1029/2021GL092626.
+
+\bibitem{lin2023} Lin, G. \& Jordan, T. H. Repeatable source, site, and path effects on the ground-motion data from the Southern California Seismic Network and the \(Q_S\) structure of southern California. \emph{Earth Planet. Sci. Lett.} \textbf{616}, 118227 (2023). SCAT grids: \url{https://github.com/yupinlin/SouthernCaliforniaQmodel}.
+
+\bibitem{doi1986} Doi, M. \& Edwards, S. F. \emph{The Theory of Polymer Dynamics} (Oxford Univ. Press, 1986).
+
+\bibitem{ferry1980} Ferry, J. D. \emph{Viscoelastic Properties of Polymers}, 3rd edn. (Wiley, 1980).
+
+\bibitem{elliott2025} Public Leeds paired SAOS--GPC polystyrene melts and companion mapping resources (DOI 10.5518/1689).
+
+\end{thebibliography}
+
+% =============================================================================
+\onecolumn
+\section*{Supplementary Information}
+
+\subsection*{A. STEAD benchmark protocol and metric reading}
+
+\paragraph{Data split and sampling.}
+STEAD local-earthquake traces (noise excluded for morphology analyses) follow the counts in Fig.~\ref{fig:shape-geo-coda}a. Native waveforms are \(60\,\mathrm{s}\) at \(100\,\mathrm{Hz}\) (\(6000\) samples). \pnf{} training and evaluation resample each window to length \(800\) on a causal grid; EQTransformer and PhaseNet baselines are scored at native resolution through SeisBench with peak normalisation. Detection/picking tolerance is \(0.5\,\mathrm{s}\)\cite{mousavi2020eqt}.
+
+\paragraph{Training hyperparameters (canonical run-28).}
+Adam with cosine annealing over \(50\) epochs (best validation near epoch \(37\)); batch size \(32\); embedding width \(64\); \(2\) shared + \(2\) branch propagation layers; multi-scale Huygens--Fresnel principle; causal local window \(15\,\mathrm{s}\); sparse-banded kernel. Loss weights (checkpoint): detection CE weight \(1.0\) (event class upweight \(2.0\)); pick CE weight \(2.8\) with P/S positive emphasis; wrong-peak penalty \(0.15\); P-before-S order \(0.12\); noise-cancel bundle \(\approx0.05\) with consistency/phase/preserve subweights; \(\rho\) sparsity \(0.02\); weak kernel physical prior \(0.005\); noise pick penalty \(0.05\). Parameter count \(\approx192\mathrm{k}\).
+
+\paragraph{How to read Table~\ref{tab:stead}.}
+\pnf{} ties EQTransformer on detection F1 (\(0.9989\)), leads on S-wave F1 and P-wave MAE, trails EQTransformer on P-wave F1, and trails PhaseNet on S-wave MAE. Precision/recall pairs in the table should be consulted for asymmetry (e.g., high precision with lower recall on some heads). These mixed outcomes ground the accuracy--interpretability trade-off discussed in the main text.
+
+\subsection*{B. Physics Decoder and FWI initialisation}
+
+Frozen features include \(\rho(t)\) summaries, envelope statistics, kernel parameters \((\gamma,\omega,c)\), and pick probabilities. A two-layer MLP regresses layered velocity nodes \((v_P,v_S)\) used to initialise differentiable FWI. Evaluation on \(n=500\) real STEAD events reports Wilcoxon tests against perturbed baselines (main text: \(69.6\%\) improved; mean travel-time misfit \(11.22\to3.08\)). Failure modes include events with unstable picks, extreme SNR, and layered models too coarse for deep structure; the decoder is an initialisation probe, not a catalogue travel-time replacement.
+
+\subsection*{C. EEG preprocessing, cohorts, and residualization discipline}
+
+\paragraph{AHEPA / OpenNeuro ds004504.}
+\(n=88\) subjects (AD/HC/FTD composition as in Fig.~\ref{fig:eeg_impact_discovery}a)\cite{miltiadous2023}. Eyes-closed resting EEG is stored as \(19\times1280\) tensors (\(10\,\mathrm{s}\) at \(128\,\mathrm{Hz}\); default stride \(5\,\mathrm{s}\) for epoching). Subject split seed \(42\): train \(57\), validation \(13\), test \(18\); held-out discovery uses val+test (\(n=31\)). MMSE is the primary cognitive label\cite{folstein1975}.
+
+\paragraph{Voltmeter definition.}
+Classical covariates: age, sex, \(\theta/\alpha\) ratio, band-power \(\alpha\). These define the ``voltmeter'' subspace that a clinical reader already trusts\cite{jeong2004}.
+
+\paragraph{Leftover construction.}
+Fit \(D_{\mathrm{eff}}\sim\) voltmeter by OLS on train only; define
+\(\mathrm{leftover}=D_{\mathrm{eff}}-f_{\mathrm{train}}(\mathrm{volt})\);
+apply \(f_{\mathrm{train}}\) without refit on held-out subjects. \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\) with numerical floor \(10^{-6}\).
+
+\paragraph{LEMON negative control.}
+LEMON (\(n=202\))\cite{babayan2019} tests whether leftover tracks healthy aging, GM/ICV, or TMT under within-LEMON residualization. Absolute probe scale is domain-shifted (LEMON mean \(D_{\mathrm{eff}}\approx0.35\) vs AHEPA \(\approx1.42\)); transferring AHEPA train-\(\beta\) in raw units fabricates artefactual dual-probe agreement and is disallowed. LEMON is discriminant validation, not a second AD/FTD MMSE replication site.
+
+\paragraph{Physics and construct controls.}
+Fresnel vs anisotropic leftovers; phase-off vs phase-on Green kernels; dual-probe Spearman agreement on held-out subjects (Fig.~\ref{fig:eeg_impact_discovery}e--f). Primary endpoint remains held-out leftover--MMSE association; train\(\to\)held-out predictive \(\Delta R^{2}\) is secondary and small.
+
+\subsection*{D. Rheology tube--MWD protocol (extended)}
+
+\paragraph{Cohort.}
+Leeds polystyrene SAOS\(\cap\)GPC, DOI 10.5518/1689, \(n=9\): A1PS, M1, M2, PS1, PS2, PS3, PS8, PSA, PScom\cite{elliott2025}. Branched samples (A1PS, PSA) are flagged for display only. UMN bottlebrush SAOS and PolyWeight pairs appear in Fig.~\ref{fig:rheo-impact-discovery}a as external roles and do not enter the discovery correlation.
+
+\paragraph{PNF identification.}
+Fixed log-spaced \(\lambda\) library with \(K=8\) modes spanning \(\sim1/\omega_{\max}\) to \(1/\omega_{\min}\) (padded). Softplus/exp parameterisations keep \(G_k>0\). Objective: mean squared error on \(\log_{10}G'\) and \(\log_{10}G''\) (multi-start LBFGS). Free-\(\lambda\) runs allow limited \(\log\lambda\) jitter for robustness.
+
+\paragraph{Tube mass alignment.}
+Mode mass \(w_k=G_k/\sum_j G_j\). Map \(\log_{10}M=\mathrm{med}(\log_{10}M)_{\mathrm{GPC}}+\alpha^{-1}(\log_{10}\lambda-\mathrm{med}_w(\log_{10}\lambda))\) with primary \(\alpha=3.4\)\cite{doi1986}. Deposit GPC mass onto modes by nearest log-\(M\) assignment and correlate with \(w_k\) (Pearson \(r\)).
+
+\paragraph{Nulls and hardening numbers.}
+Within-sample shuffle of \(G_k\) (\(n_{\mathrm{shuffle}}=800\)): mean observed \(r=0.911\) (bootstrap CI \(\approx0.883\)--\(0.940\)) vs null \(0.565\) (CI \(\approx0.415\)--\(0.707\)); \(\Delta\approx0.35\); \(8/9\) samples with \(p<0.05\). \(\alpha\in\{3.0,3.4,3.7\}\) mean \(r\in\{0.920,0.911,0.920\}\); free-\(\lambda\) mean \(r=0.950\); SAOS-bin proxy (no Prony) mean \(r=0.856\). Primary evidence: \(\Delta\) vs shuffle, not absolute \(r\).
+
+\subsection*{E. Extended controls and ablations}
+
+\paragraph{Seismic.}
+Same-station \(\Delta\beta\); residualisation against \(q_c\), Berg \(V_S\), Lin \(Q_S\); Cascadia replica; jackknife on St~Helens source bins / years / magnitude floors; Alaska deep-slab paths treated as stress tests, not replicas.
+
+\paragraph{EEG.}
+Train-only residualizer; held-out association; dual-kernel agreement; phase-on kill; LEMON nulls; refusal of raw cross-dataset \(\beta\) transport.
+
+\paragraph{Rheology.}
+Shuffle-\(G_k\); \(\alpha\) sweep; free-\(\lambda\); SAOS-bin; unpaired external melts excluded from discovery.
+
+\paragraph{Architectural.}
+Weak kernel priors and \(\rho\) sparsity regularise STEAD training but do not replace the hard-wired Green form. Removing the Green form would exit the probe paradigm; we therefore do not treat ``delete physics'' as a routine hyperparameter toward black-box picking.
+
+\subsection*{F. Interpretability exports and recommended deposits}
+
+Primary panels: Figs.~\ref{fig:pnf-principle}--\ref{fig:rheo-impact-discovery}. Repository scripts regenerate per-event \(\rho(t)\), facies tables, \(\beta_{\mathrm{res}}\) grids, EEG leftover tables, and rheology per-sample null draws. Camera-ready deposits should include CSV/NetCDF for (i)~STEAD facies + \(\beta_{\mathrm{res}}\), (ii)~AHEPA held-out leftover/MMSE pairs with split IDs, (iii)~Leeds \(r\)/null draws, and (iv)~checkpoint hashes for run-28 and EEG probes.
+
+\subsection*{G. Anisotropic kernel extensions}
+
+Scalar\(\to\)SPD upgrades via Cholesky: seismic \(\mathbf{M}\), EEG \(\mathbf{D}\), rheology \(\mathbf{W}_k\). EEG boards already use anisotropic diffusion beside Fresnel probes. Seismic anisotropic metrics and rheological \(\mathbf{W}_k\) are implemented for future 3-C/materials studies; locked main-text seismic discoveries use the isotropic Huygens--Fresnel production kernel plus facies/\(\beta_{\mathrm{res}}\) analysis.
+
+\subsection*{H. Seismic discovery numbers locked to the boards}
+
+SoCal fixed-station distance window \(20\)--\(120\,\mathrm{km}\); structure model \(R^{2}(\beta)\approx0.27\) on the locked board; Salton cell site-median \(\Delta\beta\approx-0.032\) (\(20\) stations); eastern Transverse Ranges \(\Delta\beta\approx+0.025\) (\(15\) stations); \(r(\beta_{\mathrm{res}},q_c)=0.64\); \(r(\beta_{\mathrm{res}},V_S)=-0.08\); \(r(\beta_{\mathrm{res}},Q_S)=-0.07\); Cascadia filtered traces \(9393\); St~Helens / Seattle same-station signs as in Fig.~\ref{fig:main_single}. Exact cell lon/lat centres follow the analysis tables in \texttt{outputs/structure\_residual\_socal/} and \texttt{outputs/structure\_residual\_cascadia\_volc/}.
+
+\end{document}
