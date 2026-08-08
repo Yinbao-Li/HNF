@@ -497,15 +497,44 @@ STEAD is publicly available\cite{stead2019}. Clinical EEG: OpenNeuro ds004504 (A
 \paragraph{Data split and sampling.}
 STEAD local-earthquake traces (noise excluded for morphology analyses) follow the counts in Fig.~\ref{fig:shape-geo-coda}a. Native waveforms are \(60\,\mathrm{s}\) at \(100\,\mathrm{Hz}\) (\(6000\) samples). \pnf{} training and evaluation resample each window to length \(800\) on a causal grid; EQTransformer and PhaseNet baselines are scored at native resolution through SeisBench with peak normalisation. Detection/picking tolerance is \(0.5\,\mathrm{s}\)\cite{mousavi2020eqt}.
 
-\paragraph{Training hyperparameters (canonical run-28).}
-Adam with cosine annealing over \(50\) epochs (best validation near epoch \(37\)); batch size \(32\); embedding width \(64\); \(2\) shared + \(2\) branch propagation layers; multi-scale Huygens--Fresnel principle; causal local window \(15\,\mathrm{s}\); sparse-banded kernel. Loss weights (checkpoint): detection CE weight \(1.0\) (event class upweight \(2.0\)); pick CE weight \(2.8\) with P/S positive emphasis; wrong-peak penalty \(0.15\); P-before-S order \(0.12\); noise-cancel bundle \(\approx0.05\) with consistency/phase/preserve subweights; \(\rho\) sparsity \(0.02\); weak kernel physical prior \(0.005\); noise pick penalty \(0.05\). Parameter count \(\approx192\mathrm{k}\).
+\paragraph{Training hyperparameters.}
+Adam with cosine annealing over \(50\) epochs (best validation near epoch \(37\)); batch size \(32\); embedding width \(64\); \(2\) shared + \(2\) branch propagation layers; multi-scale Huygens--Fresnel principle; causal local window \(15\,\mathrm{s}\); sparse-banded kernel. Full loss weights are listed in Table~\ref{tab:s1_loss_weights}. Parameter count \(\approx192\mathrm{k}\).
+
+\begin{table}[htbp]
+\centering
+\caption{Full loss weights for STEAD picking training.}
+\label{tab:s1_loss_weights}
+\begin{tabular}{l c}
+\toprule
+Loss component & Weight \\
+\midrule
+Detection cross-entropy (event class upweight 2.0) & 1.0 \\
+P/S pick cross-entropy (positive emphasis) & 2.8 \\
+Wrong-peak penalty & 0.15 \\
+P-before-S order constraint & 0.12 \\
+Noise-cancel consistency & 0.025 \\
+Noise-cancel phase & 0.015 \\
+Noise-cancel preserve & 0.010 \\
+$\rho$ sparsity & 0.02 \\
+Weak kernel physical prior & 0.005 \\
+Noise pick penalty & 0.05 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{How to read Table~\ref{tab:stead}.}
-\pnf{} ties EQTransformer on detection F1 (\(0.9989\)), leads on S-wave F1 and P-wave MAE, trails EQTransformer on P-wave F1, and trails PhaseNet on S-wave MAE. Precision/recall pairs in the table should be consulted for asymmetry (e.g., high precision with lower recall on some heads). These mixed outcomes ground the accuracy--interpretability trade-off discussed in the main text.
+\pnf{} ties EQTransformer on detection F1 (\(0.9989\)), leads on S-wave F1 and P-wave MAE, trails EQTransformer on P-wave F1, and trails PhaseNet on S-wave MAE. Precision/recall pairs in the table should be consulted for asymmetry (e.g., high precision with lower recall on some heads). These mixed outcomes ground the accuracy--interpretability trade-off discussed in the main text. Detailed per-allele performance is provided in the repository tables.
 
 \subsection*{B. Physics Decoder and FWI initialisation}
 
-Frozen features include \(\rho(t)\) summaries, envelope statistics, kernel parameters \((\gamma,\omega,c)\), and pick probabilities. A two-layer MLP regresses layered velocity nodes \((v_P,v_S)\) used to initialise differentiable FWI. Evaluation on \(n=500\) real STEAD events reports Wilcoxon tests against perturbed baselines (main text: \(69.6\%\) improved; mean travel-time misfit \(11.22\to3.08\)). Failure modes include events with unstable picks, extreme SNR, and layered models too coarse for deep structure; the decoder is an initialisation probe, not a catalogue travel-time replacement.
+Frozen features include \(\rho(t)\) summaries, envelope statistics, kernel parameters \((\gamma,\omega,c)\), and pick probabilities. A two-layer MLP regresses layered velocity nodes \((v_P,v_S)\) used to initialise differentiable FWI (Fig.~\ref{fig:s1_decoder_arch}). Evaluation on \(n=500\) real STEAD events reports Wilcoxon tests against perturbed baselines (main text: \(69.6\%\) improved; mean travel-time misfit \(11.22\to3.08\)). Failure modes include events with unstable picks, extreme SNR, and layered models too coarse for deep structure; the decoder is an initialisation probe, not a catalogue travel-time replacement.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\columnwidth]{../docs/figures/si/decoder_detailed.pdf}
+\caption{Detailed architecture of the Physics Decoder. The frozen backbone exports \(h_r,h_i,\rho(t),(\gamma,\omega,c)\), and picks. A feature extraction module computes waveform statistics and kernel summaries, then per-station to event-mean pooling. The Macro Physics Head (MLP: \(48\to48\to3\)) predicts scale, contrast, and \(V_S/V_P\) ratio, converted to layered \(v_P,v_S\) models.}
+\label{fig:s1_decoder_arch}
+\end{figure}
 
 \subsection*{C. EEG preprocessing, cohorts, and residualization discipline}
 
@@ -518,7 +547,14 @@ Classical covariates: age, sex, \(\theta/\alpha\) ratio, band-power \(\alpha\). 
 \paragraph{Leftover construction.}
 Fit \(D_{\mathrm{eff}}\sim\) voltmeter by OLS on train only; define
 \(\mathrm{leftover}=D_{\mathrm{eff}}-f_{\mathrm{train}}(\mathrm{volt})\);
-apply \(f_{\mathrm{train}}\) without refit on held-out subjects. \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\) with numerical floor \(10^{-6}\).
+apply \(f_{\mathrm{train}}\) without refit on held-out subjects. \(D_{\mathrm{eff}}=1/\rho_{\mathrm{std}}\) with numerical floor \(10^{-6}\). The full pipeline is illustrated in Fig.~\ref{fig:s2_eeg_pipeline}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{../docs/figures/si/eeg_residualizer_pipeline.pdf}
+\caption{EEG residualizer construction pipeline. Raw 19-channel EEG epochs are processed by the frozen spatial probe to yield \(D_{\mathrm{eff}}\) and \(\rho(t)\). Simultaneously, voltmeter features (age, sex, \(\theta/\alpha\), band-power \(\alpha\)) are extracted. A train-only OLS residualization defines the held-out leftover.}
+\label{fig:s2_eeg_pipeline}
+\end{figure}
 
 \paragraph{LEMON negative control.}
 LEMON (\(n=202\))\cite{babayan2019} tests whether leftover tracks healthy aging, GM/ICV, or TMT under within-LEMON residualization. Absolute probe scale is domain-shifted (LEMON mean \(D_{\mathrm{eff}}\approx0.35\) vs AHEPA \(\approx1.42\)); transferring AHEPA train-\(\beta\) in raw units fabricates artefactual dual-probe agreement and is disallowed. LEMON is discriminant validation, not a second AD/FTD MMSE replication site.
@@ -535,10 +571,38 @@ Leeds polystyrene SAOS\(\cap\)GPC, DOI 10.5518/1689, \(n=9\): A1PS, M1, M2, PS1,
 Fixed log-spaced \(\lambda\) library with \(K=8\) modes spanning \(\sim1/\omega_{\max}\) to \(1/\omega_{\min}\) (padded). Softplus/exp parameterisations keep \(G_k>0\). Objective: mean squared error on \(\log_{10}G'\) and \(\log_{10}G''\) (multi-start LBFGS). Free-\(\lambda\) runs allow limited \(\log\lambda\) jitter for robustness.
 
 \paragraph{Tube mass alignment.}
-Mode mass \(w_k=G_k/\sum_j G_j\). Map \(\log_{10}M=\mathrm{med}(\log_{10}M)_{\mathrm{GPC}}+\alpha^{-1}(\log_{10}\lambda-\mathrm{med}_w(\log_{10}\lambda))\) with primary \(\alpha=3.4\)\cite{doi1986}. Deposit GPC mass onto modes by nearest log-\(M\) assignment and correlate with \(w_k\) (Pearson \(r\)).
+Mode mass \(w_k=G_k/\sum_j G_j\). Map \(\log_{10}M=\mathrm{med}(\log_{10}M)_{\mathrm{GPC}}+\alpha^{-1}(\log_{10}\lambda-\mathrm{med}_w(\log_{10}\lambda))\) with primary \(\alpha=3.4\)\cite{doi1986}. Deposit GPC mass onto modes by nearest log-\(M\) assignment and correlate with \(w_k\) (Pearson \(r\)). The alignment procedure is illustrated in Fig.~\ref{fig:s3_tube_schematic}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{../docs/figures/si/tube_mwd_alignment.pdf}
+\caption{Schematic of tube--MWD alignment. Left: PNF mode masses \(G_k\) from SAOS spectrum. Middle: tube-theory mapping \(M\propto\lambda^{1/\alpha}\). Right: GPC molecular weight distribution. Observed correlation \(r\) is computed between mode mass and GPC mass.}
+\label{fig:s3_tube_schematic}
+\end{figure}
 
 \paragraph{Nulls and hardening numbers.}
-Within-sample shuffle of \(G_k\) (\(n_{\mathrm{shuffle}}=800\)): mean observed \(r=0.911\) (bootstrap CI \(\approx0.883\)--\(0.940\)) vs null \(0.565\) (CI \(\approx0.415\)--\(0.707\)); \(\Delta\approx0.35\); \(8/9\) samples with \(p<0.05\). \(\alpha\in\{3.0,3.4,3.7\}\) mean \(r\in\{0.920,0.911,0.920\}\); free-\(\lambda\) mean \(r=0.950\); SAOS-bin proxy (no Prony) mean \(r=0.856\). Primary evidence: \(\Delta\) vs shuffle, not absolute \(r\).
+Within-sample shuffle of \(G_k\) (\(n_{\mathrm{shuffle}}=800\)): mean observed \(r=0.911\) (bootstrap CI \(\approx0.883\)--\(0.940\)) vs null \(0.565\) (CI \(\approx0.415\)--\(0.707\)); \(\Delta\approx0.35\); \(8/9\) samples with \(p<0.05\). \(\alpha\in\{3.0,3.4,3.7\}\) mean \(r\in\{0.920,0.911,0.920\}\); free-\(\lambda\) mean \(r=0.950\); SAOS-bin proxy (no Prony) mean \(r=0.856\). Per-sample results are listed in Table~\ref{tab:s3_per_sample}. Primary evidence: \(\Delta\) vs shuffle, not absolute \(r\).
+
+\begin{table}[htbp]
+\centering
+\caption{Per-sample tube correlation results for Leeds paired melts (locked board, \(\alpha=3.4\)).}
+\label{tab:s3_per_sample}
+\begin{tabular}{l c c c c c}
+\toprule
+Sample & Observed $r$ & Null mean & $\Delta$ & $p$-value & Branching \\
+\midrule
+PS3 & 0.99 & 0.58 & 0.41 & $<0.001$ & Linear \\
+PS1 & 0.96 & 0.88 & 0.08 & 0.53 & Linear \\
+PSA & 0.95 & 0.26 & 0.68 & $<0.01$ & Branched \\
+M2 & 0.92 & 0.73 & 0.18 & 0.022 & Linear \\
+PS8 & 0.91 & 0.28 & 0.63 & $<0.01$ & Linear \\
+PScom & 0.90 & 0.72 & 0.18 & $<0.01$ & Linear \\
+M1 & 0.87 & 0.70 & 0.17 & 0.037 & Linear \\
+PS2 & 0.87 & 0.66 & 0.20 & 0.046 & Linear \\
+A1PS & 0.84 & 0.26 & 0.58 & 0.039 & Branched \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection*{E. Extended controls and ablations}
 
@@ -565,5 +629,30 @@ Scalar\(\to\)SPD upgrades via Cholesky: seismic \(\mathbf{M}\), EEG \(\mathbf{D}
 \subsection*{H. Seismic discovery numbers locked to the boards}
 
 SoCal fixed-station distance window \(20\)--\(120\,\mathrm{km}\); structure model \(R^{2}(\beta)\approx0.27\) on the locked board; Salton cell site-median \(\Delta\beta\approx-0.032\) (\(20\) stations); eastern Transverse Ranges \(\Delta\beta\approx+0.025\) (\(15\) stations); \(r(\beta_{\mathrm{res}},q_c)=0.64\); \(r(\beta_{\mathrm{res}},V_S)=-0.08\); \(r(\beta_{\mathrm{res}},Q_S)=-0.07\); Cascadia filtered traces \(9393\); St~Helens / Seattle same-station signs as in Fig.~\ref{fig:main_single}. Exact cell lon/lat centres follow the analysis tables in \texttt{outputs/structure\_residual\_socal/} and \texttt{outputs/structure\_residual\_cascadia\_volc/}.
+
+\subsection*{I. Representative waveforms by facies}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s4_stead_examples.pdf}
+\caption{Representative STEAD waveform examples for each of the five morphology facies. Each panel shows the three-component waveform (E,N,Z), delay-time density \(\rho(\tau)\) with \(P{=}0\) and \(S{=}1\), and the P/S pick probabilities.}
+\label{fig:s4_examples}
+\end{figure}
+
+\subsection*{J. 3D fluid reconstruction supplements}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s5_fluid_3d_reconstruction.pdf}
+\caption{Additional 3D fluid reconstruction results. (a)~Mid-\(z\) \(\rho\) field; (b)~ground-truth velocity magnitude; (c)~\(|v|\) absolute-error map for the vortex-tube case (each panel with its own colour bar). (d)~Learned secondary-source magnitudes by flow family (momentum vs vorticity DOF).}
+\label{fig:s5_fluid}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s6_fluid_baselines.pdf}
+\caption{Baseline comparison for sparse 3D fluid reconstruction. Horizontal bars show test velocity relative error for U-Net, RecFNO, FlowMRI-Net, and PNF spatial3D(+rot) on the vortex-tube family and across all synthetic families (10\% keep; locked board point estimates).}
+\label{fig:s6_fluid_baselines}
+\end{figure}
 
 \end{document}
