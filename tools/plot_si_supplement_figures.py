@@ -7,8 +7,9 @@ Outputs (PDF+PNG) under docs/figures/si/:
   eeg_residualizer_pipeline.{pdf,png}
   tube_mwd_alignment.{pdf,png}
   fig_s4_stead_examples.{pdf,png}
-  fig_s5_fluid_3d_reconstruction.{pdf,png}
-  fig_s6_fluid_baselines.{pdf,png}
+  fig_s5_fluid_combined.{pdf,png}   # primary SI plate (a–f)
+  fig_s5_fluid_3d_reconstruction.{pdf,png}  # optional row-only
+  fig_s6_fluid_baselines.{pdf,png}          # optional baselines-only
 
 Example
 -------
@@ -639,97 +640,186 @@ def plot_stead_examples(out_dir: Path, dpi: int, args: argparse.Namespace) -> No
 # ---------------------------------------------------------------------------
 # Fluid figures
 # ---------------------------------------------------------------------------
-def plot_fluid_s5(out_dir: Path, dpi: int, device: str) -> None:
-    """Compose vortex mid-slice + source semantics + error from checkpoint or cache."""
+def _fluid_vortex_payload(device: str):
+    """Return (rho, speed_g, err, fam_stats) or None if checkpoint missing."""
     ckpt = Path("outputs/fluid/spatial_3d4d_suite/synth3d_vortex/best.pt")
-    disc = Path("outputs/fluid/explain_spatial3d/discovery.json")
-    # Prefer live recompute if ckpt exists
-    if ckpt.is_file():
-        from hnf.fluid_spatial3d import Spatial3DFluidHNFReconstructor, curl_3d
-        from hnf.fluid_synth3d import make_sample3d
+    if not ckpt.is_file():
+        return None
+    from hnf.fluid_spatial3d import Spatial3DFluidHNFReconstructor
+    from hnf.fluid_synth3d import make_sample3d
 
-        dev = torch.device(device if torch.cuda.is_available() and device.startswith("cuda") else "cpu")
-        state = torch.load(ckpt, map_location=dev, weights_only=False)
-        grid = state.get("args", {}).get("d", 12)
-        model = Spatial3DFluidHNFReconstructor(d=grid, h=grid, w=grid, embed_dim=48, kernel_size=5).to(dev)
-        model.load_state_dict(state["state_dict"])
-        model.eval()
-        with torch.no_grad():
-            s = make_sample3d(d=grid, h=grid, w=grid, keep_frac=0.1, family="vortex_tube", seed=1)
-            x = torch.from_numpy(np.concatenate([s["sparse"], s["mask"]], axis=0)).unsqueeze(0).to(dev)
-            pred, aux = model(x, return_aux=True)
-            rho = aux["rho"][0, 0].cpu().numpy()
-            pred_np = pred[0].cpu().numpy()
-            dense = s["dense"]
-            speed_p = np.linalg.norm(pred_np, axis=0)
-            speed_g = np.linalg.norm(dense, axis=0)
-            err = np.abs(speed_p - speed_g)
-            # sources by family
-            fam_stats = []
-            for fam in ["pipe", "shear3d", "vortex_tube"]:
-                mags_v, mags_m = [], []
-                for seed in (1, 7, 13):
-                    ss = make_sample3d(d=grid, h=grid, w=grid, keep_frac=0.1, family=fam, seed=seed)
-                    xx = torch.from_numpy(np.concatenate([ss["sparse"], ss["mask"]], axis=0)).unsqueeze(0).to(dev)
-                    feat = model.patch(xx)
-                    layer0 = model.encoder.layers[0]
-                    mom = layer0.source_mom(feat)
-                    vort = layer0.source_vort(feat)
-                    mags_v.append(float(vort.pow(2).mean().sqrt().cpu()))
-                    mags_m.append(float(mom.pow(2).mean().sqrt().cpu()))
-                fam_stats.append((fam, float(np.mean(mags_v)), float(np.mean(mags_m))))
-        zmid = rho.shape[0] // 2
-        fig, axes = plt.subplots(1, 4, figsize=(12.4, 3.35), facecolor=BG, gridspec_kw={"width_ratios": [1, 1, 1, 1.15]})
-        heatmaps = [
-            (axes[0], rho[zmid], "magma", r"(a) $\rho$ mid-$z$", r"$\rho$"),
-            (axes[1], speed_g[zmid], "viridis", r"(b) $|v|$ GT", r"$|v|$"),
-            (axes[2], err[zmid], "hot", r"(c) $|v|$ error", r"abs.\ error"),
-        ]
-        for ax, arr, cmap, title, cblabel in heatmaps:
-            im = ax.imshow(arr, cmap=cmap, origin="lower")
-            ax.set_title(title, loc="left", fontsize=9)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            for spine in ax.spines.values():
-                spine.set_linewidth(0.6)
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="6%", pad=0.04)
-            cb = fig.colorbar(im, cax=cax)
-            cb.set_label(cblabel, fontsize=7)
-            cb.ax.tick_params(labelsize=6.5, length=2, width=0.5)
-            cb.outline.set_linewidth(0.5)
+    dev = torch.device(device if torch.cuda.is_available() and device.startswith("cuda") else "cpu")
+    state = torch.load(ckpt, map_location=dev, weights_only=False)
+    grid = state.get("args", {}).get("d", 12)
+    model = Spatial3DFluidHNFReconstructor(d=grid, h=grid, w=grid, embed_dim=48, kernel_size=5).to(dev)
+    model.load_state_dict(state["state_dict"])
+    model.eval()
+    with torch.no_grad():
+        s = make_sample3d(d=grid, h=grid, w=grid, keep_frac=0.1, family="vortex_tube", seed=1)
+        x = torch.from_numpy(np.concatenate([s["sparse"], s["mask"]], axis=0)).unsqueeze(0).to(dev)
+        pred, aux = model(x, return_aux=True)
+        rho = aux["rho"][0, 0].cpu().numpy()
+        pred_np = pred[0].cpu().numpy()
+        dense = s["dense"]
+        speed_p = np.linalg.norm(pred_np, axis=0)
+        speed_g = np.linalg.norm(dense, axis=0)
+        err = np.abs(speed_p - speed_g)
+        fam_stats = []
+        for fam in ["pipe", "shear3d", "vortex_tube"]:
+            mags_v, mags_m = [], []
+            for seed in (1, 7, 13):
+                ss = make_sample3d(d=grid, h=grid, w=grid, keep_frac=0.1, family=fam, seed=seed)
+                xx = torch.from_numpy(np.concatenate([ss["sparse"], ss["mask"]], axis=0)).unsqueeze(0).to(dev)
+                feat = model.patch(xx)
+                layer0 = model.encoder.layers[0]
+                mom = layer0.source_mom(feat)
+                vort = layer0.source_vort(feat)
+                mags_v.append(float(vort.pow(2).mean().sqrt().cpu()))
+                mags_m.append(float(mom.pow(2).mean().sqrt().cpu()))
+            fam_stats.append((fam, float(np.mean(mags_v)), float(np.mean(mags_m))))
+    return rho, speed_g, err, fam_stats
 
-        ax = axes[3]
-        names = [f[0].replace("_", "\n") for f in fam_stats]
-        x = np.arange(len(names))
-        w = 0.35
-        ax.bar(x - w / 2, [f[1] for f in fam_stats], w, color=C_BLUE, label="vorticity DOF", edgecolor=C_INK, linewidth=0.4)
-        ax.bar(x + w / 2, [f[2] for f in fam_stats], w, color=C_GOLD, label="momentum DOF", edgecolor=C_INK, linewidth=0.4)
-        ax.set_xticks(x, names, fontsize=7)
-        ax.set_ylabel("mean source magnitude", fontsize=8)
-        ax.set_title("(d) secondary-source mag.", loc="left", fontsize=9)
-        ax.legend(frameon=False, fontsize=7)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        fig.suptitle("3D fluid reconstruction — vortex tube + source semantics", fontsize=11, fontweight="bold", y=1.02)
-        fig.tight_layout()
-        _save(fig, out_dir / "fig_s5_fluid_3d_reconstruction", dpi)
+
+def _draw_baseline_bars(ax, board: dict, keys, title: str) -> None:
+    labels, vals, colors = [], [], []
+    for key, lab, col in keys:
+        if key in board and "vel_rel" in board[key]:
+            labels.append(lab)
+            vals.append(float(board[key]["vel_rel"]))
+            colors.append(col)
+    y = np.arange(len(labels))
+    ax.barh(y, vals, color=colors, height=0.62, edgecolor=C_INK, linewidth=0.4)
+    ax.set_yticks(y, labels)
+    ax.set_xlabel(r"test vel. relative error (lower better)")
+    ax.set_title(title, loc="left", fontsize=10)
+    ax.invert_yaxis()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    for i, v in enumerate(vals):
+        ax.text(v + 0.008, i, f"{v:.3f}", va="center", fontsize=8)
+
+
+def plot_fluid_combined(out_dir: Path, dpi: int, device: str) -> None:
+    """Single SI plate: vortex reconstruction (a–d) + baselines (e–f)."""
+    board_path = Path("outputs/fluid/baseline3d4d_board.json")
+    payload = _fluid_vortex_payload(device)
+    if payload is None or not board_path.is_file():
+        print("[si] skip fluid combined: missing ckpt or board", flush=True)
         return
+    rho, speed_g, err, fam_stats = payload
+    board = json.loads(board_path.read_text())
+    zmid = rho.shape[0] // 2
 
-    # fallback: stitch existing figures if present
-    print("[si] fluid ckpt missing; composing from existing PNGs if available", flush=True)
-    fig, axes = plt.subplots(1, 2, figsize=(10, 3.5), facecolor=BG)
-    for ax, name, title in [
-        (axes[0], "docs/figures/fluid/spatial3d_vortex_explain.png", "(a,c) vortex mid-slices"),
-        (axes[1], "docs/figures/fluid/spatial3d_source_semantics.png", "(b) source magnitudes"),
-    ]:
-        p = Path(name)
-        ax.axis("off")
-        if p.is_file():
-            ax.imshow(plt.imread(p))
-            ax.set_title(title, loc="left", fontsize=9)
-        else:
-            ax.text(0.5, 0.5, f"missing {p.name}", ha="center")
+    fig = plt.figure(figsize=(12.2, 7.2), facecolor=BG)
+    gs = fig.add_gridspec(2, 4, height_ratios=[1.05, 1.0], hspace=0.38, wspace=0.45)
+
+    heatmaps = [
+        (0, rho[zmid], "magma", r"(a) $\rho$ mid-$z$", r"$\rho$"),
+        (1, speed_g[zmid], "viridis", r"(b) $|v|$ GT", r"$|v|$"),
+        (2, err[zmid], "hot", r"(c) $|v|$ error", r"abs.\ error"),
+    ]
+    for col, arr, cmap, title, cblabel in heatmaps:
+        ax = fig.add_subplot(gs[0, col])
+        im = ax.imshow(arr, cmap=cmap, origin="lower")
+        ax.set_title(title, loc="left", fontsize=9)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.6)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="6%", pad=0.04)
+        cb = fig.colorbar(im, cax=cax)
+        cb.set_label(cblabel, fontsize=7)
+        cb.ax.tick_params(labelsize=6.5, length=2, width=0.5)
+        cb.outline.set_linewidth(0.5)
+
+    ax = fig.add_subplot(gs[0, 3])
+    names = [f[0].replace("_", "\n") for f in fam_stats]
+    x = np.arange(len(names))
+    w = 0.35
+    ax.bar(x - w / 2, [f[1] for f in fam_stats], w, color=C_BLUE, label="vorticity DOF", edgecolor=C_INK, linewidth=0.4)
+    ax.bar(x + w / 2, [f[2] for f in fam_stats], w, color=C_GOLD, label="momentum DOF", edgecolor=C_INK, linewidth=0.4)
+    ax.set_xticks(x, names, fontsize=7)
+    ax.set_ylabel("mean source magnitude", fontsize=8)
+    ax.set_title("(d) secondary-source mag.", loc="left", fontsize=9)
+    ymax = max(max(f[1] for f in fam_stats), max(f[2] for f in fam_stats))
+    ax.set_ylim(0, ymax * 1.28)
+    ax.legend(frameon=False, fontsize=6.5, loc="upper right", borderaxespad=0.2)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax_e = fig.add_subplot(gs[1, 0:2])
+    ax_f = fig.add_subplot(gs[1, 2:4])
+    _draw_baseline_bars(
+        ax_e,
+        board,
+        [
+            ("unet3d", "U-Net 3D", "#4C72B0"),
+            ("recfno3d", "RecFNO3D", "#DD8452"),
+            ("flowmri_net3d", "FlowMRI-Net3D", "#55A868"),
+            ("hnf_spatial3d_rot", "PNF spatial3D+rot", "#C44E52"),
+        ],
+        "(e) vortex_tube @10% keep",
+    )
+    _draw_baseline_bars(
+        ax_f,
+        board,
+        [
+            ("unet3d_all", "U-Net 3D", "#4C72B0"),
+            ("recfno3d_all", "RecFNO3D", "#DD8452"),
+            ("flowmri_net3d_all", "FlowMRI-Net3D", "#55A868"),
+            ("hnf_spatial3d_all", "PNF spatial3D", "#C44E52"),
+        ],
+        "(f) all families @10% keep",
+    )
+
+    fig.suptitle("3D fluid reconstruction supplements", fontsize=12, fontweight="bold", y=0.995)
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.92, bottom=0.08, hspace=0.42, wspace=0.55)
+    _save(fig, out_dir / "fig_s5_fluid_combined", dpi)
+
+
+def plot_fluid_s5(out_dir: Path, dpi: int, device: str) -> None:
+    """Legacy single-row vortex plate (kept for regeneration / debugging)."""
+    payload = _fluid_vortex_payload(device)
+    if payload is None:
+        print("[si] skip fluid s5: missing ckpt", flush=True)
+        return
+    rho, speed_g, err, fam_stats = payload
+    zmid = rho.shape[0] // 2
+    fig, axes = plt.subplots(1, 4, figsize=(12.4, 3.35), facecolor=BG, gridspec_kw={"width_ratios": [1, 1, 1, 1.15]})
+    heatmaps = [
+        (axes[0], rho[zmid], "magma", r"(a) $\rho$ mid-$z$", r"$\rho$"),
+        (axes[1], speed_g[zmid], "viridis", r"(b) $|v|$ GT", r"$|v|$"),
+        (axes[2], err[zmid], "hot", r"(c) $|v|$ error", r"abs.\ error"),
+    ]
+    for ax, arr, cmap, title, cblabel in heatmaps:
+        im = ax.imshow(arr, cmap=cmap, origin="lower")
+        ax.set_title(title, loc="left", fontsize=9)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.6)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="6%", pad=0.04)
+        cb = fig.colorbar(im, cax=cax)
+        cb.set_label(cblabel, fontsize=7)
+        cb.ax.tick_params(labelsize=6.5, length=2, width=0.5)
+        cb.outline.set_linewidth(0.5)
+    ax = axes[3]
+    names = [f[0].replace("_", "\n") for f in fam_stats]
+    x = np.arange(len(names))
+    w = 0.35
+    ax.bar(x - w / 2, [f[1] for f in fam_stats], w, color=C_BLUE, label="vorticity DOF", edgecolor=C_INK, linewidth=0.4)
+    ax.bar(x + w / 2, [f[2] for f in fam_stats], w, color=C_GOLD, label="momentum DOF", edgecolor=C_INK, linewidth=0.4)
+    ax.set_xticks(x, names, fontsize=7)
+    ax.set_ylabel("mean source magnitude", fontsize=8)
+    ax.set_title("(d) secondary-source mag.", loc="left", fontsize=9)
+    ymax = max(max(f[1] for f in fam_stats), max(f[2] for f in fam_stats))
+    ax.set_ylim(0, ymax * 1.28)
+    ax.legend(frameon=False, fontsize=6.5, loc="upper right", borderaxespad=0.2)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.suptitle("3D fluid reconstruction — vortex tube + source semantics", fontsize=11, fontweight="bold", y=1.02)
     fig.tight_layout()
     _save(fig, out_dir / "fig_s5_fluid_3d_reconstruction", dpi)
 
@@ -741,46 +831,28 @@ def plot_fluid_s6(out_dir: Path, dpi: int) -> None:
         return
     board = json.loads(board_path.read_text())
     fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.0), facecolor=BG)
-
-    panels = [
-        (
-            axes[0],
-            "vortex_tube @10% keep",
-            [
-                ("unet3d", "U-Net 3D", "#4C72B0"),
-                ("recfno3d", "RecFNO3D", "#DD8452"),
-                ("flowmri_net3d", "FlowMRI-Net3D", "#55A868"),
-                ("hnf_spatial3d_rot", "PNF spatial3D+rot", "#C44E52"),
-            ],
-        ),
-        (
-            axes[1],
-            "all families @10% keep",
-            [
-                ("unet3d_all", "U-Net 3D", "#4C72B0"),
-                ("recfno3d_all", "RecFNO3D", "#DD8452"),
-                ("flowmri_net3d_all", "FlowMRI-Net3D", "#55A868"),
-                ("hnf_spatial3d_all", "PNF spatial3D", "#C44E52"),
-            ],
-        ),
-    ]
-    for ax, title, keys in panels:
-        labels, vals, colors = [], [], []
-        for key, lab, col in keys:
-            if key in board and "vel_rel" in board[key]:
-                labels.append(lab)
-                vals.append(float(board[key]["vel_rel"]))
-                colors.append(col)
-        y = np.arange(len(labels))
-        ax.barh(y, vals, color=colors, height=0.62, edgecolor=C_INK, linewidth=0.4)
-        ax.set_yticks(y, labels)
-        ax.set_xlabel(r"test vel. relative error (lower better)")
-        ax.set_title(title, loc="left", fontsize=10)
-        ax.invert_yaxis()
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        for i, v in enumerate(vals):
-            ax.text(v + 0.008, i, f"{v:.3f}", va="center", fontsize=8)
+    _draw_baseline_bars(
+        axes[0],
+        board,
+        [
+            ("unet3d", "U-Net 3D", "#4C72B0"),
+            ("recfno3d", "RecFNO3D", "#DD8452"),
+            ("flowmri_net3d", "FlowMRI-Net3D", "#55A868"),
+            ("hnf_spatial3d_rot", "PNF spatial3D+rot", "#C44E52"),
+        ],
+        "(e) vortex_tube @10% keep",
+    )
+    _draw_baseline_bars(
+        axes[1],
+        board,
+        [
+            ("unet3d_all", "U-Net 3D", "#4C72B0"),
+            ("recfno3d_all", "RecFNO3D", "#DD8452"),
+            ("flowmri_net3d_all", "FlowMRI-Net3D", "#55A868"),
+            ("hnf_spatial3d_all", "PNF spatial3D", "#C44E52"),
+        ],
+        "(f) all families @10% keep",
+    )
     fig.suptitle("Sparse 3D fluid reconstruction — baselines vs PNF", fontsize=11, fontweight="bold")
     fig.tight_layout()
     _save(fig, out_dir / "fig_s6_fluid_baselines", dpi)
@@ -801,10 +873,11 @@ def main() -> None:
             print(f"[si] STEAD examples failed: {exc}", flush=True)
     if not args.skip_fluid:
         try:
+            plot_fluid_combined(out, args.dpi, args.device)
             plot_fluid_s5(out, args.dpi, args.device)
+            plot_fluid_s6(out, args.dpi)
         except Exception as exc:
-            print(f"[si] fluid s5 failed: {exc}", flush=True)
-        plot_fluid_s6(out, args.dpi)
+            print(f"[si] fluid figures failed: {exc}", flush=True)
     print(f"[si] done → {out}", flush=True)
 
 

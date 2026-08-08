@@ -632,27 +632,39 @@ SoCal fixed-station distance window \(20\)--\(120\,\mathrm{km}\); structure mode
 
 \subsection*{I. Representative waveforms by facies}
 
+For each of the five frozen morphology facies used in the main text
+(\textit{impulsive\_fastQ}, \textit{emergent}, \textit{multipath}, \textit{slow\_coda}, \textit{standard}),
+Fig.~\ref{fig:s4_examples} shows one SoCal prototype under the locked PNF ceilings.
+Left: three-component waveforms cropped about the predicted \(P\)/\(S\) arrivals (red/blue dashed).
+Middle: delay-time density \(\rho(\tau)\) resampled so that \(P\) maps to \(\tau{=}0\) and \(S\) to \(\tau{=}1\), matching the causal-frame morphology language of Fig.~\ref{fig:shape-geo-coda}.
+Right: pick-head probabilities.
+These panels are qualitative anchors for the facies taxonomy---not a second STEAD accuracy table---and illustrate how multi-lobe \(\rho(\tau)\), emergent onsets, and prolonged coda appear in individual events.
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s4_stead_examples.pdf}
-\caption{Representative STEAD waveform examples for each of the five morphology facies. Each panel shows the three-component waveform (E,N,Z), delay-time density \(\rho(\tau)\) with \(P{=}0\) and \(S{=}1\), and the P/S pick probabilities.}
+\caption{Representative STEAD waveform examples for each of the five morphology facies. Each row shows the three-component waveform (E,N,Z), delay-time density \(\rho(\tau)\) with \(P{=}0\) and \(S{=}1\), and the P/S pick probabilities.}
 \label{fig:s4_examples}
 \end{figure}
 
 \subsection*{J. 3D fluid reconstruction supplements}
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s5_fluid_3d_reconstruction.pdf}
-\caption{Additional 3D fluid reconstruction results. (a)~Mid-\(z\) \(\rho\) field; (b)~ground-truth velocity magnitude; (c)~\(|v|\) absolute-error map for the vortex-tube case (each panel with its own colour bar). (d)~Learned secondary-source magnitudes by flow family (momentum vs vorticity DOF).}
-\label{fig:s5_fluid}
-\end{figure}
+As a cross-domain stress test of the same Huygens-style spatial probe outside seismology, we reconstruct sparse synthetic 3D velocity fields with a rotating spatial PNF kernel (10\% keep; locked board in \texttt{outputs/fluid/baseline3d4d\_board.json}).
+Fig.~\ref{fig:s5_fluid} collects the interpretability and baseline views in one plate.
+Panels~(a--c) show a vortex-tube mid-\(z\) slice: learned medium density \(\rho\), ground-truth speed \(|v|\), and absolute error, each with its colour bar.
+Panel~(d) contrasts secondary-source magnitudes (vorticity vs momentum degrees of freedom) across pipe, shear, and vortex families, testing whether the hard-wired rotational channels activate in a physically expected way.
+Panels~(e--f) report test velocity relative error against U-Net~3D, RecFNO3D, and FlowMRI-Net3D on the vortex-tube family and across all families.
+On this board, dense U-Net remains the lowest-error reconstructor; PNF is competitive with the literature Fourier/MRI baselines on the all-families split while remaining readable by construction.
+The fluid plate is therefore a probe-paradigm supplement, not a claim of universal sparse-reconstruction superiority.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s6_fluid_baselines.pdf}
-\caption{Baseline comparison for sparse 3D fluid reconstruction. Horizontal bars show test velocity relative error for U-Net, RecFNO, FlowMRI-Net, and PNF spatial3D(+rot) on the vortex-tube family and across all synthetic families (10\% keep; locked board point estimates).}
-\label{fig:s6_fluid_baselines}
+\includegraphics[width=0.95\columnwidth]{../docs/figures/si/fig_s5_fluid_combined.pdf}
+\caption{3D fluid reconstruction supplements.
+(a)--(c)~Vortex-tube mid-\(z\) \(\rho\), ground-truth \(|v|\), and absolute-error map (independent colour bars).
+(d)~Mean secondary-source magnitudes by flow family (vorticity vs momentum DOF).
+(e)--(f)~Locked-board baseline comparison: test velocity relative error for U-Net~3D, RecFNO3D, FlowMRI-Net3D, and PNF spatial3D(+rot) on vortex-tube and all-families settings (10\% keep; point estimates).}
+\label{fig:s5_fluid}
 \end{figure}
 
 \end{document}
