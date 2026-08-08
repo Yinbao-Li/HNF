@@ -81,6 +81,15 @@ SHAPE_DISPLAY = {
     "standard": "standard",
 }
 
+# Compact two-line tick labels for the narrow panel-e violin axis.
+SHAPE_XTICK = {
+    "impulsive_fastQ": "impulsive\nfast_decay",
+    "emergent": "emergent",
+    "multipath": "multipath",
+    "slow_coda": "slow\ncoda",
+    "standard": "standard",
+}
+
 # Curated morphology / ρ / Q captions (visual glyphs carry the numbers).
 CLASS_CHAR = {
     "impulsive_fastQ": {
@@ -672,7 +681,7 @@ def plot_panel_c_morphology(fig, outer_spec, means: dict[str, dict]) -> None:
         ax.text(
             0.012,
             0.96,
-            f"{sh}\nn={m['n']}",
+            f"{SHAPE_DISPLAY.get(sh, sh)}\nn={m['n']}",
             transform=ax.transAxes,
             fontsize=7.2,
             color=c,
@@ -846,15 +855,28 @@ def plot_panel_e_coda(ax, df: pd.DataFrame) -> None:
 
     ax.axhline(0.0, color="#9A958A", lw=0.7, ls="--", zorder=1)
     ax.set_xticks(positions)
-    ax.set_xticklabels(
-        [SHAPE_DISPLAY.get(s, s) for s in SHAPE_ORDER],
-        rotation=55,
-        ha="right",
-        fontsize=5.8,
-    )
-    for tick, sh in zip(ax.get_xticklabels(), SHAPE_ORDER):
-        tick.set_color(SHAPE_COLORS[sh])
-    ax.set_ylabel("Coda path residual", color=C_INK, fontsize=7.5)
+    ax.set_xticklabels([])
+    ax.tick_params(axis="x", length=0)
+    # Place class names inside the axes (above the bottom spine) so long names never clip.
+    y0, y1 = ax.get_ylim()
+    # Expand ylim downward a bit for in-axes labels.
+    ax.set_ylim(y0 - 0.12 * (y1 - y0), y1)
+    y_lab = y0 - 0.02 * (y1 - y0)
+    for i, sh in enumerate(SHAPE_ORDER):
+        ax.text(
+            i,
+            y_lab,
+            SHAPE_XTICK.get(sh, SHAPE_DISPLAY.get(sh, sh)),
+            ha="center",
+            va="top",
+            fontsize=5.1,
+            color=SHAPE_COLORS[sh],
+            linespacing=0.92,
+            clip_on=True,
+            zorder=6,
+        )
+    ax.set_ylabel("Coda path residual", color=C_INK, fontsize=7.0, labelpad=2)
+    ax.set_xlim(-0.55, len(SHAPE_ORDER) - 0.45)
 
     for sh, ha in (("impulsive_fastQ", "left"), ("slow_coda", "right")):
         a = df.loc[df["shape"] == sh, "coda_path_residual"].to_numpy(float)
@@ -876,12 +898,13 @@ def plot_panel_e_coda(ax, df: pd.DataFrame) -> None:
 
     ax.text(
         0.02,
-        0.02,
+        0.98,
         "dist.-detrended  ·  Q proxy",
         transform=ax.transAxes,
         fontsize=5.4,
         color=C_MUTED,
-        va="bottom",
+        va="top",
+        zorder=6,
     )
 
 
@@ -919,7 +942,7 @@ def main() -> None:
         left=0.08,
         right=0.98,
         top=0.955,
-        bottom=0.04,
+        bottom=0.055,
     )
 
     # Row 1: shared header strip so a/b titles sit at identical height
@@ -989,9 +1012,8 @@ def main() -> None:
 
     pos_d = ax_d.get_position()
     pos_e = ax_e.get_position()
-    # Restored toward full d height (was ~0.55–0.78); leave a small gap below.
-    e_h = 0.92 * pos_d.height
-    ax_e.set_position([pos_e.x0, pos_d.y1 - e_h, pos_e.width, e_h])
+    # Align e with d; class names are drawn inside the axes (no external tick band).
+    ax_e.set_position([pos_e.x0, pos_d.y0, pos_e.width * 0.98, pos_d.height])
 
     fig.suptitle(
         "Data-driven physics discovery: waveform morphology clusters linked to attenuation structure",
