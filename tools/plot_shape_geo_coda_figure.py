@@ -73,6 +73,14 @@ SHAPE_COLORS = {
     "standard": "#7F7F7F",
 }
 
+SHAPE_DISPLAY = {
+    "impulsive_fastQ": "impulsive_fast_decay",
+    "emergent": "emergent",
+    "multipath": "multipath",
+    "slow_coda": "slow_coda",
+    "standard": "standard",
+}
+
 # Curated morphology / ρ / Q captions (visual glyphs carry the numbers).
 CLASS_CHAR = {
     "impulsive_fastQ": {
@@ -563,11 +571,11 @@ def plot_panel_b_map(ax, df: pd.DataFrame, coast: list[np.ndarray]) -> None:
             linewidths=0,
             zorder=z,
             rasterized=True,
-            label=sh,
+            label=SHAPE_DISPLAY.get(sh, sh),
         )
 
     callouts = [
-        (-125, 35, "impulsive_fastQ\nenriched", SHAPE_COLORS["impulsive_fastQ"], (-95, 52)),
+        (-125, 35, "impulsive_fast_decay\nenriched", SHAPE_COLORS["impulsive_fastQ"], (-95, 52)),
         (-155, 15, "slow_coda\nenriched", SHAPE_COLORS["slow_coda"], (-175, -5)),
     ]
     for lon, lat, text, col, text_xy in callouts:
@@ -727,7 +735,7 @@ def plot_panel_d_characters(ax, df: pd.DataFrame, means: dict[str, dict]) -> Non
                 clip_on=False,
             )
         )
-        ax.text(0.040, yc + 0.22 * row_h, sh, fontsize=7.6, color=col, ha="left", va="center", fontweight="bold", zorder=4)
+        ax.text(0.040, yc + 0.22 * row_h, SHAPE_DISPLAY.get(sh, sh), fontsize=7.6, color=col, ha="left", va="center", fontweight="bold", zorder=4)
         ax.text(0.040, yc - 0.28 * row_h, f"n = {n}", fontsize=6.2, color=C_MUTED, ha="left", va="center", zorder=4)
 
         # ρ sparkline: reserved top band for description, tall curve below it
@@ -838,7 +846,12 @@ def plot_panel_e_coda(ax, df: pd.DataFrame) -> None:
 
     ax.axhline(0.0, color="#9A958A", lw=0.7, ls="--", zorder=1)
     ax.set_xticks(positions)
-    ax.set_xticklabels(list(SHAPE_ORDER), rotation=55, ha="right", fontsize=5.8)
+    ax.set_xticklabels(
+        [SHAPE_DISPLAY.get(s, s) for s in SHAPE_ORDER],
+        rotation=55,
+        ha="right",
+        fontsize=5.8,
+    )
     for tick, sh in zip(ax.get_xticklabels(), SHAPE_ORDER):
         tick.set_color(SHAPE_COLORS[sh])
     ax.set_ylabel("Coda path residual", color=C_INK, fontsize=7.5)

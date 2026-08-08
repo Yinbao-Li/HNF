@@ -47,7 +47,7 @@ SHAPE_COLORS = {
     "standard": "#6B7280",
 }
 SHAPE_LABEL = {
-    "impulsive_fastQ": "impulsive\nfast-Q",
+    "impulsive_fastQ": "impulsive\nfast_decay",
     "emergent": "emergent",
     "multipath": "multipath",
     "slow_coda": "slow\ncoda",

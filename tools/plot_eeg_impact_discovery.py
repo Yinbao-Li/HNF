@@ -540,9 +540,19 @@ def panel_cases(fig, outer_spec, cache: dict) -> None:
 def panel_cognition(ax, v3: pd.DataFrame) -> None:
     _clean(ax)
     _panel_header(ax, "d", "Held-out cognition vs leftover", y=1.06)
+    tr = v3[v3.split.eq("train")].copy()
     vt = v3[v3.split.isin(["val", "test"])].copy()
-    y = vt["mmse"].to_numpy(float)
-    X = np.column_stack(
+    # Train-fit residualizer for MMSE (same protocol as D_eff leftover).
+    X_tr = np.column_stack(
+        [
+            tr["age"].to_numpy(float),
+            sex_to_float(tr["gender"].tolist()),
+            tr["theta_alpha_ratio"].to_numpy(float),
+            tr["bp_alpha"].to_numpy(float),
+        ]
+    )
+    _, _, beta_m = residualize(tr["mmse"].to_numpy(float), X_tr)
+    X_vt = np.column_stack(
         [
             vt["age"].to_numpy(float),
             sex_to_float(vt["gender"].tolist()),
@@ -550,7 +560,7 @@ def panel_cognition(ax, v3: pd.DataFrame) -> None:
             vt["bp_alpha"].to_numpy(float),
         ]
     )
-    mmse_r, _, _ = residualize(y, X)
+    mmse_r = vt["mmse"].to_numpy(float) - np.column_stack([np.ones(len(vt)), X_vt]) @ beta_m
     lef = vt["D_eff_res_trainfit"].to_numpy(float)
     for g in ("HC", "FTD", "AD"):
         idx = vt.clinical_group.to_numpy() == g
@@ -563,7 +573,7 @@ def panel_cognition(ax, v3: pd.DataFrame) -> None:
     ax.axvline(0, color=C_LINE, lw=0.6)
     r_s, p_s = spearman_r(lef, mmse_r)
     ax.set_xlabel(r"leftover $D_{\mathrm{eff}}$ (train-fit)", fontsize=7.5)
-    ax.set_ylabel("MMSE | voltmeter", fontsize=7.5)
+    ax.set_ylabel("MMSE | voltmeter (train-fit)", fontsize=7.5)
     # stats in lower-left clear zone
     ax.text(
         0.03,

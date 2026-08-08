@@ -52,6 +52,10 @@ C_RED = "#B91C1C"
 C_BOX = "#F8FAFC"
 C_SOFT = "#F3F4F6"
 
+SHAPE_DISPLAY = {
+    "impulsive_fastQ": "impulsive_fast_decay",
+}
+
 SHAPE_COLORS = {
     "impulsive_fastQ": "#B91C1C",
     "emergent": "#B45309",
@@ -598,7 +602,8 @@ def plot_stead_examples(out_dir: Path, dpi: int, args: argparse.Namespace) -> No
         if rec["s_sec"] >= 0:
             ax.axvline(rec["s_sec"], color=C_BLUE, ls="--", lw=0.8, alpha=0.8)
         ax.set_xlim(t0, t1)
-        ax.set_ylabel(rec["shape"].replace("_", "\n"), fontsize=7.5, color=c, fontweight="bold")
+        label = SHAPE_DISPLAY.get(rec["shape"], rec["shape"]).replace("_", "\n")
+        ax.set_ylabel(label, fontsize=7.5, color=c, fontweight="bold")
         ax.set_yticks([])
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
