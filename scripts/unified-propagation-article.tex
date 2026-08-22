@@ -1,0 +1,988 @@
+% =============================================================================
+% Local propagation as a unified physical computational primitive
+% Nature-sister style article (twocolumn)
+%
+% Compile:
+%   cd scripts && pdflatex unified-propagation-article.tex
+%   (bibtex optional once .bib is wired)
+%
+% Display budget: 4 Figures + 2 Tables = 6
+% Table 1 numbers: authoritative from sn-article.tex (tab:stead)
+% Figures: PLACEHOLDERS until assets land under figs/ or docs/figures/
+% =============================================================================
+
+\documentclass[twocolumn,10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{times,mathptmx}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[colorlinks=true,citecolor=blue,urlcolor=blue,linkcolor=blue]{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{lineno}
+\usepackage[
+  a4paper,
+  top=1.4cm,
+  bottom=1.4cm,
+  left=1.6cm,
+  right=1.6cm,
+  columnsep=0.7cm
+]{geometry}
+
+\linenumbers
+
+% ---------- macros ----------
+\newcommand{\pnf}{\textsc{PNF}}
+\newcommand{\hnf}{\textsc{HNF}}
+\newcommand{\stead}{\textsc{STEAD}}
+\newcommand{\eqt}{\textsc{EQTransformer}}
+\newcommand{\pnet}{\textsc{PhaseNet}}
+
+% Gray box placeholder for unfinished figures (swap for \includegraphics later)
+\newcommand{\figplaceholder}[2]{%
+  \fcolorbox{black!40}{black!4}{%
+    \begin{minipage}[c][#1][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+      \centering\color{black!55}\sffamily\footnotesize
+      \textbf{[FIGURE PLACEHOLDER]}\\[0.35em]
+      #2\\[0.5em]
+      {\itshape Replace with \texttt{\textbackslash includegraphics\{\ldots\}} when ready.}
+    \end{minipage}%
+  }%
+}
+
+\title{%
+  Local propagation as a unified physical computational primitive:\\
+  from Huygens seismic facies to cross-domain mechanism coordinates
+}
+
+\author{%
+  Yinbao Li\textsuperscript{1,*}, Chang Liu\textsuperscript{2} \\
+  \textsuperscript{1}School of Engineering, Australian National University, Canberra, Australia \\
+  \textsuperscript{2}Bobot Lab, Entropick Technology, Beijing, China \\
+  \texttt{*boblee@entropick.cn}
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+% =============================================================================
+\begin{abstract}
+\noindent
+Complex spatiotemporal systems are often forecast with black-box predictors whose
+internal propagation rules are not identifiable. We cast local evolution as a
+unified physical computational primitive
+\(\hat{X}=P(X;G,\Theta,\alpha)\), in which wave-like, instantaneous and
+diffusive couplings are mechanism coordinates \(\Theta\) rather than unrelated
+models; forecast error is only a probe; and \(\alpha\) is a local deviation from
+a domain coordinate \(\Theta^{\star}\). On the \stead{} seismic benchmark, the
+preferred coordinate is Huygens/wave. A physics-constrained probe with
+\(192\,\mathrm{k}\) parameters matches \eqt{} on detection F1, improves S-wave
+F1, and achieves the lowest P-wave timing error (P MAE \(0.0169\,\mathrm{s}\)
+versus \(0.0462\,\mathrm{s}\) / \(0.0723\,\mathrm{s}\) for \eqt{} / \pnet{};
+Table~\ref{tab:stead}). Under the same prior we assign each local-earthquake
+waveform to one of five frozen, interpretable coda facies and map a structure
+residual \(\beta_{\mathrm{res}}\) that separates path domains not reducible to
+scalar coda \(Q_c\). Scalp EEG and NOAA SST select different coordinates
+(instantaneous; graph diffusion), and a telegrapher-inspired path
+\(\Theta(\lambda)\) exhibits a damped-wave intermediate between wave and
+diffusion. Finally, \(\alpha\) is geometry-bound under EEG counterfactuals and
+admits full frozen reinjection closure on SST (partial on EEG range-dependent
+gain). Local propagation is therefore an identifiable cross-domain computational
+object, with its deepest empirical thickness in seismic Huygens facies.
+\end{abstract}
+
+% =============================================================================
+% FIG 1 --- concept (placeholder)
+% =============================================================================
+\begin{figure*}[!t]
+\centering
+\figplaceholder{0.28\textheight}{%
+  Fig.~1 planned panels:\\[0.25em]
+  \textbf{(a)}~Recursive local sources\quad
+  \textbf{(b)}~\(P(X;G,\Theta,\alpha)\)\quad
+  \textbf{(c)}~Mechanism axes + STEAD/EEG/SST landings\quad
+  \textbf{(d)}~Mini \(\Theta(\lambda)\) phase strip\\[0.35em]
+  Target file:
+  \texttt{docs/figures/propagation\_dynamics/fig1\_method\_primitive.pdf}
+}
+\caption{\textbf{Unified local-propagation primitive.}
+\textbf{a},~Recursive local state \(\rightarrow\) local response \(\rightarrow\)
+neighbourhood messages \((A_{ij},\tau_{ij})\) \(\rightarrow\) secondary sources.
+\textbf{b},~Operator \(\hat{X}=P(X;G,\Theta,\alpha)\).
+\textbf{c},~Mechanism coordinates (delay, spatial/heat mix, damping) and named
+domain landings (STEAD: wave/Huygens; EEG: instantaneous; SST: graph diffusion).
+\textbf{d},~Telegrapher-inspired path \(\Theta(\lambda)\): wave
+(\(\lambda{=}0\)) \(\rightarrow\) damped-wave \(\rightarrow\) diffusion
+(\(\lambda{=}1\)).}
+\label{fig:method}
+\end{figure*}
+
+% =============================================================================
+\section*{Introduction}
+% =============================================================================
+
+Scientific machine learning faces a persistent fork. Purely data-driven networks
+can score well on detection and next-step prediction, yet their internal
+propagation rules are rarely identifiable, so high forecast scores seldom
+translate into trustworthy instruments of discovery. Physics-informed penalties
+improve consistency only approximately. Hybrid ``explainable'' heads often
+attach post-hoc probes to opaque backbones, so the explanation remains
+correlative rather than constitutive of the computation.
+
+Four linked gaps follow. First, across spatiotemporal systems one cannot tell
+whether a domain prefers delayed wave coupling, instantaneous geometric
+coupling, or diffusion, because models are usually rebuilt as unrelated
+architectures rather than compared under a matched computational budget.
+Second, seismology already has mature velocity and attenuation maps, yet coda
+\emph{how a path rings} is still routinely collapsed to a scalar quality factor
+\(Q_c\), leaving no interpretable discrete language for multi-lobe delay
+structure and path-domain leftovers. Third, scalp EEG and climate sensor
+networks raise the dual question---do they share that delayed-wave language, or
+different coordinates of one family?---without a protocol that can falsify the
+answer. Fourth, even when a multiplicative deviation field \(\alpha\) is fit to
+absorb residual error, forecast improvement alone does not establish mechanism:
+without geometry counterfactuals and, where claimed, frozen reinjection,
+\(\alpha\) remains an untested fit residue.
+
+A sharper requirement is therefore needed. Known local propagation physics
+should enter as a \emph{differentiable computational primitive}---a readable
+Green's-function-like operator that interrogates data---while still allowing
+domains to differ in \emph{which} propagation regime they select. Forecast
+error is only a probe; the scientific objects are the preferred mechanism
+coordinate \(\Theta^{\star}\) and any validated local deviation \(\alpha\) from
+that coordinate.
+
+Here we formulate recursive local evolution
+\begin{equation}
+\text{local state}\rightarrow
+\text{local response}\rightarrow
+\text{neighbourhood messages }(A_{ij},\tau_{ij})\rightarrow
+\text{secondary sources}
+\end{equation}
+as one operator \(\hat{X}=P(X;G,\Theta,\alpha)\) (Fig.~\ref{fig:method}).
+Geometry \(G\) supplies distances and sampling; structural parameters \(\Theta\)
+continuously interpolate delay, spatial kernel family, normalisation and
+travel-time damping; \(\alpha\) multiplies the kernel at a domain coordinate
+\(\Theta^{\star}\). Wave/Huygens, instantaneous coupling, continuum diffusion
+and graph diffusion are named corners of \(\Theta\), not three unrelated
+architectures. A one-parameter telegrapher-inspired path \(\Theta(\lambda)\)
+connects wave (\(\lambda{=}0\)) to diffusion (\(\lambda{=}1\)) through a
+damped-wave intermediate. In seismology the same Huygens corner is instantiated
+as a multi-scale Fresnel probe for picking, then reused---without retuning
+ceilings to geography---as an instrument for frozen coda facies and structure
+residuals.
+
+We make three linked contributions. First, on \stead{} a Huygens-type probe is
+competitive with \eqt{} and \pnet{} on the full test set while remaining
+physically structured (Table~\ref{tab:stead}), and the same probe supports a
+five-class frozen coda facies taxonomy whose structure residual maps path
+domains beyond scalar \(Q_c\) (Fig.~\ref{fig:seismic}). Second, matched-budget
+ablations place scalp EEG and NOAA SST at different \(\Theta^{\star}\), and
+\(\Theta(\lambda)\) behaves as a continuous dynamical space
+(Fig.~\ref{fig:cross}; Table~\ref{tab:domains}). Third, \(\alpha\) is validated
+as a geometry-bound deviation from domain \(\Theta^{\star}\) by counterfactuals
+and, where successful, frozen reinjection (Fig.~\ref{fig:alpha}).
+
+We do \emph{not} claim universal Huygens physics, a clinical EEG biomarker, or
+that the five facies are precursors. Forecast metrics are usefulness evidence
+under an interpretable prior, not the scientific endpoint.
+
+% =============================================================================
+\section*{Results}
+% =============================================================================
+
+\subsection*{A Huygens coordinate on STEAD: competitive timing under a physics-constrained probe}
+
+We evaluate the multi-scale Huygens--Fresnel probe (\pnf{}/\hnf{} run family;
+\(192\,\mathrm{k}\) parameters) on \stead{} under the standard
+\(0.5\,\mathrm{s}\) tolerance protocol used for \eqt{}.
+Table~\ref{tab:stead} reports full test-set detection and picking against
+\eqt{} (\(\sim 377\,\mathrm{k}\) parameters) and \pnet{}
+(\(\sim 269\,\mathrm{k}\)).
+
+\pnf{} \textbf{matches \eqt{} on detection F1} (\(0.9989\)),
+\textbf{improves S-wave F1} (\(0.9770\) vs.\ \(0.9731\) / \(0.9618\)), and
+achieves the \textbf{lowest P-wave MAE}
+(\(0.0169\,\mathrm{s}\) on the discrete \(800\)-bin/\(60\,\mathrm{s}\) grid;
+Methods), roughly \(2.7\times\) tighter than \eqt{} (\(0.0462\,\mathrm{s}\))
+and \(4.3\times\) tighter than \pnet{} (\(0.0723\,\mathrm{s}\)). It does not
+dominate every cell: P-wave F1 (\(0.9852\)) trails \eqt{} (\(0.9897\)), and
+S-wave MAE (\(0.0878\,\mathrm{s}\)) trails \pnet{} (\(0.0801\,\mathrm{s}\)).
+Precision/Recall in Table~\ref{tab:stead} shows strong recall across heads
+(P-wave R \(0.9763\), S-wave R \(0.9643\)): the physics-constrained architecture
+reliably identifies genuine arrivals when they exist. Gaps to \eqt{} are driven
+mainly by precision (PNF P-wave P \(0.9942\) vs.\ EQT \(0.9993\); S-wave P
+\(0.9900\) vs.\ \(0.9994\)), consistent with an unconstrained transformer
+trading physical structure for slightly tighter false-positive suppression. We
+treat these differences as informative rather than disqualifying: a hard-wired
+Huygens--Fresnel kernel restricts the hypothesis class relative to unconstrained
+pickers, trading a fraction of peak picking score for readable latents that
+enable the facies and path analyses below.
+
+We read Table~\ref{tab:stead} as evidence that an interpretable Huygens-type
+computational prior is \emph{not} purchased at a large timing cost---and on P
+timing is markedly better---rather than as a claim of uniform state-of-the-art
+across all transfer settings (OBS/adapt results are reported elsewhere and are
+not used as primary claims here).
+
+% ----- Table 1 (authoritative: sn-article.tex) -----
+\begin{table*}[t]
+\centering
+\caption{\stead{} benchmark performance on the full test set.
+For each task, F1, Precision (P) and Recall (R) are reported.
+Best results are bolded; second-best underlined.
+Numbers match \texttt{scripts/sn-article.tex} (Table~\texttt{tab:stead}).}
+\label{tab:stead}
+\begin{tabular}{l c c c c c c c c c}
+\toprule
+\multirow{2}{*}{Model} & \multirow{2}{*}{\# Params}
+ & \multicolumn{2}{c}{Det}
+ & \multicolumn{2}{c}{P-wave}
+ & \multicolumn{2}{c}{S-wave}
+ & \multicolumn{2}{c}{MAE (s)} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+ & & F1 & P/R & F1 & P/R & F1 & P/R & P & S \\
+\midrule
+EQT & 377k
+ & \textbf{0.9989} & 0.9992/0.9989
+ & \textbf{0.9897} & 0.9993/0.9794
+ & \underline{0.9731} & 0.9994/0.9470
+ & \underline{0.0462} & 0.0874 \\
+PhaseNet & 269k
+ & 0.9969 & 0.9969/0.9975
+ & 0.9512 & 0.9984/0.9093
+ & 0.9618 & 0.9982/0.9283
+ & 0.0723 & \textbf{0.0801} \\
+\textbf{PNF} & 192k
+ & \textbf{0.9989} & 0.9994/0.9984
+ & \underline{0.9852} & 0.9942/0.9763
+ & \textbf{0.9770} & 0.9900/0.9643
+ & \textbf{0.0169} & \underline{0.0878} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection*{Five frozen coda facies and path-structure residuals}
+
+\paragraph{Frozen facies---not post-hoc clusters.}
+Internal probe states carry physics-indexed semantics. From a frozen checkpoint
+we export causal-chain observables---coda slope, onset sharpness, and multi-lobe
+structure in delay-time density \(\rho(\tau)\)---and assign each local-earthquake
+waveform to one of five facies using ceilings fixed \emph{before} any regional
+map was inspected (Fig.~\ref{fig:seismic}a; Supplementary Table~\ref{stab:ceilings}):
+\textit{impulsive\_fast\_decay}, \textit{emergent}, \textit{multipath},
+\textit{slow\_coda}, and \textit{standard}. These are not \(k\)-means labels.
+Ceilings were chosen on validation to separate the three observables while
+preserving interpretability, then frozen: peak-count threshold \(1.0\);
+coda-fast/slow bounds \(-0.198\) / \(-0.113\); onset-high/low \(0.877\) /
+\(0.733\). Because coda slope enters the ceilings, within-class coda contrasts
+are facies characterisation, not independent physical validation.
+
+The data basis is the \stead{} local-earthquake test catalogue (\(>100{,}000\)
+traces after noise exclusion). Mapping facies geography---a quantity that did
+not enter the ceilings---shows continental organisation (Cram\'er's
+\(V\approx0.37\), FDR-adjusted \(p<0.001\); Extended Data
+Fig.~\ref{edfig:faciesgeo}): impulsive fast decay enriches in the western United
+States and northeast Pacific, whereas slow coda concentrates in Central America
+and the western Pacific. In a causal frame with P at \(\tau=0\) and S at
+\(\tau=1\), class-mean envelopes and \(\rho(\tau)\) separate cleanly: impulsive
+fast decay combines sharp onset with short coda; emergent rises gradually;
+multipath shows multiple \(\rho(\tau)\) lobes; slow coda sustains energy past
+S; standard sits between these extremes.
+
+\paragraph{Path-midpoint leftovers.}
+Coda slope is distance-detrended to \(\beta\) against
+\(\log_{10}(\mathrm{dist}+1)\). A ridge expectation (\(\lambda=8\)) removes
+\(\log_{10}\) distance, depth, magnitude, log-distance to nearest Quaternary
+fault, and station fixed effects; residual \(\beta_{\mathrm{res}}\) is mapped at
+path midpoints. In southern California (fixed stations; \(20\)--\(120\,\mathrm{km}\);
+structure model \(R^{2}\approx0.27\)), two cells illustrate opposite path
+behaviour under same-station controls (Fig.~\ref{fig:seismic}b--d):
+Salton--Imperial midpoints decay faster than the same stations' other paths
+(site-median \(\Delta\beta\approx-0.032\); \(20\) stations; Cohen's \(d\approx-0.54\);
+Mann--Whitney \(p=6.6\times10^{-32}\)), whereas eastern Transverse Ranges
+midpoints ring longer (\(\Delta\beta\approx+0.025\); \(15\) stations;
+\(d\approx+0.68\); \(p=2.5\times10^{-12}\)).
+
+Independence checks (Extended Data Fig.~\ref{edfig:independence}) show:
+(i)~classical single-trace \(q_c\) correlates with \(\beta_{\mathrm{res}}\)
+(\(r=0.64\)), yet residualising on \(q_c\) halves but does not remove cell
+anomalies (Salton \(\Delta\beta\): \(-0.030\rightarrow-0.014\); Transverse Ranges:
+\(+0.040\rightarrow+0.019\)), and multipath versus slow-coda still separate
+inside matched \(q_c\) terciles; (ii)~Berg et al.\ upper-crust \(V_S\) is
+near-null (\(r=-0.08\)); cells occupy the same \(V_S\) band with opposite
+\(\beta_{\mathrm{res}}\)\cite{berg2021}; (iii)~Lin \& Jordan direct-wave \(Q_S\)
+is near-orthogonal (\(r=-0.07\)); removing \(Q_S\) leaves \(\Delta\beta\)
+essentially intact, and Salton can combine relatively high direct-wave \(Q_S\)
+with faster coda decay\cite{lin2023}. Near-null Pearson correlations can also
+arise from resolution mismatch or coda-versus-direct sensitivity; we claim
+information \emph{not captured by the examined linear summaries}, not complete
+physical independence from all structure.
+
+\paragraph{Classical catalog-timed coda baseline.}
+Recomputing the identical envelope slope with \stead{} catalog \(S\) picks on
+\(n=4000\) SoCal traces (Methods) yields catalog--probe slope agreement
+\(r=0.96\), \(\beta_{\mathrm{res}}\) map agreement \(r=0.93\), and essentially
+unchanged same-station cell signs. Five-fold OOS \(R^{2}\) for predicting probe
+\(\beta_{\mathrm{res}}\) from classical coda features is \(0.711\); adding
+probe-specific latents (\(n_{\rho}\) peaks, onset sharpness, facies one-hots)
+yields \(\Delta R^{2}\approx0\). We therefore report the spatial leftover as
+\emph{classical coda geography that the Huygens probe reproduces}, not a uniquely
+neural residual. Distinctive contributions remain the competitive structured
+picker (Table~\ref{tab:stead}), the \(\rho(\tau)\)-indexed five-mode taxonomy, and
+operational coda timing without a separate catalog.
+
+\paragraph{Out-of-region consistency and a falsifiable prediction.}
+The identical frozen pipeline on Cascadia recovers a Salton-signed faster-decay
+residual near Mt St Helens--Cowlitz (\(8\) stations; site-median
+\(\Delta\beta=-0.014\); \(88\%\) sign agreement; \(d=-0.30\);
+\(p=5.6\times10^{-14}\); jackknife STABLE) and an opposite ringing residual near
+Seattle (\(\Delta\beta=+0.045\); \(d=+0.83\); Extended Data
+Fig.~\ref{edfig:cascadia}). We present these as consistency examples, not a fully
+pre-registered spatial replication catalog. A pre-registered-style prediction:
+new paths with midpoints in the Salton cell should show same-station
+\(\Delta\beta\le-0.02\) once \(\ge8\) stations are available; Seattle predicts
+the opposite inequality.
+
+% ----- Fig 2 placeholder -----
+\begin{figure*}[!t]
+\centering
+\figplaceholder{0.32\textheight}{%
+  Fig.~2 planned panels:\\[0.25em]
+  \textbf{(a)}~Five frozen facies (waveforms / \(\rho(\tau)\))\\
+  \textbf{(b)}~SoCal \(\beta_{\mathrm{res}}\) map (Salton / Transverse Ranges)\\
+  \textbf{(c)}~Same-station \(\Delta\beta\) forest\\
+  \textbf{(d)}~In-cell vs out-of-cell envelope stacks\\[0.35em]
+  Reuse/upgrade assets from NC facies draft + \texttt{sn-article} figures.\\
+  Target:
+  \texttt{docs/figures/propagation\_dynamics/fig2\_seismic\_facies\_paths.pdf}
+}
+\caption{\textbf{Seismic Huygens facies and path residuals.}
+\textbf{a},~Five frozen facies (not clustering).
+\textbf{b},~SoCal \(\beta_{\mathrm{res}}\) at path midpoints.
+\textbf{c},~Same-station \(\Delta\beta\).
+\textbf{d},~Envelope stacks confirming cell signs.}
+\label{fig:seismic}
+\end{figure*}
+
+\subsection*{Cross-domain mechanism coordinates and a continuous dynamical space}
+
+\paragraph{Matched-budget regime identity.}
+Under matched training budgets, local-response capacity and geometry controls,
+scalp EEG prefers \textbf{instantaneous} coupling (lag \(\equiv 0\)) over delayed
+Huygens, whereas NOAA SST sensor networks prefer \textbf{graph diffusion}
+(Fig.~\ref{fig:cross}a; Table~\ref{tab:domains}). On merged EEG regime
+ablations the instantaneous prior reaches mean MSE \(\approx0.064\) with
+geometry-relative degradation \(\mathrm{rel}_{\mathrm{geom}}\approx+15\%\);
+graph diffusion is second and delayed wave is worse. On SST sensor networks the
+preferred prior is \texttt{graph\_diffusion}
+(\(\mathrm{rel}_{\mathrm{geom}}\approx0.76\); diffusion-family preferred).
+\stead{} Phase-1 already closed delayed wave/Huygens over free adjacency (weak
+geometry-sensitive \(\alpha\); travel-time residual map claim falsified).
+
+\paragraph{Unified corners and empirical \(\Theta^{\star}\) instances.}
+Evaluating the unified operator at named corners recovers legacy kernels
+(\texttt{exact} versus \texttt{unified} backends in parity;
+\texttt{unified\_special\_case\_v1/}) and reproduces the EEG/SST preferences as
+empirical \(\Theta^{\star}\) instances under \(\alpha\equiv1\) probes
+(\texttt{unified\_empirical\_instances\_v1/}: SST\(\rightarrow\)graph\_diffusion,
+EEG\(\rightarrow\)instantaneous; backend preferred parity YES;
+Fig.~\ref{fig:cross}b). Piecewise continuum paths among named corners are
+continuous enough under amplitude/MSE step gates
+(\texttt{unified\_continuum\_v1/}). \stead{}'s Huygens landing, EEG's
+instantaneous landing and SST's graph-diffusion landing therefore appear as
+distinct coordinates of one family rather than three unrelated model classes.
+Synthetic systems with known ground-truth propagators recover perfect
+confusion-matrix accuracy under an \(\alpha\equiv1\) decision rule
+(\texttt{synth\_regime\_ident\_v1/}; taxonomy gate T1), establishing
+identifiability in principle; real-domain score-matrix and leave-one-domain
+fingerprint gates remain open (Extended Data).
+
+\paragraph{Telegrapher path \(\Theta(\lambda)\).}
+A telegrapher-inspired path \(\Theta(\lambda)\) with delay
+\(\delta=(1-\lambda)^{2}\), heat mix \(\eta=\lambda^{2}\) and travel-time
+damping \(\zeta=4\lambda(1-\lambda)\) connects wave (\(\lambda{=}0\)) to
+diffusion (\(\lambda{=}1\)). On the primary wave\(\rightarrow\)diffusion path,
+mean lag collapses monotonically (\(0.523\rightarrow0\)); mid-path damping
+peaks; phase labels traverse wave-like \(\rightarrow\) damped-wave
+\(\rightarrow\) diffusive (\texttt{dynamical\_space\_pass=YES},
+\texttt{visits\_damped\_wave=YES}; Fig.~\ref{fig:cross}c,d;
+\texttt{unified\_theta\_lambda\_v1/}). This supports the stronger claim that
+regimes form a \textbf{continuous dynamical space}, not only a discrete
+dictionary. Multi-primitive mixtures \(\sum_k\alpha_k K_k\) are deliberately
+paused (non-identifiability risk) and are not claimed here.
+
+\begin{figure*}[!t]
+\centering
+\figplaceholder{0.30\textheight}{%
+  Fig.~3 planned panels:\\[0.25em]
+  \textbf{(a)}~Matched-budget regime rankings (STEAD / EEG / SST)\\
+  \textbf{(b)}~Exact vs unified corner parity\\
+  \textbf{(c)}~\(\Theta(\lambda)\): mean lag + damping bump\\
+  \textbf{(d)}~Impulse-response fingerprint along \(\lambda\)\\[0.35em]
+  Data:
+  \texttt{unified\_empirical\_instances\_v1/},
+  \texttt{unified\_theta\_lambda\_v1/}\\
+  Target:
+  \texttt{docs/figures/propagation\_dynamics/fig3\_cross\_continuum.pdf}
+}
+\caption{\textbf{Cross-domain coordinates and continuum.}
+\textbf{a},~Regime rankings under matched budgets.
+\textbf{b},~Exact/unified kernel parity at named corners.
+\textbf{c},~\(\Theta(\lambda)\): lag collapse and mid-path damping.
+\textbf{d},~Impulse fingerprint along \(\lambda\).}
+\label{fig:cross}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\caption{Domain mechanism coordinates and \(\alpha\) closure grade.}
+\label{tab:domains}
+\begin{tabular}{p{2.0cm} p{2.2cm} p{2.6cm} p{2.4cm}}
+\toprule
+Domain & \(\Theta^{\star}\) & Primary evidence & \(\alpha\) / closure \\
+\midrule
+\stead{} & wave / Huygens
+ & Table~\ref{tab:stead}; five facies; \(\beta_{\mathrm{res}}\)
+ & Weak geom.\ \(\alpha\) (Phase-1); not TT residuals \\
+Scalp EEG & instantaneous
+ & Ablation; harden + LEMON
+ & Geom.-bound \(\alpha\) \textbf{strong}; RDG \textbf{partial} \\
+NOAA SST & graph diffusion
+ & Ablation; empirical instance
+ & RDG reinjection \textbf{full} (H1c\(^\prime\)) \\
+Continuum & \(\Theta(\lambda)\)
+ & wave\(\rightarrow\)damped-wave\(\rightarrow\)diffusion
+ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{$\alpha$ as local deviation from domain $\Theta^{\star}$}
+
+We reinterpret \(\alpha\) as a multiplicative deviation from \(K(\Theta^{\star})\),
+not as a universal residual relative to Huygens in every domain.
+
+\paragraph{EEG geometry-bound \(\alpha\) (harden + LEMON).}
+Under EEG's instantaneous \(\Theta^{\star}\), a low-dimensional
+distance-structured \(\alpha\) is necessary relative to \(\alpha\equiv1\)
+(gate G1) and degrades under wrong-geometry and edge-permutation
+counterfactuals: CF \(\alpha\) on scrambled geometry raises relative error by
+\(\approx+82\%\) (G4); permuting \(\alpha\) edges raises it by \(\approx+64\%\)
+(G6); distance-slope sign is seed-stable (G7 agree \(=1.0\);
+\texttt{eeg\_instantaneous\_harden\_v1/}; five seeds; subject bootstrap;
+Fig.~\ref{fig:alpha}a). An independent healthy-lifespan LEMON cohort
+reproduces the mechanism pattern: instantaneous MSE \(0.076\) versus wave
+\(0.098\); wrong-geometry CF relative \(\approx+67\%\) (CI \([0.37,1.09]\),
+\(90\) subjects; \texttt{replication\_pass=YES};
+Fig.~\ref{fig:alpha}b). Forecast MSE alone is not the claim: free/local
+baselines can beat our MSE under unfair weight-permutation metrics; mechanism
+claims rest on geometry-bound CF gates (Methods; Extended Data).
+
+\paragraph{SST full RDG reinjection versus EEG partial transfer.}
+On SST under graph diffusion, a mined range-dependent gain (RDG) freezes on
+held-out seeds and passes named-versus-wrong reinjection closure without
+refitting mechanism parameters (H1c\(^\prime\), \(\ell=0.5\);
+\texttt{closure\_pass=YES}; Fig.~\ref{fig:alpha}c;
+\texttt{sst\_alpha\_rdg\_closure\_v3/}). A companion physics-consistency map
+aligns near-boost / mid-cut structure with SST contrast, with the explicit
+caveat that the scale is the sensor graph, not geophysical Rd
+(\texttt{sst\_rdg\_physics\_v1/}). The same RDG family only partially tracks
+free \(\alpha\) on EEG: \(\approx23\%\) of windows near-full (rel\(\le5\%\)),
+\(\approx46\%\) moderate (rel\(\le20\%\)), and wrong\(>\)named on
+\(\approx73\%\); it does not absorb the \(\alpha\equiv1\) gap on average
+(graded Partial--Weak; Fig.~\ref{fig:alpha}d). Closure depth is therefore
+regime-dependent (Table~\ref{tab:domains}), not a universal \(\alpha\rightarrow\)RDG
+law.
+
+\paragraph{What is not claimed.}
+Exploratory clinical associations of EEG leftovers with cognition (AHEPA
+Spearman \(\rho=-0.24\), \(n=31\), \(p=0.19\); LEMON null against healthy aging)
+are deferred to Supplementary Note~\ref{snote:clinical} and are
+\emph{not} claimed as biomarkers. Compositional multi-primitive mixtures remain
+paused.
+
+\begin{figure*}[!t]
+\centering
+\figplaceholder{0.30\textheight}{%
+  Fig.~4 planned panels:\\[0.25em]
+  \textbf{(a)}~EEG counterfactual gates (bootstrap)\\
+  \textbf{(b)}~LEMON replication\\
+  \textbf{(c)}~SST named RDG reinjection closure\\
+  \textbf{(d)}~EEG RDG graded vs SST full (contrast)\\[0.35em]
+  Data: \texttt{eeg\_instantaneous\_harden\_v1/},
+  \texttt{eeg\_lemon\_replication\_v1/},
+  \texttt{sst\_alpha\_rdg\_closure\_v3/}\\
+  Target:
+  \texttt{docs/figures/propagation\_dynamics/fig4\_alpha\_gates.pdf}
+}
+\caption{\textbf{Validating \(\alpha\).}
+\textbf{a},~EEG counterfactual gates.
+\textbf{b},~LEMON replication.
+\textbf{c},~SST named RDG reinjection closure.
+\textbf{d},~Graded EEG RDG versus SST full closure.}
+\label{fig:alpha}
+\end{figure*}
+
+% =============================================================================
+\section*{Discussion}
+% =============================================================================
+
+This work thickens a single research line rather than stacking unrelated
+applications. A Huygens-type local propagator is both \emph{task-useful} on
+\stead{} (Table~\ref{tab:stead}) and \emph{scientifically productive} as the
+coordinate that organises five frozen coda facies and path residuals
+(Fig.~\ref{fig:seismic}). Cross-domain ablations show that the same primitive
+lands elsewhere at instantaneous and graph-diffusion coordinates, and
+\(\Theta(\lambda)\) supplies a continuous bridge with a damped-wave phase
+(Fig.~\ref{fig:cross}). Validated \(\alpha\) then measures local departure from
+those landings, with closure depth itself regime-dependent
+(Fig.~\ref{fig:alpha}).
+
+Huygens is therefore the right \emph{interpretable computational principle for
+seismology} in this study---not a universal law of cortex or ocean. The five
+facies classify how paths ring under that principle; they are not earthquake
+clocks or precursors. The classical-coda geography control clarifies that the
+map leftover is not a mysterious neural-only field, while still elevating facies
+as an interpretable discrete language for path structure under an operational
+picker that times coda windows without a separate catalog.
+
+Limitations are intrinsic to the present evidence. Taxonomy gates beyond
+synthetic recovery (T2--T4) remain open. Cascadia supplies consistency examples
+without a complete spatial multiple-testing catalog; Berg/Lin cubes are
+unavailable there. SST physics maps are sensor-graph scale, not Rd. EEG clinical
+leftovers are exploratory and conventionally non-significant on the primary
+Spearman; LEMON is a healthy negative control, not a second clinical site. A
+Physics Decoder attached to frozen seismic latents improves travel-time misfit
+as an initialisation aid on a reported protocol (Supplementary
+Note~\ref{snote:decoder}) but is not a central discovery claim. Multi-primitive
+mixtures are paused. Future work can extend \(\Theta\) with reaction, advection
+and richer damped-wave terms without rewriting the training skeleton.
+
+% =============================================================================
+\section*{Methods}
+% =============================================================================
+
+\paragraph{Unified operator \(P(X;G,\Theta,\alpha)\).}
+Let \(X\in\mathbb{R}^{N\times T}\) be the local field on \(N\) sensors over
+\(T\) time steps. Geometry \(G\) supplies pairwise distances \(r_{ij}\) and
+sampling \(\mathrm{d}t\). Mechanism coordinates
+\[
+\Theta=(\delta,\sigma,\eta,\nu,\zeta;\gamma,\ell,c,\ldots)
+\]
+control delay scale \(\delta\in[0,1]\), spatial mix \(\sigma\)
+(wave-amplitude \(\leftrightarrow\) graph-exponential), heat mix \(\eta\)
+(toward continuum heat), norm mix \(\nu\) (column\(\leftrightarrow\)row), and
+travel-time damping \(\zeta\ge0\), with auxiliary scales
+\((\gamma,\ell,c,\ldots)\) matched to legacy priors at named corners. Geometric
+travel time is \(\tau_{\mathrm{geo},ij}=\mathrm{round}(r_{ij}/(c\,\mathrm{d}t))\);
+lags are \(\tau_{ij}=\mathrm{round}(\delta\cdot\tau_{\mathrm{geo},ij})\).
+Unnormalized amplitudes blend wave-like
+\(e^{-\gamma r^{2}}/(r+\varepsilon)\), graph \(e^{-r/\ell}\) and heat-kernel
+shapes; optional damping multiplies \(e^{-\zeta\tau_{\mathrm{geo}}}\). After
+normalisation, neighbour drive is aggregated with lag \(\tau_{ij}\) and passed
+with the self state through a shared local response \(R\) to produce the next
+field. Reality uses \(A\odot\alpha\). Named corners recover legacy
+\stead{}/EEG/SST priors: the \texttt{exact} backend delegates to established
+kernels; the \texttt{unified} backend matches within numerical tolerance
+(\texttt{unified\_special\_case\_v1/}). Code:
+\texttt{hnf/propagation\_dynamics/unified/}.
+
+\paragraph{Named corners and \(\Theta(\lambda)\).}
+Canonical corners (after clamping): wave/Huygens
+\((\delta,\sigma,\eta,\zeta)\approx(1,0,0,0)\); instantaneous
+\((\delta{=}0,\sigma{=}0)\); graph diffusion
+\((\delta{=}0,\sigma{=}1,\eta{=}0)\); continuum diffusion raises \(\eta\).
+Telegrapher path: \(\delta=(1-\lambda)^{2}\), \(\eta=\lambda^{2}\),
+\(\zeta=4\lambda(1-\lambda)\), with spatial mix interpolating the
+wave\(\leftrightarrow\)heat family. Continuity gates require finite amp/MSE
+steps, monotone lag decrease on wave\(\rightarrow\)diffusion, and visitation of
+wave-like and diffusive ends; damped-wave is recorded when mid-path damping
+peaks (\texttt{unified\_theta\_lambda\_v1/}; primary lag \(0.523\rightarrow0\)).
+Multi-primitive mixtures \(\sum_k\alpha_k K_k\) are paused and unused.
+
+\paragraph{Matched-budget regime ablation.}
+For EEG and SST, regimes \(\{\texttt{wave},\texttt{instantaneous},
+\texttt{diffusion},\texttt{graph\_diffusion}\}\) are trained under a shared
+protocol: identical local-response capacity, identical optimisation budget
+(steps / early-stopping patience), and a shared freeze policy on \(R\) when
+comparing priors. Geometry controls scramble or refit against wrong distances
+while holding capacity fixed; preferred \(\Theta^{\star}\) is the lowest-MSE
+prior that remains geometry-sensitive under those controls. Empirical
+\(\alpha\equiv1\) instances under the unified operator
+(\texttt{unified\_empirical\_instances\_v1/}) must recover the same preferred
+labels with exact/unified backend parity. Synthetic taxonomy gate T1
+(\texttt{synth\_regime\_ident\_v1/}) recovers known ground-truth regimes at
+confusion accuracy \(1.0\); T2--T4 remain open.
+
+\paragraph{\stead{} Huygens probe and timing benchmark.}
+The production seismic probe is a multi-scale Huygens--Fresnel \pnf{}
+(\(\approx192\,\mathrm{k}\) parameters). Inputs are three-component \stead{}
+windows resampled to length \(800\) covering \(60\,\mathrm{s}\) (native
+\(100\,\mathrm{Hz}\)). A source embedding (width \(64\)) feeds fine/coarse
+WaveBlocks (causal windows \(8\,\mathrm{s}\) / \(20\,\mathrm{s}\); three blocks
+per scale) with Softplus-constrained kernel parameters \((\gamma,\omega,c)\);
+\(c\) is treated as a support scale, not an identified medium velocity.
+Detection and P/S heads decode on the discrete \(800\)-bin grid (bin width
+\(\approx0.075\,\mathrm{s}\)). Training: Adam with cosine annealing; batch
+size \(32\); \(\approx50\) epochs (best validation near epoch \(37\)); loss
+combines detection/P/S cross-entropy with order and mild physical regularisers
+as in the seismic draft. Full-test evaluation uses tolerance
+\(0.5\,\mathrm{s}\) and \eqt{} pick/detection thresholds. Metrics:
+detection/P/S F1 with precision/recall, and pick MAE (s). Baselines: \eqt{}
+(\(\sim377\,\mathrm{k}\)), \pnet{} (\(\sim269\,\mathrm{k}\)).
+\textbf{Authoritative numbers are Table~\ref{tab:stead}} (matching
+\texttt{scripts/sn-article.tex}). An earlier snapshot
+\texttt{outputs/paper\_stead\_full\_test\_compare/} (e.g.\ P MAE
+\(0.0213\,\mathrm{s}\)) is superseded. OBS/transfer settings are not primary
+claims.
+
+\paragraph{Facies observables and frozen ceilings.}
+All morphology analyses use one frozen multi-scale checkpoint. Causal-chain
+exports provide (i)~coda slope from the waveform envelope in an \(S\)-timed
+window, (ii)~onset sharpness, and (iii)~peak count / multi-lobe structure in
+delay-time density \(\rho(\tau)\) after resampling each event into a causal
+frame with \(P\) at \(\tau=0\) and \(S\) at \(\tau=1\). Labels are rule-based
+(\textit{impulsive\_fast\_decay}, \textit{emergent}, \textit{multipath},
+\textit{slow\_coda}, \textit{standard}), not unsupervised cluster IDs.
+Ceilings (Supplementary Table~\ref{stab:ceilings}) were chosen on validation
+to separate the three observables, then frozen before any test-set or regional
+map inspection. Because coda slope enters the ceilings, within-class coda
+contrasts are facies characterisation, not independent physical validation.
+Geography uses the \stead{} local-earthquake test catalogue after noise
+exclusion (\(>100{,}000\) traces); association with region is summarised by
+Cram\'er's \(V\) with FDR adjustment.
+
+\paragraph{Structure residual, independence, Cascadia, classical control.}
+Coda slope is distance-detrended to \(\beta\) against
+\(\log_{10}(\mathrm{dist}+1)\). A ridge expectation (\(\lambda=8\)) removes
+\(\log_{10}\) distance, depth, magnitude, \(\log(1+\mathrm{fault\ distance})\)
+to nearest Quaternary fault, and station fixed effects; residual
+\(\beta_{\mathrm{res}}\) is mapped at path midpoints (SoCal fixed stations;
+\(20\)--\(120\,\mathrm{km}\); structure model \(R^{2}\approx0.27\)).
+Same-station test: in-cell versus out-of-cell paths at the same station with
+geographic buffer; discovery requires \(\ge8\) stations and \(p<0.05\).
+Classical single-trace \(q_c\) uses a mean-square envelope, 21-sample smoother,
+and the slope of \(\log_{10}E(t)\) from the first post-peak drop below
+\(55\%\) of peak energy through \(+8\,\mathrm{s}\). Berg upper-crust \(V_S\)
+(\(0\)--\(8\,\mathrm{km}\) column mean) and Lin \& Jordan direct-wave \(Q_S\)
+(resolved nodes only) are sampled at midpoints. Cascadia uses the identical
+frozen ceilings and ridge; jackknives (source-bin / magnitude / year) are
+STABLE if \(\ge80\%\) of qualifying tests keep the expected \(\Delta\beta\)
+sign with \(p<0.05\) and \(n_{\mathrm{sites}}\ge8\). Catalog-timed classical
+control: identical envelope slope with \stead{} catalog \(S\) on \(n=4000\)
+SoCal traces; five-fold OOS \(R^{2}\) and \(\Delta R^{2}\) for probe latents as
+in Results. Joint OOS residualisation on Berg/Lin summaries remains
+\(\lesssim0.01\) (random folds can still admit spatial leakage).
+
+\paragraph{\(\alpha\) gates (EEG harden, LEMON, SST/EEG RDG).}
+\(\alpha\) is mined only under the domain-preferred prior. EEG instantaneous
+harden (\texttt{eeg\_instantaneous\_harden\_v1/}; five seeds; subject
+bootstrap) reports: G1 \(\alpha\) vs \(\alpha\equiv1\); G2 channel-shuffle;
+G3 geometry-scramble refit; G4 CF \(\alpha\) evaluated on wrong geometry;
+G6 permute \(\alpha\) edges; G7 distance-slope sign stability across seeds.
+LEMON replication (R1--R4 on MPI-LEMON) repeats preferred-regime and key CF
+gates on an independent healthy cohort. SST RDG (H1c\(^\prime\),
+\(\ell=0.5\)): mine a range-dependent gain on one seed, \emph{freeze} the
+functional form, evaluate held-out seeds with named versus wrong/sign-flip
+reinjection, and \textbf{forbid} mechanism-parameter refit at reinjection.
+EEG RDG uses the same atom family and is graded Partial--Weak when near-full /
+moderate / wrong\(>\)named fractions fail SST-level closure. Unfair free/local
+MSE baselines do not replace CF mechanism gates; fair distance-only scramble
+follow-ups are noted in Extended Data.
+
+\paragraph{Statistics.}
+Same-station \(\Delta\beta\): site-median effect, Cohen's \(d\), Mann--Whitney
+\(p\). Facies--geography: Cram\'er's \(V\) with FDR. EEG gates:
+subject-bootstrap intervals on relative CF degradation. Clinical leftover
+Spearman (Supplementary Note~\ref{snote:clinical}) is two-sided; shuffle and
+capacity-matched nulls are complementary and do not replace the association
+\(p\)-value.
+
+% =============================================================================
+\section*{Data availability}
+% =============================================================================
+
+\stead{} as released by Mousavi et~al.\cite{stead2019}; SeisBench baselines;
+USGS QFaults; Berg 2021 and Lin \& Jordan 2023 grids as cited. EEG:
+OpenNeuro ds004504 and MPI-LEMON as in replication artifacts. NOAA SST sensor
+windows as in SST ablation/closure runs. Unified-operator and \(\alpha\)
+artifacts under \texttt{outputs/propagation\_dynamics/}.
+
+\section*{Code availability}
+Analysis code in the HNF repository (\texttt{tools/},
+\texttt{hnf/propagation\_dynamics/}). Manuscript source:
+\texttt{scripts/unified-propagation-article.tex}. Replication entry points:
+\texttt{tools/run\_unified\_*.py},
+\texttt{tools/run\_eeg\_instantaneous\_harden.py},
+\texttt{tools/run\_eeg\_lemon\_replication.py}, and SST RDG closure scripts as
+documented in \texttt{docs/PROPAGATION\_DYNAMICS\_REPLICATION.md}.
+
+% =============================================================================
+% SUPPLEMENTARY INFORMATION / EXTENDED DATA
+% =============================================================================
+\clearpage
+\onecolumn
+\section*{Supplementary Information}
+
+\subsection*{SI overview and display inventory}
+Main-text display budget is locked at \textbf{4 Figures + 2 Tables}. The
+following Extended Data items and notes carry overflow detail without expanding
+that budget. Artifact roots are under
+\texttt{outputs/propagation\_dynamics/} unless noted.
+
+\subsection*{Extended Data figures (placeholders)}
+
+\begin{figure}[!ht]
+\centering
+\figplaceholder{0.22\textheight}{%
+  ED Fig.~1 --- Facies geography on STEAD test catalogue\\
+  (continental enrichment map; Cram\'er's \(V\approx0.37\))
+}
+\caption{\textbf{Extended Data Fig.~\ref{edfig:faciesgeo}.}
+Geographic enrichment of five frozen facies on the \stead{} local-earthquake
+test set (noise excluded).}
+\label{edfig:faciesgeo}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\figplaceholder{0.22\textheight}{%
+  ED Fig.~2 --- Independence vs \(q_c\), Berg \(V_S\), Lin \(Q_S\)\\
+  (scatter + cell \(\Delta\beta\) after residualising)
+}
+\caption{\textbf{Extended Data Fig.~\ref{edfig:independence}.}
+Independence checks for \(\beta_{\mathrm{res}}\) against classical \(q_c\)
+(\(r=0.64\); residualised cell anomalies remain), Berg upper-crust \(V_S\)
+(\(r=-0.08\)), and Lin \& Jordan direct-wave \(Q_S\) (\(r=-0.07\)).}
+\label{edfig:independence}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\figplaceholder{0.22\textheight}{%
+  ED Fig.~3 --- Cascadia consistency (St Helens / Seattle)\\
+  + SoCal jackknife STABLE summary
+}
+\caption{\textbf{Extended Data Fig.~\ref{edfig:cascadia}.}
+Out-of-region Cascadia \(\beta_{\mathrm{res}}\) consistency examples and
+SoCal jackknife stability summary.}
+\label{edfig:cascadia}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\figplaceholder{0.20\textheight}{%
+  ED Fig.~4 --- Classical catalog-timed coda control\\
+  (slope \(r=0.96\); map \(r=0.93\); \(\Delta R^{2}\approx0\))
+}
+\caption{\textbf{Extended Data Fig.~\ref{edfig:classical}.}
+Catalog-timed versus probe-timed coda geography control on \(n=4000\) SoCal
+traces.}
+\label{edfig:classical}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\figplaceholder{0.20\textheight}{%
+  ED Fig.~5 --- Unified special-case + continuum + \(\Theta(\lambda)\) diagnostics
+}
+\caption{\textbf{Extended Data Fig.~\ref{edfig:unified}.}
+Special-case corner recovery, continuum path continuity, and
+\(\Theta(\lambda)\) lag/damping fingerprints.}
+\label{edfig:unified}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\figplaceholder{0.20\textheight}{%
+  ED Fig.~6 --- SST RDG physics-map caveat (sensor-graph scale)
+}
+\caption{\textbf{Extended Data Fig.~\ref{edfig:sstphys}.}
+SST RDG physics-consistency map with explicit sensor-graph scale caveat.}
+\label{edfig:sstphys}
+\end{figure}
+
+\subsection*{Supplementary tables}
+
+\begin{table}[!ht]
+\centering
+\caption{Frozen facies ceilings (locked before regional map inspection).}
+\label{stab:ceilings}
+\begin{tabular}{lc}
+\toprule
+Ceiling & Value \\
+\midrule
+Peak-count threshold (\(n_{\rho}\)) & \(1.0\) \\
+Coda-fast bound & \(-0.198\) \\
+Coda-slow bound & \(-0.113\) \\
+Onset-high & \(0.877\) \\
+Onset-low & \(0.733\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]
+\centering
+\caption{Same-station path cells (site-median \(\Delta\beta\)).}
+\label{stab:cells}
+\begin{tabular}{lcccc}
+\toprule
+Cell & \(n_{\mathrm{sta}}\) & \(\Delta\beta\) & Cohen \(d\) & \(p\) \\
+\midrule
+Salton--Imperial (SoCal) & \(20\) & \(-0.032\) & \(-0.54\) & \(6.6\times10^{-32}\) \\
+Eastern Transverse Ranges & \(15\) & \(+0.025\) & \(+0.68\) & \(2.5\times10^{-12}\) \\
+Mt St Helens--Cowlitz (Cascadia) & \(8\) & \(-0.014\) & \(-0.30\) & \(5.6\times10^{-14}\) \\
+Seattle (Cascadia) & --- & \(+0.045\) & \(+0.83\) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]
+\centering
+\caption{Independence leftovers after residualising published summaries.}
+\label{stab:indep}
+\begin{tabular}{lcc}
+\toprule
+Check & Raw association & Leftover note \\
+\midrule
+Classical \(q_c\) & \(r=0.64\) & Salton \(\Delta\beta\): \(-0.030\rightarrow-0.014\);
+ ETR: \(+0.040\rightarrow+0.019\); facies still separate in \(q_c\) terciles \\
+Berg \(V_S\) & \(r=-0.08\) & Cells share \(V_S\) band, opposite \(\beta_{\mathrm{res}}\) \\
+Lin \& Jordan \(Q_S\) & \(r=-0.07\) & Removing \(Q_S\) leaves \(\Delta\beta\) intact \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]
+\centering
+\caption{Unified-operator verification snapshots.}
+\label{stab:unified}
+\begin{tabular}{lp{8.5cm}}
+\toprule
+Artifact & Result \\
+\midrule
+\texttt{unified\_special\_case\_v1/} & Exact + unified corners recover legacy priors \\
+\texttt{unified\_continuum\_v1/} & \texttt{all\_paths\_continuous\_enough=YES} \\
+\texttt{unified\_empirical\_instances\_v1/} & SST\(\rightarrow\)graph\_diffusion;
+ EEG\(\rightarrow\)instantaneous; parity YES \\
+\texttt{unified\_theta\_lambda\_v1/} & wave\(\rightarrow\)diffusion
+ \texttt{dynamical\_space\_pass=YES}; \texttt{visits\_damped\_wave=YES};
+ lag \(0.523\rightarrow0\) \\
+\texttt{synth\_regime\_ident\_v1/} & T1 confusion accuracy \(1.0\) (T2--T4 open) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]
+\centering
+\caption{\(\alpha\) gate summary (EEG harden, LEMON, SST/EEG RDG).}
+\label{stab:alpha}
+\begin{tabular}{lp{8.5cm}}
+\toprule
+Gate / cohort & Result \\
+\midrule
+EEG G4 wrong-geom CF & rel \(\approx+82\%\) \\
+EEG G6 permute \(\alpha\) & rel \(\approx+64\%\) \\
+EEG G7 \(b_1\) sign & agree \(=1.0\) across seeds \\
+LEMON R1 inst vs wave & MSE \(0.076\) vs \(0.098\) \\
+LEMON wrong-geom CF & rel \(\approx+67\%\) (CI \([0.37,1.09]\), \(n=90\)) \\
+SST RDG H1c\(^\prime\) & \texttt{closure\_pass=YES} (\(\ell=0.5\)) \\
+EEG RDG graded & \(\approx23\%\) near-full; \(\approx46\%\) moderate;
+ wrong\(>\)named \(\approx73\%\) (Partial--Weak) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Supplementary Note: Physics Decoder (not a main claim)}
+\label{snote:decoder}
+A lightweight Physics Decoder (2-layer MLP on frozen \pnf{} latents) maps probe
+features to layered \((v_P,v_S)\) models used to initialise differentiable FWI.
+On the reported protocol, \(69.6\%\) of real \stead{} events (\(n=500\)) improve
+relative to perturbed baselines (mean travel-time misfit \(11.22\rightarrow3.08\)).
+Layered ground-truth provenance, station pooling, and geographic-prior controls
+are only partially documented; the decoder is an initialisation aid, not a
+central discovery claim.
+
+\subsection*{Supplementary Note: Exploratory clinical EEG leftover (not a biomarker)}
+\label{snote:clinical}
+On AHEPA (\(n=88\) HC/FTD/AD), a train-only residualizer isolates a diffusion-probe
+leftover against classical voltmeter features. Primary held-out Spearman with
+MMSE residual is \(\rho=-0.24\) (\(n=31\), \(p=0.19\)); Pearson \(r=-0.30\) on
+the same pool. Train-shuffle / capacity-matched nulls yield mean
+\(|\rho|\approx0.05\)--\(0.07\) with \(p_{\ge\mathrm{obs}}\approx0.002\) and do
+\emph{not} replace the association \(p\)-value. On independent LEMON adults
+(\(n=202\)) the leftover is null against healthy aging, GM/ICV and TMT. We do
+not claim a clinical biomarker.
+
+\subsection*{Supplementary Note: Explicit non-claims}
+\begin{itemize}
+\item No universal Huygens law for cortex or ocean.
+\item No clinical EEG biomarker; no AD/FTD classifier product.
+\item No claim that \(\beta_{\mathrm{res}}\) is uniquely neural beyond classical
+  catalog-timed coda geography.
+\item No \(\alpha\) as classical seismic travel-time residual tomography.
+\item No multi-primitive mixture \(\sum_k\alpha_k K_k\) (paused).
+\item No uniform SOTA across OBS/transfer; Table~\ref{tab:stead} is full-test
+  usefulness under an interpretable prior.
+\item Taxonomy T2--T4 not closed.
+\end{itemize}
+
+\subsection*{Supplementary hyper-parameter and freeze checklist}
+\begin{itemize}
+\item Facies ceilings frozen before map inspection (Table~\ref{stab:ceilings}).
+\item Ridge \(\lambda=8\); SoCal distance window \(20\)--\(120\,\mathrm{km}\).
+\item Same-station discovery: \(\ge8\) stations, \(p<0.05\); jackknife STABLE
+  \(\ge80\%\) sign retention.
+\item EEG harden: 5 seeds; subject bootstrap; CF G1--G7.
+\item SST RDG: mine\(\rightarrow\)freeze; no mechanism refit at reinjection;
+  H1c\(^\prime\) \(\ell=0.5\).
+\item Unified \(\Theta(\lambda)\): telegrapher path as in Methods; report
+  \texttt{visits\_damped\_wave} only when mid-path damping peaks.
+\end{itemize}
+
+% =============================================================================
+\begin{thebibliography}{99}
+
+\bibitem{stead2019}
+Mousavi, S.~M.\ et~al.\
+STanford EArthquake Dataset (STEAD).
+\emph{IEEE Access} (2019).
+
+\bibitem{mousavi2020eqt}
+Mousavi, S.~M.\ et~al.\
+Earthquake transformer---an attentive deep-learning model for simultaneous
+earthquake detection and phase picking.
+\emph{Nat.\ Commun.} (2020).
+
+\bibitem{zhu2018phasenet}
+Zhu, W.\ \& Beroza, G.~C.\
+PhaseNet: a deep-neural-network-based seismic arrival-time picking method.
+\emph{Geophys.\ J.\ Int.} (2019).
+
+\bibitem{berg2021}
+Berg, E.~M.\ et~al.\
+Upper-crustal \(V_S\) / \(V_P\) models for southern California
+(IRIS EMC; as used in the seismic draft).
+
+\bibitem{lin2023}
+Lin, Y.-P.\ \& Jordan, T.~H.\
+High-frequency attenuation / scattering models for southern California
+(as used in the seismic draft).
+
+\bibitem{raissi2019}
+Raissi, M.\ et~al.\
+Physics-informed neural networks.
+\emph{J.\ Comput.\ Phys.} (2019).
+
+\end{thebibliography}
+
+\end{document}
