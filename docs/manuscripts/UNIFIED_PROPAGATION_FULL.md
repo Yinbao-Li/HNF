@@ -182,5 +182,6 @@ Main-text display budget remains **4+2**; SI does not count against it.
 
 ## Change log
 
+- **2026-08-22 (late):** Rewrite per editorial notes: (i) no defensive non-claims dump—intent/limits stated in place; (ii) Θ axes given explicit physical meaning; continuity = operator-path continuity, **not** Lyapunov trajectory stability; (iii) facies = physics-indexed axes + operational validation ceilings (not closed-form physics cut-points, not clustering); classical coda control kept as clarifying contribution, consistent with unified story; (iv) all repo/artifact paths removed from manuscript; (v) main text expanded for readability. Authoritative file: `scripts/unified-propagation-article.tex`.
 - **2026-08-22 (evening):** Main LaTeX thickened (facies ceilings/stats, independence leftovers after residualising \(q_c\), Cascadia jackknife numbers, cross-domain MSE/rel_geom, α CF +82%/+64%, LEMON +67%, SST/EEG RDG grades, P/R trade-off). Full SI/ED section added. Markdown here remains a digest; compile LaTeX for the full article+SI.
 - **2026-08-22:** Table 1 corrected to `sn-article.tex` (`P MAE 0.0169`, det F1 `0.9989`, S F1 `0.9770`, with P/R). Supersedes README/`paper_stead_full_test_compare` line used in the earlier skeleton. Full prose draft assembled under the 4+2 display budget.
