@@ -190,7 +190,10 @@ diffusivity and support; in the seismic probe the analogous Fresnel parameters
 \((\gamma,\omega,c)\) remain Softplus-constrained and readable, with \(c\)
 treated as a causal-support scale rather than an inverted medium velocity.
 Together these axes make \(\Theta\) an interpretable chart of local coupling
-physics.
+physics. Interpretability does not imply that every coordinate is uniquely fixed
+by forecast F1: nearby combinations can yield nearly the same score, so
+observability must be checked by level sets and by tests that go beyond the
+leaderboard (Methods).
 
 \paragraph{Continuity versus Lyapunov stability.}
 A one-parameter telegrapher-inspired path \(\Theta(\lambda)\) connects wave
@@ -342,17 +345,24 @@ structure under a Huygens density. They are not anonymous embedding dimensions.
 
 The five class names---impulsive fast decay, emergent, multipath, slow coda and
 standard---are an \emph{operational partition} of that three-dimensional
-observable space. The numerical ceilings that define the partition
+observable space. The numerical ceilings
 (Supplementary Table~\ref{stab:ceilings}: peak-count \(1.0\); coda-fast/slow
-\(-0.198\) / \(-0.113\); onset-high/low \(0.877\) / \(0.733\)) were chosen on
-the validation set to keep classes separable and verbally interpretable, then
-frozen before any regional map was inspected. They are therefore
-\emph{not} derived from a closed-form physical law that predicts those exact
-cut-points, and they are \emph{not} \(k\)-means labels discovered after seeing
-geography. In short: the axes are physical; the thresholds are human-chosen
-operational gates, locked for reproducibility. Because coda slope itself enters
-the ceilings, within-class coda contrasts characterise the taxonomy; they are
-not an independent physical proof of the cut-points.
+\(-0.198\) / \(-0.113\); onset-high/low \(0.877\) / \(0.733\)) were locked on
+the validation set before any regional map was inspected. They are
+\emph{not} \(k\)-means labels tuned on geography, and they are
+\emph{not} outputs of a closed-form attenuation law. They are, however, close
+to an objective approximation of the validation distributions: the coda-slope
+ceilings sit at the approximate one-third / two-third quantiles of validation
+coda slope (\(\approx-0.198\) / \(-0.113\)), and the onset ceilings sit at the
+corresponding onset-sharpness quantiles (\(\approx0.733\) / \(0.877\)). A shallow
+decision tree and a random forest fit on the same three validation observables
+recover split thresholds in the same neighbourhood (dominant onset splits near
+\(0.73\)--\(0.88\); dominant coda splits near \(-0.113\) and
+\(-0.20\)), so the apparently precise decimals are better read as
+\emph{quantile-aligned operational gates} than as hand-tuned oddities.
+Because coda slope itself enters the ceilings, within-class coda contrasts
+characterise the taxonomy; they are not an independent physical proof of the
+cut-points.
 
 \paragraph{How a waveform is labelled.}
 Concretely, each local-earthquake trace is mapped into the causal frame, the
@@ -365,8 +375,8 @@ called standard. The procedure is deterministic once ceilings are locked. It can
 be audited, reproduced and criticised---unlike a clustering solution whose
 cluster count and metric are tuned after seeing the map. We emphasise again that
 the \emph{existence} of attenuation, impulsiveness and multipath axes is the
-physical content; the \emph{particular numerical gates} are an operational
-contract with the reader.
+physical content; the \emph{particular numerical gates} are quantile-aligned
+operational contracts with the reader, not post-hoc geographic tuning.
 
 \paragraph{Reading the five facies.}
 Impulsive fast decay combines a sharp onset with a steep post-\(S\) envelope:
@@ -723,8 +733,7 @@ when the module is specialised to one domain---as Huygens is specialised here to
 seismic facies---does the specialisation inherit its meaning from those
 coordinates, or does it quietly become a new black box? The present work tries
 to keep both questions visible. The unified operator answers the first; the
-facies taxonomy answers the second for seismology, with operational thresholds
-stated as operational.
+facies taxonomy answers the second for seismology, with thresholds stated as quantile-aligned operational gates.
 
 Two limits should be stated where they matter. First, operator-path continuity
 along \(\Theta(\lambda)\) is not a Lyapunov stability theorem for discrete
@@ -870,10 +879,15 @@ Morphology uses one frozen multi-scale checkpoint. Observables:
 (ii)~onset sharpness;
 (iii)~peak count / lobe structure in \(\rho(\tau)\) after causal resampling with
 \(P\) at \(\tau=0\) and \(S\) at \(\tau=1\). Class assignment is rule-based on
-validation-chosen ceilings (Supplementary Table~\ref{stab:ceilings}), frozen
-before test-set geography. Axes are physics-indexed; thresholds are operational.
-Geography association uses Cram\'er's \(V\) with FDR adjustment on the
-\stead{} local-earthquake test set after noise exclusion.
+ceilings locked on validation before test-set geography
+(Supplementary Table~\ref{stab:ceilings}). Axes are physics-indexed. Thresholds
+are operational but quantile-aligned: on the validation export, coda-fast/slow
+ceilings match the \(\approx33\%/67\%\) quantiles of coda slope, and
+onset-low/high ceilings match the corresponding onset quantiles; shallow CART /
+random-forest splits on the same three features recover thresholds in the same
+neighbourhood (Supplementary Note~\ref{snote:ceilings}). Geography association
+uses Cram\'er's \(V\) with FDR adjustment on the \stead{} local-earthquake test
+set after noise exclusion.
 
 \paragraph{Structure residual, independence and classical control.}
 Distance-detrend coda slope to \(\beta\); ridge-residualise
@@ -903,6 +917,30 @@ held-out seeds against wrong/sign-flip controls, without refitting mechanism
 parameters. EEG transfer of the same family is graded by the fraction of windows
 near-full or moderate and by whether wrong forms still win.
 
+\paragraph{Observability of mechanism coordinates.}
+Forecast skill alone does not uniquely identify \(\Theta\). In particular, the
+same dataset can admit a neighbourhood of parameter combinations with nearly
+indistinguishable detection/picking F1 (or probe MSE). We therefore treat
+task metrics as usefulness probes rather than as injective maps from score to
+coordinates. Synthetic impulse-response recovery already illustrates the
+asymmetry: Fresnel locality and oscillation \((\gamma,\omega)\) are recovered
+tightly, whereas the causal-support scale \(c\) is only weakly identified
+(mean relative error \(\approx0.30\) on one-dimensional impulses). For the
+unified coordinates, a brief iso-performance (level-set) check on validation
+windows asks which nearby \((\delta,\sigma,\eta,\zeta)\) keep probe error
+within a small tolerance of the preferred corner; extended ridges in that
+level set are reported as limited local observability, not as a failure of the
+primitive (Supplementary Note~\ref{snote:observability}). Mechanism claims
+accordingly rest on named-corner recovery, geometry counterfactuals and
+readable latents---not on uniqueness of an F1 maximiser.
+
+\paragraph{Compute resources.}
+Seismic training and evaluation, EEG/SST regime ablations and \(\alpha\)
+counterfactual runs were performed on a workstation with a single NVIDIA
+GeForce RTX~3080 GPU (10\,GB), supported by host CPU preprocessing. Full-test
+\stead{} scoring and facies exports are inference-time workloads on the same
+class of device; large catalogue residualisation steps are CPU-bound.
+
 \paragraph{Statistics.}
 Same-station \(\Delta\beta\): site-median, Cohen's \(d\), Mann--Whitney \(p\).
 EEG counterfactuals: subject-bootstrap intervals on relative degradation.
@@ -923,7 +961,7 @@ from the corresponding author on reasonable request.
 \section*{Code availability}
 Analysis code implementing the unified operator, domain ablations and seismic
 facies pipeline will be deposited in a public repository upon publication.
-Training and evaluation protocols are summarised in Methods; detailed
+Training, evaluation and iso-performance protocols are summarised in Methods;
 configuration files accompany the deposit.
 
 % =============================================================================
@@ -1005,7 +1043,8 @@ SST range-dependent gain consistency map with sensor-graph scale caveat.}
 \begin{table}[!ht]
 \centering
 \caption{Operational facies ceilings (locked before regional map inspection).
-Axes are physics-indexed; cut-points are validation-chosen operational gates.}
+Axes are physics-indexed; cut-points are validation quantile-aligned gates
+(approximate \(33\%/67\%\) splits for coda slope and onset sharpness).}
 \label{stab:ceilings}
 \begin{tabular}{lc}
 \toprule
@@ -1089,27 +1128,49 @@ leftover is null against healthy aging and related endpoints. These analyses are
 included so the EEG thread is not silently truncated; they do not establish a
 biomarker and are not used in the main claims.
 
-\subsection*{Facies methodology note}
+\subsection*{Facies ceilings as quantile-aligned gates}
+\label{snote:ceilings}
 The three observables (coda slope, onset sharpness, \(\rho(\tau)\) lobe count)
-are chosen because they name attenuation duration, impulsiveness and multipath
-delay structure under a Huygens density. The five class boundaries are
-validation-chosen operational gates locked before geography. This combination is
-deliberate: physical axes, reproducible human thresholds. Replacing the gates by
-unsupervised clustering after seeing maps would break the logic of the paper;
-deriving exact numerical cut-points from a closed-form attenuation law is not
-claimed.
+name attenuation duration, impulsiveness and multipath delay structure under a
+Huygens density. On the validation export used to lock ceilings, the coda-fast
+and coda-slow bounds coincide with the approximate \(33\%\) and \(67\%\)
+quantiles of coda slope (\(-0.198\) and \(-0.113\)), while the onset-low and
+onset-high bounds coincide with the corresponding onset-sharpness quantiles
+(\(0.733\) and \(0.877\)). The peak-count ceiling separates single-lobed from
+multi-lobed \(\rho(\tau)\). A depth-limited decision tree and a random forest
+trained on these three validation features place impurity-minimising splits in
+the same neighbourhood (onset near \(0.73\)--\(0.88\); coda near \(-0.113\) and
+\(\approx-0.20\)). We therefore describe the decimals as
+\emph{quantile-aligned operational gates}: more objective than arbitrary
+hand-tuning, yet still an operational partition rather than a law of nature.
+Ceilings remain frozen before geographic inspection; replacing them by
+clustering after seeing maps would break the paper's logic.
 
+\subsection*{Observability and iso-performance neighbourhoods}
+\label{snote:observability}
+Let \(\mathcal{L}(\Theta)\) denote a probe loss (pick F1 on \stead{}, or
+envelope MSE on EEG/SST). An iso-performance set at tolerance \(\varepsilon\) is
+\[
+\{\Theta' : |\mathcal{L}(\Theta')-\mathcal{L}(\Theta^{\star})|\le\varepsilon\}.
+\]
+If that set is a thin island around \(\Theta^{\star}\), local observability is
+strong; if it forms an extended ridge, several parameter combinations are
+operationally equivalent under the probe. Empirically, Fresnel
+\((\gamma,\omega)\) behave more like islands under synthetic impulse recovery,
+whereas \(c\) behaves like a ridge (weak identification). For unified
+\((\delta,\sigma,\eta,\zeta)\), nearby points along \(\Theta(\lambda)\) change
+the operator continuously and therefore populate elongated level sets by
+construction; we report that geometry rather than claiming a unique F1
+maximiser. This is why geometry counterfactuals and named-corner recovery are
+required to elevate a coordinate from ``good score'' to ``mechanism reading''.
 
 \subsection*{Loss terms for the seismic probe (summary)}
-The training objective combines: detection cross-entropy with event-class
-upweight; P/S pick cross-entropy with positive-class upweight; a soft
-P-before-S order penalty; consistency and phase-preservation regularisers on
-noise windows; a wrong-peak penalty; mild \(\rho\) sparsity; and a weak prior
-on kernel parameters. Exact relative weights are fixed in the training
-configuration used for the canonical checkpoint and are deposited with the code.
-The purpose of listing them here is to show that picking usefulness is optimised
-directly, while facies analyses reuse a frozen checkpoint rather than
-re-optimising ceilings against geography.
+The training objective combines detection and P/S cross-entropy with a soft
+P-before-S order penalty, consistency regularisers on noise windows, a
+wrong-peak penalty, mild \(\rho\) sparsity, and a weak prior on kernel
+parameters. Relative weights are fixed for the canonical checkpoint. Picking
+usefulness is optimised directly; facies analyses reuse that frozen checkpoint
+without re-optimising ceilings against geography.
 
 \subsection*{Ridge design matrix for \(\beta_{\mathrm{res}}\)}
 Predictors entering the ridge expectation are
