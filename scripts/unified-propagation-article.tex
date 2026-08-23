@@ -543,7 +543,7 @@ be read as physics rather than as a leaderboard of architectures.
 \paragraph{Named corners as special cases.}
 Evaluating the unified operator at the named corners recovers the legacy
 kernels used in those ablations, and \(\alpha\equiv1\) probes on real EEG and
-SST windows recover the same preferred labels (Fig.~\ref{fig:cross}b). Piecewise
+SST windows recover the same preferred labels (Fig.~\ref{fig:cross}c,d). Piecewise
 paths among corners change amplitude and lag without pathological jumps under
 the continuity gates in Methods. \stead{}, EEG and SST therefore appear as
 distinct coordinates of one family. On synthetic systems with known
@@ -566,7 +566,7 @@ mid-path, travel-time damping peaks while residual delay remains---the discrete
 damped-wave phase suggested by Cattaneo/telegrapher relaxation. Empirically,
 mean lag on the primary wave-to-diffusion path collapses monotonically
 (\(0.523\rightarrow0\)), and phase labels traverse wave-like \(\rightarrow\)
-damped-wave \(\rightarrow\) diffusive (Fig.~\ref{fig:cross}c,d). This is
+damped-wave \(\rightarrow\) diffusive (Fig.~\ref{fig:cross}b). This is
 evidence that the mechanism chart is path-connected. As stated in the
 Introduction, it is not a Lyapunov proof for discrete trajectories. Linear
 mixtures of several free primitives are left aside: without additional
@@ -586,18 +586,12 @@ a stability theorem.
 
 \begin{figure*}[!t]
 \centering
-\figplaceholder{0.30\textheight}{%
-  Fig.~3 planned panels:\\[0.25em]
-  \textbf{(a)}~Matched-budget regime rankings\\
-  \textbf{(b)}~Corner recovery of legacy kernels\\
-  \textbf{(c)}~\(\Theta(\lambda)\): lag + damping\\
-  \textbf{(d)}~Impulse-response fingerprint along \(\lambda\)
-}
-\caption{\textbf{Cross-domain coordinates and continuum.}
-\textbf{a},~Regime rankings under matched budgets.
-\textbf{b},~Legacy kernels recovered at named corners.
-\textbf{c},~\(\Theta(\lambda)\): lag collapse and mid-path damping.
-\textbf{d},~Impulse fingerprint along \(\lambda\).}
+\includegraphics[width=\textwidth]{../docs/figures/unified/fig3_cross.pdf}
+\caption{\textbf{Cross-domain $\Theta^{\star}$ landings, continuum, and representative kernels.}
+\textbf{a},~Matched-budget $\Delta$MSE with preferred $\Theta^{\star}$ barcodes and mean lag.
+\textbf{b},~Dense Green fingerprint $G(t;\lambda)$ with empirical continuum observables.
+\textbf{c},~EEG case: Huygens amplitude with wave travel-time lags versus instantaneous lag $\equiv0$.
+\textbf{d},~SST case: graph-diffusion amplitude versus wave amplitude law.}
 \label{fig:cross}
 \end{figure*}
 
@@ -685,18 +679,12 @@ argument.
 
 \begin{figure*}[!t]
 \centering
-\figplaceholder{0.30\textheight}{%
-  Fig.~4 planned panels:\\[0.25em]
-  \textbf{(a)}~EEG geometry counterfactuals\\
-  \textbf{(b)}~LEMON replication\\
-  \textbf{(c)}~SST frozen reinjection\\
-  \textbf{(d)}~EEG vs SST reinjection depth
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/fig4_alpha.pdf}
 \caption{\textbf{Validating \(\alpha\).}
-\textbf{a},~EEG geometry counterfactuals.
-\textbf{b},~LEMON replication.
-\textbf{c},~SST frozen reinjection of a range-dependent gain.
-\textbf{d},~Graded EEG transfer versus SST full closure.}
+\textbf{a},~Fitted EEG \(\alpha(\hat{r})\); scalp edge field and geometry-binding CF forest stacked beside it.
+\textbf{b},~LEMON replication as Harden--LEMON agreement map (diagonal = same CF rise), with prior preference as an inset.
+\textbf{c},~SST held-out free\(\leftrightarrow\)named identity over the sensor-graph gain field; frozen RDG \(g(\hat{r})\) at centre.
+\textbf{d},~Reinjection depth: free\(\leftrightarrow\)named clouds and window-wise residual ridges (EEG partial vs SST full).}
 \label{fig:alpha}
 \end{figure*}
 
