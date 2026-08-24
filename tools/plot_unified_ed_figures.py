@@ -415,38 +415,70 @@ def plot_ed2(out_dir: Path, dpi: int):
 
 def plot_ed3(out_dir: Path, dpi: int):
     style()
+    cascadia_pdf = _REPO / "outputs/structure_residual_cascadia_volc/cascadia_volc_structure_residuals.pdf"
     cascadia_png = _REPO / "outputs/structure_residual_cascadia_volc/cascadia_volc_structure_residuals.png"
     jk = load_json(_REPO / "outputs/structure_residual_socal/socal_cell_jackknife.json")
     st_csv = pd.read_csv(_REPO / "outputs/structure_residual_cascadia_volc/sthelens_source_jackknife.csv")
     st = load_json(_REPO / "outputs/structure_residual_cascadia_volc/sthelens_source_jackknife.json")
 
-    # Fill cell with aspect='auto'; crop source title banner (we add panel tag ourselves).
-    img = _crop_whitespace(plt.imread(cascadia_png))
-    # drop embedded figure title / subtitle strip at top of source PNG
+    # High-res raster from vector PDF (fallback to PNG).
+    # Match panel height to image aspect so aspect='auto' does not stretch.
+    try:
+        img = _rasterize_pdf(cascadia_pdf, dpi=max(dpi, 500))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ed] pdftoppm failed ({exc}); using PNG")
+        img = plt.imread(cascadia_png)
+    img = _crop_whitespace(img)
     img = img[int(0.085 * img.shape[0]) :, :]
-    fig = plt.figure(figsize=(7.6, 10.2))
+    ih, iw = img.shape[:2]
+
+    left, right = 0.09, 0.98
+    fig_w = 7.6
+    content_w = fig_w * (right - left)
+    map_h = content_w * (ih / float(iw))
+    bot_h = 1.35
+    hspace = 0.225  # half of prior 0.45
+    # hspace consumes vertical space; pad fig height so map cell stays ~map_h inches
+    fig_h = (map_h + 2 * bot_h) * (1.0 + hspace) + 0.55
+    fig = plt.figure(figsize=(fig_w, fig_h))
     gs = GridSpec(
         3,
         1,
         figure=fig,
-        height_ratios=[3.4, 1.0, 1.0],
-        hspace=0.05,
-        left=0.08,
-        right=0.98,
-        top=0.97,
-        bottom=0.05,
+        height_ratios=[map_h, bot_h, bot_h],
+        hspace=hspace,
+        left=left,
+        right=right,
+        top=0.975,
+        bottom=0.045,
     )
 
     ax = fig.add_subplot(gs[0, 0])
     ax.set_axis_off()
-    ax.imshow(img, aspect="auto")
+    ax.imshow(img, aspect="auto", interpolation="lanczos", resample=True)
     ax.set_xticks([])
     ax.set_yticks([])
-    tag(ax, "a", r"Cascadia volcanic arc — structure residual of $\beta_{\mathrm{res}}$ and facies", y=1.005)
+    ax.text(
+        0.0,
+        1.015,
+        r"$\mathbf{a}$  Cascadia volcanic arc — structure residual of $\beta_{\mathrm{res}}$ and facies",
+        transform=ax.transAxes,
+        fontsize=7.4,
+        color=C_INK,
+        va="bottom",
+        ha="left",
+        clip_on=False,
+    )
 
     ax = fig.add_subplot(gs[1, 0])
     clean(ax)
-    tag(ax, "b", "SoCal same-station jackknife (Salton absorbing / ETR ringing)")
+    ax.set_title(
+        r"$\mathbf{b}$  SoCal same-station jackknife (Salton absorbing / ETR ringing)",
+        loc="left",
+        fontsize=7.4,
+        color=C_INK,
+        pad=6,
+    )
     sal = _jk_compact(jk["cells"]["salton"]["tests"])
     etr = _jk_compact(jk["cells"]["etr"]["tests"])
     etr_map = {t["test"]: t["site_delta_med"] for t in etr}
@@ -457,12 +489,12 @@ def plot_ed3(out_dir: Path, dpi: int):
     ax.plot(x, [t["site_delta_med"] for t in sal], "o-", color=C_SALTON, ms=5, lw=1.2, label="Salton")
     ax.plot(x, [etr_map.get(t["test"], np.nan) for t in sal], "s-", color=C_ETR, ms=5, lw=1.2, label="ETR")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=28, ha="right", fontsize=5.6)
+    ax.set_xticklabels(labels, rotation=22, ha="right", fontsize=5.6)
     ax.set_ylabel(r"site-median $\Delta\beta$")
     ax.legend(frameon=False, fontsize=6.2, loc="upper right", ncol=2)
     ax.text(
         0.01,
-        0.97,
+        0.92,
         "verdict: STABLE / STABLE",
         transform=ax.transAxes,
         fontsize=6.2,
@@ -474,7 +506,13 @@ def plot_ed3(out_dir: Path, dpi: int):
 
     ax = fig.add_subplot(gs[2, 0])
     clean(ax)
-    tag(ax, "c", "Cascadia jackknife — Mt St Helens–Cowlitz (Salton-signed replica)")
+    ax.set_title(
+        r"$\mathbf{c}$  Cascadia jackknife — Mt St Helens–Cowlitz (Salton-signed replica)",
+        loc="left",
+        fontsize=7.4,
+        color=C_INK,
+        pad=6,
+    )
     compact = _jk_compact(st_csv.to_dict("records"))
     labs = [_jk_label(t["test"]) for t in compact]
     ys = [t["site_delta_med"] for t in compact]
@@ -484,7 +522,7 @@ def plot_ed3(out_dir: Path, dpi: int):
     ax.bar(x, ys, color=C_OK, width=0.72, edgecolor="white", linewidth=0.4, zorder=2)
     ax.plot(x, ys, "o", color=C_INK, ms=3.5, zorder=3)
     ax.set_xticks(x)
-    ax.set_xticklabels(labs, rotation=28, ha="right", fontsize=5.6)
+    ax.set_xticklabels(labs, rotation=22, ha="right", fontsize=5.6)
     ax.set_ylabel(r"site-median $\Delta\beta$")
     ax.set_xlim(-0.6, len(labs) - 0.4)
     ymin, ymax = ax.get_ylim()
@@ -501,21 +539,22 @@ def plot_ed3(out_dir: Path, dpi: int):
             clip_on=False,
             zorder=5,
         )
-    ax.set_ylim(ymin, ymax + 0.22 * (ymax - ymin))
+    ax.set_ylim(ymin - 0.12 * (ymax - ymin), ymax + 0.28 * (ymax - ymin))
     ax.text(-0.55, band_y, "sign", fontsize=5.4, color=C_MUTED, va="center", ha="right", clip_on=False)
     ax.text(
-        0.01,
-        0.08,
+        0.99,
+        0.10,
         f"sign-stable {st['n_sign_stable']}/{st['n_tests']} · year LOO all neg · {st['verdict']}",
         transform=ax.transAxes,
-        ha="left",
+        ha="right",
         va="bottom",
         fontsize=5.8,
         color=C_OK,
         bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#A7F3D0", lw=0.6, alpha=0.92),
     )
 
-    save_fig(fig, out_dir, "edfig3_cascadia", dpi)
+    # higher export dpi so panel-a detail survives embedding
+    save_fig(fig, out_dir, "edfig3_cascadia", max(dpi, 500))
 
 
 # ---------------------------------------------------------------------------
@@ -749,6 +788,24 @@ def plot_ed5(out_dir: Path, dpi: int):
 # ---------------------------------------------------------------------------
 # ED6 — SST RDG (visual scale caveat)
 # ---------------------------------------------------------------------------
+
+def _rasterize_pdf(pdf_path: Path, dpi: int = 400) -> np.ndarray:
+    """Rasterize a single-page PDF to a high-res RGBA array via pdftoppm."""
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="ed_pdf_") as td:
+        stem = Path(td) / "page"
+        subprocess.run(
+            ["pdftoppm", "-png", "-r", str(dpi), str(pdf_path), str(stem)],
+            check=True,
+            capture_output=True,
+        )
+        pngs = sorted(Path(td).glob("page*.png"))
+        if not pngs:
+            raise FileNotFoundError(f"pdftoppm produced no PNG for {pdf_path}")
+        return plt.imread(pngs[0])
+
 
 def softplus(x):
     x = np.asarray(x, float)
