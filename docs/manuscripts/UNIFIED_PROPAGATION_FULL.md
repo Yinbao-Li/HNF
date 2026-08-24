@@ -1,7 +1,7 @@
 # Local propagation as a unified physical computational primitive: from Huygens seismic facies to cross-domain mechanism coordinates
 
 **LaTeX full manuscript:** `scripts/unified-propagation-article.tex`  
-(Compile: `pdflatex unified-propagation-article.tex`; Figs 1–4 are gray placeholders.)
+(Compile from `scripts/`: `pdflatex unified-propagation-article.tex`. Main Figs 1–4 and Extended Data Figs 1–6 live under `docs/figures/unified/`.)
 
 ---
 
@@ -16,7 +16,19 @@
 | **Table 1** | Full STEAD test vs EQTransformer / PhaseNet (**sn-article numbers**) |
 | **Table 2** | Domain \(\Theta^\star\) and α-closure summary |
 
-**Extended Data (not counted in 6):** independence vs \(q_c\), \(V_S\), \(Q_S\); Cascadia consistency; classical-coda geography control; unified special-case verify; SST physics-map caveat; hyper-parameters; optional clinical exploratory notes.
+**Extended Data (SI; regenerate with `tools/plot_unified_ed_figures.py`):**
+
+| ED | Label | Content |
+|--|--|--|
+| 1 | `edfig:faciesgeo` | Facies geography map + morphology-class characters |
+| 2 | `edfig:independence` | \(\beta_{\mathrm{res}}\) vs \(q_c\) / \(V_S\) / \(Q_S\) + leftover bars |
+| 3 | `edfig:cascadia` | Cascadia residual maps + SoCal / St Helens jackknives |
+| 4 | `edfig:classical` | Catalog-timed vs probe-timed coda control (\(n=4000\)) |
+| 5 | `edfig:unified` | \(\Theta(\lambda)\) lag, damping proxy, phase sequence |
+| 6 | `edfig:sstphys` | SST RDG \(g(\hat r)\) + near/mid/far + log-km scale caveat |
+
+Corner recovery of unified named backends: Supplementary Table `stab:corners` (not a figure panel).
+Clinical associations remain Supplementary Note only.
 
 ---
 

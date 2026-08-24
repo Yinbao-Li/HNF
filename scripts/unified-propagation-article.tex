@@ -459,7 +459,8 @@ Because \(\beta_{\mathrm{res}}\) is computed from a raw-envelope slope in an
 \(S\)-timed window, one can recompute the identical slope using \stead{} catalog
 \(S\) picks (\(n=4000\) SoCal traces). Catalog-timed and probe-timed slopes
 agree closely (\(r=0.96\)); \(\beta_{\mathrm{res}}\) maps agree at \(r=0.93\);
-same-station cell signs are essentially unchanged. Predicting probe
+same-station cell signs are essentially unchanged
+(Extended Data Fig.~\ref{edfig:classical}). Predicting probe
 \(\beta_{\mathrm{res}}\) from classical coda features already yields five-fold
 OOS \(R^{2}=0.711\); adding probe-specific latents (peak count, onset sharpness,
 facies indicators) yields \(\Delta R^{2}\approx0\). This control does not
@@ -566,7 +567,10 @@ mid-path, travel-time damping peaks while residual delay remains---the discrete
 damped-wave phase suggested by Cattaneo/telegrapher relaxation. Empirically,
 mean lag on the primary wave-to-diffusion path collapses monotonically
 (\(0.523\rightarrow0\)), and phase labels traverse wave-like \(\rightarrow\)
-damped-wave \(\rightarrow\) diffusive (Fig.~\ref{fig:cross}b). This is
+damped-wave \(\rightarrow\) instantaneous-like \(\rightarrow\)
+diffusive (Fig.~\ref{fig:cross}b; Extended Data Fig.~\ref{edfig:unified}).
+Named corners of the unified family recover legacy backends
+(Supplementary Table~\ref{stab:corners}). This is
 evidence that the mechanism chart is path-connected. As stated in the
 Introduction, it is not a Lyapunov proof for discrete trajectories. Linear
 mixtures of several free primitives are left aside: without additional
@@ -667,7 +671,8 @@ be frozen and reinjected on held-out seeds: the named form beats wrong and
 sign-flipped controls without refitting mechanism parameters
 (Fig.~\ref{fig:alpha}c). A companion consistency map aligns near-boost and
 mid-cut structure with SST contrast, with the important caveat that the scale is
-the sensor graph rather than a geophysical diffusivity in Rd. Transferring the
+the sensor graph rather than a geophysical diffusivity in Rd
+(Extended Data Fig.~\ref{edfig:sstphys}). Transferring the
 same range-dependent family to EEG only partially tracks free \(\alpha\)
 (about one-fifth of windows near-full; about half moderate; wrong forms still
 often beat named forms; Fig.~\ref{fig:alpha}d). Closure depth is therefore
@@ -892,7 +897,10 @@ as \(0\)--\(8\,\mathrm{km}\) column means at midpoints (resolved nodes only for
 magnitude / year) are called stable when \(\ge80\%\) of qualifying tests keep
 the expected sign with \(p<0.05\) and \(n_{\mathrm{sites}}\ge8\). Catalog-timed
 classical control recomputes the identical envelope slope with catalog \(S\) on
-\(n=4000\) SoCal traces.
+\(n=4000\) SoCal traces (Extended Data Fig.~\ref{edfig:classical}).
+Named-corner recovery of the unified operator versus legacy backends is
+summarised in Supplementary Table~\ref{stab:corners}; continuum fingerprints are
+in Extended Data Fig.~\ref{edfig:unified}.
 
 \paragraph{\(\alpha\) geometry and reinjection tests.}
 \(\alpha\) is fit only under the preferred prior. EEG tests compare
@@ -958,71 +966,103 @@ configuration files accompany the deposit.
 \section*{Supplementary Information}
 
 \subsection*{SI overview}
-Main-text display items remain four figures and two tables. The items below
-carry methodological detail and overflow evidence.
+Main-text display items remain four figures and two tables. The Extended Data
+items below carry methodological detail and overflow evidence:
+Extended Data Fig.~\ref{edfig:faciesgeo} (facies geography);
+Fig.~\ref{edfig:independence} (independence vs \(q_c\), \(V_S\), \(Q_S\));
+Fig.~\ref{edfig:cascadia} (Cascadia maps + jackknives);
+Fig.~\ref{edfig:classical} (catalog-timed coda control);
+Fig.~\ref{edfig:unified} (\(\Theta(\lambda)\) lag/damping fingerprints);
+Fig.~\ref{edfig:sstphys} (SST RDG physics + scale caveat).
+Corner recovery of unified named backends is tabulated
+(Supplementary Table~\ref{stab:corners}).
 
 \subsection*{Extended Data figures}
 
 \begin{figure}[!ht]
 \centering
-\figplaceholder{0.22\textheight}{%
-  ED Fig.~1 --- Facies geography on STEAD test catalogue
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/edfig1_faciesgeo.pdf}
 \caption{\textbf{Extended Data Fig.~\ref{edfig:faciesgeo}.}
 Geographic enrichment of five operational facies on the \stead{}
-local-earthquake test set (noise excluded).}
+local-earthquake test set (noise excluded; Cram\'er's \(V\approx0.37\)).
+\textbf{a},~Regional enrichment on the world map.
+\textbf{b},~Morphology-class characters
+(\(\rho\) shape, \(\beta_{\mathrm{res}}\), enrichment, Q).}
 \label{edfig:faciesgeo}
 \end{figure}
 
 \begin{figure}[!ht]
 \centering
-\figplaceholder{0.22\textheight}{%
-  ED Fig.~2 --- Independence vs \(q_c\), \(V_S\), \(Q_S\)
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/edfig2_independence.pdf}
 \caption{\textbf{Extended Data Fig.~\ref{edfig:independence}.}
 Independence checks for \(\beta_{\mathrm{res}}\) against classical \(q_c\),
-Berg upper-crust \(V_S\), and Lin \& Jordan direct-wave \(Q_S\).}
+Berg upper-crust \(V_S\), and Lin \& Jordan direct-wave \(Q_S\).
+\textbf{a},~Single-trace \(q_c\) correlates with \(\beta_{\mathrm{res}}\)
+(\(r\approx0.64\)), yet Salton/ETR remain separated.
+\textbf{b},~Within matched \(q_c\) terciles, slow-coda vs multipath medians
+still split.
+\textbf{c},~In a shared \(V_S\) band, \(\Delta\beta\approx+0.046\) persists
+(SPLIT).
+\textbf{d},~$Q_S$ is anti-aligned with the residual geography.
+Bottom,~leftover cell \(\Delta\beta\) after removing each observable.}
 \label{edfig:independence}
 \end{figure}
 
 \begin{figure}[!ht]
 \centering
-\figplaceholder{0.22\textheight}{%
-  ED Fig.~3 --- Cascadia consistency
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/edfig3_cascadia.pdf}
 \caption{\textbf{Extended Data Fig.~\ref{edfig:cascadia}.}
-Cascadia \(\beta_{\mathrm{res}}\) consistency examples and SoCal jackknife
-summary.}
+Cascadia \(\beta_{\mathrm{res}}\) consistency and jackknife stability.
+\textbf{a},~Cascadia volcanic-arc residual maps (observed \(\beta_{\mathrm{res}}\),
+structure residual, multipath and slow-coda residuals).
+\textbf{b},~SoCal same-station jackknife: Salton stays absorbing and ETR
+stays ringing across source-bin, magnitude, year-LOO and cap tests
+(STABLE/STABLE).
+\textbf{c},~Mt St Helens--Cowlitz jackknife \(\Delta\beta\) across the same
+test family (sign-stable 23/24; year LOO all negative; STABLE).}
 \label{edfig:cascadia}
 \end{figure}
 
 \begin{figure}[!ht]
 \centering
-\figplaceholder{0.20\textheight}{%
-  ED Fig.~4 --- Classical catalog-timed coda control
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/edfig4_classical.pdf}
 \caption{\textbf{Extended Data Fig.~\ref{edfig:classical}.}
-Catalog-timed versus probe-timed coda geography on \(n=4000\) SoCal traces.}
+Catalog-timed versus probe-timed coda geography on \(n=4000\) SoCal traces.
+\textbf{a},~$\beta_{\mathrm{res}}$ agreement (\(r\approx0.93\)).
+\textbf{b},~Coda-slope agreement (\(r\approx0.96\)).
+\textbf{c},~Same-station cell \(\Delta\beta\) reproduces Salton/ETR signs
+under both timings.
+\textbf{d},~OOS \(R^2\) bars: classical already predicts probe \(\beta\);
+adding probe latents yields \(\Delta R^2\approx0\).}
 \label{edfig:classical}
 \end{figure}
 
 \begin{figure}[!ht]
 \centering
-\figplaceholder{0.20\textheight}{%
-  ED Fig.~5 --- Operator-path continuity along \(\Theta(\lambda)\)
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/edfig5_unified.pdf}
 \caption{\textbf{Extended Data Fig.~\ref{edfig:unified}.}
-Corner recovery and \(\Theta(\lambda)\) lag/damping fingerprints.}
+Operator-path continuity along \(\Theta(\lambda)\).
+\textbf{a},~Mean lag collapses monotonically on the primary
+wave\(\rightarrow\)diffusion path.
+\textbf{b},~Telegrapher damping proxy \(\zeta=4\lambda(1-\lambda)\) peaks
+mid-path (damped-wave phase).
+\textbf{c},~Empirical phase sequence
+wave-like\(\rightarrow\)damped-wave\(\rightarrow\)instantaneous-like\(\rightarrow\)diffusive.
+(Named-corner recovery is reported in Supplementary
+Table~\ref{stab:corners}.)}
 \label{edfig:unified}
 \end{figure}
 
 \begin{figure}[!ht]
 \centering
-\figplaceholder{0.20\textheight}{%
-  ED Fig.~6 --- SST range-dependent gain consistency (sensor-graph scale)
-}
+\includegraphics[width=\textwidth]{../docs/figures/unified/edfig6_sstphys.pdf}
 \caption{\textbf{Extended Data Fig.~\ref{edfig:sstphys}.}
-SST range-dependent gain consistency map with sensor-graph scale caveat.}
+SST range-dependent gain consistency with sensor-graph scale caveat.
+\textbf{a},~Frozen RDG \(g(\hat r)\) with mid-range \(g_{\min}\).
+\textbf{b},~Near/mid/far consistency of \(g\) vs \(|\Delta\mathrm{SST}|\).
+\textbf{c},~Log-km scale ladder: near/mid/far mechanism bands versus a
+\(\sim50\)~km Rossby marker (not claimed); mid-range \(g_{\min}\) sits at
+\(O(10^3)\)~km on this 128-sensor graph.}
 \label{edfig:sstphys}
 \end{figure}
 
@@ -1094,6 +1134,26 @@ LEMON wrong-geometry & relative degradation \(\approx+67\%\) (CI \([0.37,1.09]\)
 SST range-dependent reinjection & named form beats wrong/sign-flip on held-out seeds \\
 EEG range-dependent transfer & partial (near-full \(\approx23\%\); moderate \(\approx46\%\)) \\
 \(\Theta(\lambda)\) wave\(\rightarrow\)diffusion & lag \(0.523\rightarrow0\); mid-path damping peak \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]
+\centering
+\caption{Unified named-corner recovery versus legacy backends
+(\(n=32\) probe nodes; amplitude absolute tolerance \(10^{-5}\)).
+All listed corners PASS; continuous-family fingerprints are in Extended Data
+Fig.~\ref{edfig:unified}.}
+\label{stab:corners}
+\begin{tabular}{lcc}
+\toprule
+Corner & max $|$amp unified $-$ legacy$|$ & Pass \\
+\midrule
+wave & \(3.0\times10^{-8}\) & yes \\
+instantaneous & \(0\) & yes \\
+diffusion & \(6.0\times10^{-8}\) & yes \\
+graph diffusion & \(1.8\times10^{-7}\) & yes \\
+graph diffusion (SST \(\ell=0.5\)) & \(0\) & yes \\
 \bottomrule
 \end{tabular}
 \end{table}
