@@ -1,0 +1,396 @@
+% =============================================================================
+% A Transferable Huygens Learning Protocol across Seismic, mmWave, and Molecules
+% Target: Nature Machine Intelligence (Paper B — protocol transfer)
+% Companion Paper A (regime / temporal necessity) is OUT OF SCOPE here.
+% Compile from scripts/: pdflatex nmi-paper-b-protocol.tex
+% =============================================================================
+\documentclass[twocolumn,10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,top=1.5cm,bottom=1.5cm,left=1.6cm,right=1.6cm,columnsep=0.65cm]{geometry}
+\usepackage{times,mathptmx,microtype}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx,booktabs,siunitx,url,hyperref,caption,subcaption,lineno,xcolor}
+\usepackage{enumitem}
+\linenumbers
+\setlist{nosep,leftmargin=*}
+\newcommand{\pnf}{\textsc{PNF}}
+\newcommand{\gap}{\texttt{gap}}
+
+\title{A transferable Huygens learning protocol\\
+across seismic time series, mmWave frames, and molecules}
+\author{
+  Yinbao Li\textsuperscript{1,*}, Chang Liu\textsuperscript{2}\\
+  \textsuperscript{1}Australian National University\\
+  \textsuperscript{2}Entropick Technology\\
+  \texttt{*boblee@entropick.cn}
+}
+\date{Draft for \emph{Nature Machine Intelligence} (Paper~B)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Cross-domain learning often reuses network motifs without reusing the
+\emph{falsification checks} that make an inductive bias scientific.
+We formulate a minimal \emph{Huygens learning protocol}: (i)~entities as
+secondary sources, (ii)~a distance kernel, (iii)~gather and readout, and
+(iv)~gates that scramble or occlude the intended distance.
+The same slots transfer across three public benchmarks with
+\emph{domain-appropriate} distance.
+On STEAD seismic phase picking, the Huygens axis is inter-sample time; time
+shuffle collapses mean P/S F1 from $0.980$ to $<0.01$.
+On RadHAR mmWave activity recognition, the axis is inter-frame time while
+points within a frame remain a simultaneous snapshot; a Wave+Pattern model
+matches a BiGRU baseline ($0.979$ vs $0.979$) and frame shuffle drops accuracy
+to $0.532$.
+On QM9 HOMO--LUMO \gap{} regression, the protocol becomes a geometric kernel on
+atomic distances and approaches a matched continuous-filter baseline
+(MAE $0.0063$ vs $0.0052$ Hartree), while coordinate scramble, first-neighbour
+shell occlusion, and feature-space distance controls all degrade performance.
+We claim a transferable \emph{protocol language}, not a universal spacetime
+wave backbone; maps of when inter-frame Huygens is necessary versus redundant
+are deferred to a companion study.
+\end{abstract}
+
+% -----------------------------------------------------------------------------
+\section*{Introduction}
+Modern scientific ML frequently exports architectures across sensors---CNNs,
+Transformers, message-passing GNNs---while leaving the \emph{meaning} of
+distance implicit.
+When a method is described as ``wave-like'' or ``physics-inspired'', reviewers
+rightly ask: what quantity is being treated as distance, and what happens when
+that quantity is destroyed?
+
+We answer with a protocol rather than a single backbone.
+A \textbf{Huygens learning protocol} fills five slots (Fig.~\ref{fig:protocol}):
+secondary sources; pairwise distance $d_{ij}$; a Huygens-style kernel
+$K(d_{ij})$; gather/readout; and pre-registered gates that break $d_{ij}$.
+The contribution is that these slots can be instantiated consistently on
+\begin{enumerate}[label=(\alph*)]
+\item seismic waveforms (STEAD)\cite{mousavi2019stead},
+\item mmWave frame sequences (RadHAR)\cite{singh2019radhar}, and
+\item static molecular graphs (QM9)\cite{ramakrishnan2014qm9},
+\end{enumerate}
+without forcing one physical delay story onto every modality.
+
+\paragraph{Simultaneous frames.}
+A modelling commitment that avoids a common category error:
+\emph{within one acquisition frame (or one time index), spatial sites are
+simultaneous}.
+Huygens acts along \emph{inter-frame / inter-sample} time when a sequence
+exists.
+Static molecules have no frame axis; they use Euclidean $r_{ij}$ as a
+\emph{geometric variant} of the same protocol language.
+We therefore do \emph{not} claim resolved electromagnetic delays among points
+inside a single RadHAR cloud, nor light-cone causality on QM9.
+
+\paragraph{Related work (brief).}
+Seismic picking networks (PhaseNet, EQTransformer)\cite{zhu2019phasenet,mousavi2020eqtransformer}
+and radar HAR models provide strong temporal baselines.
+SchNet-style continuous filters\cite{schutt2018schnet} are the natural geometric
+baseline for molecules.
+Our emphasis differs: not beating every baseline by a point, but showing that a
+shared Huygens \emph{slot language} plus gates travels across domains.
+
+% -----------------------------------------------------------------------------
+\section*{Huygens protocol}
+\label{sec:protocol}
+\paragraph{Slots.}
+Let entities $\{i\}$ carry source embeddings $s_i$.
+A kernel depends on a declared distance $d_{ij}$:
+\begin{equation}
+K_{ij}=K(d_{ij};\,\theta),\qquad
+h_i \leftarrow h_i + \mathrm{Agg}_j\!\big(K_{ij}\,h_j\big),
+\end{equation}
+with optional medium weights $\rho_i$ and a task head on pooled fields.
+Gates intervene on $d_{ij}$ at test time (or retrain with wrong distance) while
+holding architecture and compute roughly fixed.
+
+\paragraph{Temporal instantiation.}
+$d_{ij}$ is lag along the sequence axis $t$.
+Spatial coordinates at fixed $t$ may enter a readout (e.g.\ energy patterns) but
+are not treated as intra-frame travel times.
+
+\paragraph{Geometric instantiation.}
+$d_{ij}=\|R_i-R_j\|_2$ with cutoff $r_c$ (molecules).
+Amplitude may use an RBF filter bank (matched to continuous-filter baselines)
+while phase/envelope retain a Huygens form.
+
+\paragraph{Pre-registered gates.}
+\begin{itemize}
+\item \textbf{STEAD:} time shuffle / block shuffle / circular shift; pass if
+mean P/S F1 drops by $\ge 0.10$ absolute or $\ge 25\%$ relative.
+\item \textbf{RadHAR:} frame shuffle ($\ge 5$\,pp drop); history truncation
+(clean $\ge T{=}60 \ge T{=}30$ and clean${-}T30\ge 2$\,pp).
+\item \textbf{QM9:} H1 competitive with matched CFConv (M1); scramble MAE $>$
+clean; shell-1 occlusion hurts at least as much as shell-2; feature-distance
+control worse than geometric H1.
+\end{itemize}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{../outputs/nmi_paper_b/figures/fig1_protocol.pdf}
+\caption{\textbf{Shared protocol slots.}
+Each domain fills secondary sources, distance, kernel, gather/head, and gates.
+Distance is inter-sample/inter-frame time for sequences, and $r_{ij}$ for
+static molecules.}
+\label{fig:protocol}
+\end{figure*}
+
+% -----------------------------------------------------------------------------
+\section*{Results}
+
+\subsection*{Protocol gates across three domains}
+Figure~\ref{fig:gates} and Table~\ref{tab:gates} summarise the locked numbers
+(\texttt{outputs/nmi\_paper\_b/NUMBERS.json}).
+
+\paragraph{STEAD.}
+On a multi-scale Huygens--Fresnel picking checkpoint, clean mean P/S F1 is
+$0.980$.
+Permuting the time axis of $x\in\mathbb{R}^{T\times 3}$ (labels fixed) collapses
+the score to $6\times 10^{-4}$; block shuffle and large circular shifts likewise
+fail (gate \textbf{pass}).
+This is the temporal analogue of a geometry scramble: the model cannot retain
+picking skill without ordered time.
+
+\paragraph{RadHAR.}
+Wave+Pattern (T$=$120 frames) reaches $0.979$ accuracy on the official test
+split, matching BiGRU ($0.979$) and WaveGRU ($0.980$).
+Frame shuffle drops accuracy to $0.532$; shortening history to T$=$30 yields
+$0.821$ (gates \textbf{pass}).
+Time reversal alone is mild ($0.961$), consistent with activity cues that are
+partly reversible; the protocol knife is unordered frames and insufficient
+history, not every temporal transform.
+
+\paragraph{QM9 \gap{} (full, $n{=}133{,}885$).}
+Geometric Huygens H1 reaches MAE $0.0063$ Hartree versus CFConv M1 $0.0052$ and
+no-geometry M0 $0.0295$ (H1 within ${\sim}22\%$ of M1, ${\sim}4.7\times$ better
+than M0).
+Scramble MAE $0.090$; shell-1 occlusion $0.092$ versus shell-2 $0.013$;
+feature-distance training $0.039$ (gates \textbf{pass}).
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{../outputs/nmi_paper_b/figures/fig2_gates.pdf}
+\caption{\textbf{Protocol gates.}
+Destroying the declared distance collapses performance in all three domains.}
+\label{fig:gates}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\caption{Locked gate summary (Paper~B).}
+\label{tab:gates}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llr@{}}
+\toprule
+Domain & Condition & Score \\
+\midrule
+STEAD & clean mean P/S F1 & $0.980$ \\
+ & time shuffle & $0.001$ \\
+RadHAR & clean Acc & $0.979$ \\
+ & BiGRU Acc & $0.979$ \\
+ & frame shuffle Acc & $0.532$ \\
+ & history T$=$30 Acc & $0.821$ \\
+QM9 \gap{} & M0 / M1 / H1 MAE & $0.0295$ / $0.0052$ / $0.0063$ \\
+ & H1 scramble MAE & $0.090$ \\
+ & shell-1 / shell-2 MAE & $0.092$ / $0.013$ \\
+ & H1-feat MAE & $0.039$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{RadHAR: matched baseline, not a leaderboard chase}
+Accuracy among WaveGRU, Wave+Pattern, and BiGRU is saturated near $98\%$
+(Fig.~\ref{fig:radhar}).
+The scientific payload is therefore (i)~parity with a strong temporal baseline
+and (ii)~frame-shuffle collapse, plus an optional spatial-pattern readout that
+separates jack/jump via named Doppler-width statistics.
+Near$\to$far ``propagation along range'' alone underperforms; distributional
+spatial energy is the useful geometric complement to inter-frame Huygens.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../outputs/nmi_paper_b/figures/fig3_radhar.pdf}
+\caption{\textbf{RadHAR.}
+Claim model matches BiGRU; frame shuffle is the protocol null.}
+\label{fig:radhar}
+\end{figure}
+
+\subsection*{QM9: geometric variant and a negative control}
+Figure~\ref{fig:qm9} shows primary and gate bars for \gap{}.
+Internal energy U0 on the same full split is reported in Extended Data
+(Fig.~\ref{fig:u0}): H1 MAE $2.69$ versus M1 $0.70$.
+Thus the protocol can fail a target even when geometry gates still move---a
+useful reminder that ``Huygens slots filled'' $\neq$ ``any label solved''.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{../outputs/nmi_paper_b/figures/fig4_qm9.pdf}
+\caption{\textbf{QM9 \gap{}.}
+H1 approaches M1 and remains far above M0; gates stress geometry and locality.}
+\label{fig:qm9}
+\end{figure}
+
+% -----------------------------------------------------------------------------
+\section*{Discussion}
+What transfers is a \emph{discipline}: declare $d_{ij}$, implement $K(d_{ij})$,
+and publish gates that break $d_{ij}$.
+What does not transfer is a single delay ontology.
+Sequences use inter-frame time; co-temporal point sets do not invent travel
+times inside the frame; molecules substitute geometry for time.
+
+This framing also clarifies negative results.
+A prior mmWave regime study that asked whether \emph{intra-bin electromagnetic
+delay} selects a wave prior is a different question from the present
+inter-frame protocol; the two should not be conflated.
+Likewise, EEG snapshots at a fixed time index are simultaneous across channels
+under the same rule.
+
+\paragraph{Companion Paper~A.}
+When is inter-frame Huygens \emph{necessary} rather than merely usable?
+That requires a regime map (process timescale versus frame interval, causal
+versus anti-causal kernels) and is intentionally out of scope here.
+
+% -----------------------------------------------------------------------------
+\section*{Methods}
+\paragraph{STEAD.}
+We evaluate a multi-scale Huygens--Fresnel picking model
+(\texttt{outputs/run28/28\_ms\_fresnel\_phys\_50ep\_local/best.pt}) on the
+standard test split ($n{=}126{,}566$ windows in the logged null run).
+Waveforms are $x\in\mathbb{R}^{T\times 3}$ with $T{=}400$.
+Nulls permute or reverse the \emph{time} axis (dimension~1) while keeping
+detection/pick labels fixed.
+Metrics: detection F1 and P/S picking F1; primary score is mean P/S F1
+(``pick focus'').
+
+\paragraph{RadHAR.}
+Public RadHAR official Train/Test split\cite{singh2019radhar}; rich
+$312$-channel windows; claim model Wave~v3 + spatial pattern late fusion at
+T$=$120 (${\sim}4$\,s at $30$\,Hz).
+Baselines: WaveGRU and BiGRU at the same $T$.
+Nulls: independent frame permutation per window; front-zero history truncation
+to the last $60$ or $30$ frames.
+
+\paragraph{QM9.}
+Figshare XYZ molecules\cite{ramakrishnan2014qm9}; full cache $n{=}133{,}885$ with
+fixed seed split ($107{,}108$/$13{,}388$/$13{,}389$).
+Primary target: HOMO--LUMO \gap{} (Hartree).
+M0: bag-of-atoms MLP; M1: continuous-filter convolution (SchNet-style RBF
+filter); H1: Huygens phase/envelope $\times$ RBF amplitude with cutoff
+$5$\,\AA{} (parameter count ${\sim}55$k vs M1 ${\sim}34$k).
+Gates: Gaussian coordinate scramble; occlude neighbour shells
+$[0,1.8]$\,\AA{} vs $(1.8,3.2]$\,\AA{}; retrain with feature-space distances
+(H1-feat).
+U0 uses the same protocol as a negative control (Extended Data).
+
+\paragraph{Reproducibility.}
+Locked scalars: \texttt{outputs/nmi\_paper\_b/NUMBERS.json}.
+Figures: \texttt{tools/plot\_nmi\_paper\_b\_figures.py}.
+Null entry points: \texttt{tools/eval\_stead\_temporal\_null.py},
+\texttt{tools/eval\_radhar\_temporal\_null.py},
+\texttt{tools/train\_qm9\_huygens.py}.
+
+\section*{Limitations}
+We do not claim state-of-the-art on every metric; RadHAR accuracy is saturated.
+STEAD sample-efficiency learning curves are not the primary knife of Paper~B.
+Clinical EEG cohorts and rheology are demoted.
+Paper~A regime maps are deferred.
+QM9 H1 is competitive with, not strictly better than, M1 on \gap{}.
+
+\section*{Data availability}
+STEAD, RadHAR, and QM9 are public benchmarks as cited.
+Processed caches and null reports are stored under
+\texttt{outputs/stead/temporal\_null\_b2v2},
+\texttt{outputs/mmwave/radhar\_temporal\_null\_b3}, and
+\texttt{outputs/qm9/huygens\_full\_\{gap,u0\}}.
+
+\section*{Code availability}
+Training and evaluation scripts are in the project repository under
+\texttt{tools/} and \texttt{hnf/} as referenced in Methods.
+
+\begin{thebibliography}{9}
+\bibitem{mousavi2019stead}
+Mousavi, S.~M.\ et al.\
+\textit{Stanford Earthquake Dataset (STEAD)}.
+\textit{IEEE Access} (2019).
+\bibitem{singh2019radhar}
+Singh, A.~D.\ et al.\
+\textit{RadHAR: Human activity recognition from point clouds}.
+ACM mmNets (2019).
+\bibitem{ramakrishnan2014qm9}
+Ramakrishnan, R.\ et al.\
+\textit{Quantum chemistry structures and properties of 134 kilo molecules}.
+\textit{Sci.\ Data} (2014).
+\bibitem{zhu2019phasenet}
+Zhu, W.\ \& Beroza, G.~C.\
+\textit{PhaseNet}.
+\textit{Geophys.\ J.\ Int.} (2019).
+\bibitem{mousavi2020eqtransformer}
+Mousavi, S.~M.\ et al.\
+\textit{Earthquake transformer}.
+\textit{Nat.\ Commun.} (2020).
+\bibitem{schutt2018schnet}
+Sch{\"u}tt, K.~T.\ et al.\
+\textit{SchNet}.
+\textit{J.\ Chem.\ Phys.} (2018).
+\end{thebibliography}
+
+% =============================================================================
+\clearpage
+\onecolumn
+\section*{Extended Data}
+\subsection*{ED Fig.\ 1 --- U0 negative control}
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{../outputs/nmi_paper_b/figures/fig_si_u0.pdf}
+\caption{\textbf{Same protocol, harder label.}
+On full QM9, H1 approaches M1 on \gap{} but remains far worse on U0
+(MAE $2.69$ vs $0.70$).
+Protocol transfer is therefore target-dependent.}
+\label{fig:u0}
+\end{figure}
+
+\subsection*{ED Table 1 --- STEAD null detail}
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Condition & det F1 & P F1 & S F1 & mean P/S \\
+\midrule
+clean & $0.999$ & $0.984$ & $0.976$ & $0.980$ \\
+time shuffle & $0.016$ & $0.001$ & $0.000$ & $0.001$ \\
+block shuffle & $0.104$ & $0.012$ & $0.005$ & $0.009$ \\
+circular shift & $0.412$ & $0.003$ & $0.000$ & $0.001$ \\
+time reverse & $0.812$ & $0.108$ & $0.001$ & $0.055$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{ED Table 2 --- RadHAR null detail}
+\begin{center}
+\begin{tabular}{@{}lr@{}}
+\toprule
+Condition & Accuracy \\
+\midrule
+clean (Wave+Pattern) & $0.979$ \\
+WaveGRU & $0.980$ \\
+BiGRU & $0.979$ \\
+frame shuffle & $0.532$ \\
+time reverse & $0.961$ \\
+history T$=$60 & $0.940$ \\
+history T$=$30 & $0.821$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{ED Note --- Forbidden claims (author checklist)}
+\begin{itemize}
+\item Do not title the work as a ``validated universal wave backbone''.
+\item Do not equate RadHAR success with intra-frame EM light-cone tests.
+\item Do not treat QM9 geometric Huygens as spacetime propagation.
+\item Do not present U0 as a success; it is a negative control.
+\item Regime / temporal-necessity plots belong to Paper~A.
+\end{itemize}
+
+\end{document}
