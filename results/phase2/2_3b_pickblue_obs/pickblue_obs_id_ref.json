@@ -1,0 +1,143 @@
+{
+  "role": "OBS_in_distribution_reference_NOT_cross_domain",
+  "dataset": "SeisBench OBS",
+  "split": "test",
+  "component_order": "Z12H",
+  "n_channels": 4,
+  "paper_transfer_rows": "3C 21Z STEAD\u2192OBS zero-shot \u2014 do not merge tables",
+  "n_windows": 6932,
+  "n_with_s": 3152,
+  "n_padded": 1230,
+  "n_dead_channel_dropped": 0,
+  "bandpass": "1,45",
+  "hydrophone_highpass_hz": 0.5,
+  "p_range_sec": [
+    5.0,
+    30.0
+  ],
+  "tolerances": [
+    0.1,
+    0.2,
+    0.5
+  ],
+  "pick_threshold": 0.3,
+  "det_threshold": 0.5,
+  "results": {
+    "PickBlue(phasenet)-4C-Z12H": {
+      "0.1": {
+        "det_precision": 1.0,
+        "det_recall": 0.9619157530294288,
+        "det_f1": 0.9805882352941176,
+        "p_precision": 1.0,
+        "p_recall": 0.6586843623773803,
+        "p_f1": 0.7942250826230649,
+        "p_mae_sec": 0.03742663162505485,
+        "s_precision": 1.0,
+        "s_recall": 0.4698604060913706,
+        "s_f1": 0.6393265702568531,
+        "s_mae_sec": 0.041654287643484146
+      },
+      "0.2": {
+        "det_precision": 1.0,
+        "det_recall": 0.9619157530294288,
+        "det_f1": 0.9805882352941176,
+        "p_precision": 1.0,
+        "p_recall": 0.7811598384304674,
+        "p_f1": 0.8771361464323317,
+        "p_mae_sec": 0.054328716528162194,
+        "s_precision": 1.0,
+        "s_recall": 0.6110406091370558,
+        "s_f1": 0.7585663647105159,
+        "s_mae_sec": 0.06661474558670823
+      },
+      "0.5": {
+        "det_precision": 1.0,
+        "det_recall": 0.9619157530294288,
+        "det_f1": 0.9805882352941176,
+        "p_precision": 1.0,
+        "p_recall": 0.858193883439123,
+        "p_f1": 0.9236860492197811,
+        "p_mae_sec": 0.0774583963691362,
+        "s_precision": 1.0,
+        "s_recall": 0.7373096446700508,
+        "s_f1": 0.8487947406866325,
+        "s_mae_sec": 0.10810240963855412
+      },
+      "by_group_tol0.5": {
+        "obs_deep_ldeo_unshielded": {
+          "n": 634,
+          "p_f1": 0.90595340811044,
+          "s_f1": 0.8686210640608034
+        },
+        "obs_shallowshelf_shielded": {
+          "n": 908,
+          "p_f1": 0.8013201320132014,
+          "s_f1": 0.8024948024948024
+        },
+        "other": {
+          "n": 5390,
+          "p_f1": 0.9438620554521406,
+          "s_f1": 0.8561091010297801
+        }
+      }
+    },
+    "PickBlue(eqtransformer)-4C-Z12H": {
+      "0.1": {
+        "det_precision": 1.0,
+        "det_recall": 0.9831217541834968,
+        "det_f1": 0.9914890521568342,
+        "p_precision": 1.0,
+        "p_recall": 0.6344489324870167,
+        "p_f1": 0.7763459841129744,
+        "p_mae_sec": 0.0452569349704411,
+        "s_precision": 1.0,
+        "s_recall": 0.37753807106598986,
+        "s_f1": 0.5481345002303086,
+        "s_mae_sec": 0.04408403361344536
+      },
+      "0.2": {
+        "det_precision": 1.0,
+        "det_recall": 0.9831217541834968,
+        "det_f1": 0.9914890521568342,
+        "p_precision": 1.0,
+        "p_recall": 0.7814483554529718,
+        "p_f1": 0.877318001457608,
+        "p_mae_sec": 0.06391360531659558,
+        "s_precision": 1.0,
+        "s_recall": 0.49968274111675126,
+        "s_f1": 0.6663845991114872,
+        "s_mae_sec": 0.06901587301587293
+      },
+      "0.5": {
+        "det_precision": 1.0,
+        "det_recall": 0.9831217541834968,
+        "det_f1": 0.9914890521568342,
+        "p_precision": 1.0,
+        "p_recall": 0.8701673398730525,
+        "p_f1": 0.9305769824128356,
+        "p_mae_sec": 0.08921419098143119,
+        "s_precision": 1.0,
+        "s_recall": 0.5777284263959391,
+        "s_f1": 0.7323547154635031,
+        "s_mae_sec": 0.09981328940142781
+      },
+      "by_group_tol0.5": {
+        "obs_deep_ldeo_unshielded": {
+          "n": 634,
+          "p_f1": 0.919931856899489,
+          "s_f1": 0.7595238095238096
+        },
+        "obs_shallowshelf_shielded": {
+          "n": 908,
+          "p_f1": 0.8068331143232589,
+          "s_f1": 0.6153846153846153
+        },
+        "other": {
+          "n": 5390,
+          "p_f1": 0.9501363459291001,
+          "s_f1": 0.7549227506816116
+        }
+      }
+    }
+  }
+}

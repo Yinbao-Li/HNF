@@ -1,0 +1,17 @@
+{
+  "method": "cluster_bootstrap_on_dumps",
+  "sets": {
+    "stead_full": {
+      "status": "MISSING_DUMP",
+      "path": "results/phase2/2_7_ci/stead_full_hits.json"
+    },
+    "ethz_test": {
+      "status": "MISSING_DUMP",
+      "path": "results/phase2/2_7_ci/ethz_test_hits.json"
+    },
+    "obs_test": {
+      "status": "MISSING_DUMP",
+      "path": "results/phase2/2_7_ci/obs_test_hits.json"
+    }
+  }
+}

@@ -285,6 +285,21 @@ GPU reference: **NVIDIA RTX 3080 Ti** (same class as Table V). Epoch times from 
 | **2.6 ρ-scrub / waveform edit scale-up** | Dataset-level interventions | **CPU-heavy; ~4–20 h** wall depending on n | Supplement or drop |
 | **2.7 Cluster bootstrap + CIs** | Resample existing logits / picks | **CPU ~2–10 h**; little GPU | AE CIs; headline table CIs |
 
+## Phase 2 execution log (2026-11-16)
+
+| Item | Status | Artifacts | Key finding vs manuscript |
+|------|--------|-----------|---------------------------|
+| Spec | DONE | `docs/TGRS_TARGET_SPEC.md` | Verbatim; no main.tex |
+| **2.7** AE cluster CI | DONE (headline dumps in progress) | `results/phase2/2_7_ci/` | Minusil F1@tol50 Δ ours−pn_aug **negative** and excl 0; AP still +excl0. Scope AE F1 claim. |
+| **2.5** controlled compute | DONE | `results/phase2/2_5_compute/` | Throughput ~−9–12% vs Table V; MiB match; continuous win/s added |
+| **2.3B** PickBlue 4C | DONE | `results/phase2/2_3b_pickblue_obs/` | Separate ID table; n=6932 4C vs paper 11256 3C |
+| **2.3A** SeisT verify | STOP — await confirm | `results/phase2/2_3a_seist_verify/` | MIT; DiTing-trained weights — STEAD-only FAIL as published |
+| **2.2** matched budget | NOT STARTED | — | — |
+| **2.1** 20ep×3seeds | NOT STARTED | — | — |
+| **2.4** low-SNR design | NOT STARTED | — | design-only |
+| **2.6** ρ-scrub scale | REJECTED | (this AUDIT) | Not a manuscript claim; supplement or drop — **do not scale** |
+
+
 **Not started.** Awaiting per-item approval after Phase 1 acceptance.
 
 ## Phase 1 reproduce verification (local, 2026-11-16)

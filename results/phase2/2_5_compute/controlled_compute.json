@@ -1,0 +1,220 @@
+{
+  "protocol": {
+    "gpu": "NVIDIA GeForce RTX 3080 Ti",
+    "batch": 64,
+    "warmup_forwards": 20,
+    "timed_runs": 5,
+    "iters_per_run": 20,
+    "input": "6000x3",
+    "idle_snapshot": {
+      "gpu_util_pct": 38.0,
+      "mem_used_mib": 594.0
+    },
+    "note": "Median over timed_runs; peak MiB is median of per-run peaks."
+  },
+  "results": {
+    "ours": {
+      "params": 600916,
+      "fp32": {
+        "traces_per_s_runs": [
+          801.1250268094984,
+          801.9658423289451,
+          804.7215623807773,
+          804.43834379359,
+          809.8672443309938
+        ],
+        "traces_per_s_median": 804.43834379359,
+        "peak_mib_runs": [
+          1517.470703125,
+          1517.470703125,
+          1517.470703125,
+          1517.470703125,
+          1517.470703125
+        ],
+        "peak_mib_median": 1517.470703125
+      },
+      "bf16": {
+        "traces_per_s_runs": [
+          1068.102678278767,
+          1066.5788258022872,
+          1086.0435111833688,
+          1087.2363116662032,
+          1082.3066443123205
+        ],
+        "traces_per_s_median": 1082.3066443123205,
+        "peak_mib_runs": [
+          1312.4208984375,
+          1312.4208984375,
+          1312.4208984375,
+          1312.4208984375,
+          1312.4208984375
+        ],
+        "peak_mib_median": 1312.4208984375
+      },
+      "continuous_bf16": {
+        "stream_hours": 1.0,
+        "window_sec": 60.0,
+        "stride_sec": 30.0,
+        "n_windows": 119,
+        "wall_sec": 0.17441656393930316,
+        "windows_per_s": 682.2746493355523,
+        "stream_hours_per_wall_hour": 20640.2414925041,
+        "bf16": true
+      }
+    },
+    "EQTransformer": {
+      "params": 376935,
+      "fp32": {
+        "traces_per_s_runs": [
+          9570.686454374067,
+          9429.775084738347,
+          9413.4097647206,
+          9579.795440848698,
+          9405.723951643535
+        ],
+        "traces_per_s_median": 9429.775084738347,
+        "peak_mib_runs": [
+          69.06396484375,
+          69.06396484375,
+          69.06396484375,
+          69.06396484375,
+          69.06396484375
+        ],
+        "peak_mib_median": 69.06396484375
+      },
+      "bf16": {
+        "traces_per_s_runs": [
+          4675.3772193539635,
+          4661.4927226957025,
+          4682.477983525857,
+          4696.0538587766505,
+          4695.580147824593
+        ],
+        "traces_per_s_median": 4682.477983525857,
+        "peak_mib_runs": [
+          61.43505859375,
+          61.43505859375,
+          61.43505859375,
+          61.43505859375,
+          61.43505859375
+        ],
+        "peak_mib_median": 61.43505859375
+      },
+      "continuous_bf16": {
+        "stream_hours": 1.0,
+        "window_sec": 60.0,
+        "stride_sec": 30.0,
+        "n_windows": 119,
+        "wall_sec": 0.04929839004762471,
+        "windows_per_s": 2413.8719314168284,
+        "stream_hours_per_wall_hour": 73024.69708487883,
+        "bf16": true
+      }
+    },
+    "PhaseNet": {
+      "params": 268443,
+      "fp32": {
+        "traces_per_s_runs": [
+          29749.041036505263,
+          29251.955197194857,
+          29599.495674508165,
+          29855.242617645017,
+          29564.854466896002
+        ],
+        "traces_per_s_median": 29599.495674508165,
+        "peak_mib_runs": [
+          86.2900390625,
+          86.2900390625,
+          86.2900390625,
+          86.2900390625,
+          86.2900390625
+        ],
+        "peak_mib_median": 86.2900390625
+      },
+      "bf16": {
+        "traces_per_s_runs": [
+          28096.587553509442,
+          28300.028102982,
+          28077.80146974947,
+          27935.274401576346,
+          28331.166310432967
+        ],
+        "traces_per_s_median": 28096.587553509442,
+        "peak_mib_runs": [
+          52.38037109375,
+          52.38037109375,
+          52.38037109375,
+          52.38037109375,
+          52.38037109375
+        ],
+        "peak_mib_median": 52.38037109375
+      },
+      "continuous_bf16": {
+        "stream_hours": 1.0,
+        "window_sec": 60.0,
+        "stride_sec": 30.0,
+        "n_windows": 119,
+        "wall_sec": 0.027949373004958034,
+        "windows_per_s": 4257.698374088399,
+        "stream_hours_per_wall_hour": 128804.32056065743,
+        "bf16": true
+      }
+    }
+  },
+  "diff_vs_manuscript_table_v": {
+    "ours": {
+      "fp32": {
+        "manuscript_traces_per_s": 897.7763188424095,
+        "controlled_median_traces_per_s": 804.43834379359,
+        "rel_diff_pct": -10.396573521695169,
+        "manuscript_peak_mib": 1517.470703125,
+        "controlled_median_peak_mib": 1517.470703125,
+        "peak_mib_diff": 0.0
+      },
+      "bf16": {
+        "manuscript_traces_per_s": 1185.3213654750825,
+        "controlled_median_traces_per_s": 1082.3066443123205,
+        "rel_diff_pct": -8.690868498896352,
+        "manuscript_peak_mib": 1314.0302734375,
+        "controlled_median_peak_mib": 1312.4208984375,
+        "peak_mib_diff": -1.609375
+      }
+    },
+    "EQTransformer": {
+      "fp32": {
+        "manuscript_traces_per_s": 10534.753935891917,
+        "controlled_median_traces_per_s": 9429.775084738347,
+        "rel_diff_pct": -10.48889094019468,
+        "manuscript_peak_mib": 69.06396484375,
+        "controlled_median_peak_mib": 69.06396484375,
+        "peak_mib_diff": 0.0
+      },
+      "bf16": {
+        "manuscript_traces_per_s": 5184.196831511249,
+        "controlled_median_traces_per_s": 4682.477983525857,
+        "rel_diff_pct": -9.677851059508011,
+        "manuscript_peak_mib": 61.43505859375,
+        "controlled_median_peak_mib": 61.43505859375,
+        "peak_mib_diff": 0.0
+      }
+    },
+    "PhaseNet": {
+      "fp32": {
+        "manuscript_traces_per_s": 33498.55418710255,
+        "controlled_median_traces_per_s": 29599.495674508165,
+        "rel_diff_pct": -11.639482978329793,
+        "manuscript_peak_mib": 86.2900390625,
+        "controlled_median_peak_mib": 86.2900390625,
+        "peak_mib_diff": 0.0
+      },
+      "bf16": {
+        "manuscript_traces_per_s": 32123.4184102433,
+        "controlled_median_traces_per_s": 28096.587553509442,
+        "rel_diff_pct": -12.535499196591756,
+        "manuscript_peak_mib": 52.38037109375,
+        "controlled_median_peak_mib": 52.38037109375,
+        "peak_mib_diff": 0.0
+      }
+    }
+  }
+}

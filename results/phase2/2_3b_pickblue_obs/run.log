@@ -1,0 +1,9 @@
+2026-11-16 11:30:24,269 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs4c] 6932 windows (S=3152), dead=0, pad=1230
+[eval] PickBlue(phasenet)-4C-Z12H ...
+  tol0.1 P=0.7942 S=0.6393  tol0.2 P=0.8771 S=0.7586  tol0.5 P=0.9237 S=0.8488
+[eval] PickBlue(eqtransformer)-4C-Z12H ...
+  tol0.1 P=0.7763 S=0.5481  tol0.2 P=0.8773 S=0.6664  tol0.5 P=0.9306 S=0.7324
+[done] -> results/phase2/2_3b_pickblue_obs
+/home/bob/anaconda3/lib/python3.8/site-packages/seisbench/models/base.py:527: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  model_weights = torch.load(f"{path_pt}")

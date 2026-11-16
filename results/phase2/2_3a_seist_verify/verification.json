@@ -1,0 +1,15 @@
+{
+  "status": "awaiting_user_confirmation",
+  "recommended": {
+    "name": "seist_m_dpk_diting.pth",
+    "url": "https://raw.githubusercontent.com/senli1073/SeisT/main/pretrained/seist_m_dpk_diting.pth",
+    "content_length": 1848817,
+    "etag": "fc907f501426f603d9f257e25f603c8fd20711263bba2722098fc5143f696b47",
+    "train_set_published": "DiTing",
+    "license": "MIT"
+  },
+  "stead_only_trained": false,
+  "download_performed": false,
+  "adapter_written": false,
+  "eval_performed": false
+}

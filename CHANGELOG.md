@@ -50,3 +50,28 @@
 
 - Added `docs/TGRS_TARGET_SPEC.md` verbatim (agreed framing 2026-11-16); no edits to the text.
 - Reason: Phase 2 spending gate — every subsequent item must serve a line in this spec.
+
+## 2026-11-16 — Phase 2.7 AE cluster-bootstrap CIs
+
+- Added `tools/phase2_cluster_bootstrap_ci.py`, results under `results/phase2/2_7_ci/`.
+- Event/sensor/trace F1 CIs (n_boot=1000) + event AP (n_boot=200) on AE zs_seeds.
+- Finding: Minusil tol50 ΔF1 ours−pn_aug CI excludes 0 **against** ours; AP still favors ours. Headline dumps pending GPU dump.
+
+## 2026-11-16 — Phase 2.5 controlled compute re-bench
+
+- `tools/phase2_controlled_compute_bench.py` → `results/phase2/2_5_compute/`.
+- Protocol: idle GPU, batch=64, warmup=20, ≥5 runs median; continuous throughput for bf16.
+- Diff vs manuscript Table V: throughput −8.7% to −12.5%; MiB essentially unchanged. Did not edit main.tex.
+
+## 2026-11-16 — Phase 2.3 Path B PickBlue 4C OBS ID reference
+
+- `tools/phase2_pickblue_obs_id_ref.py` → `results/phase2/2_3b_pickblue_obs/`.
+- Separate table only; 4C Z12H; disclosures recorded. Not merged into STEAD→OBS transfer.
+
+## 2026-11-16 — Phase 2.3 Path A SeisT verification (STOP)
+
+- `results/phase2/2_3a_seist_verify/VERIFICATION.md`: URL/license/size/ETag OK; weights DiTing-trained → STEAD-only protocol FAIL as published. Download/adapter/eval deferred pending user choice (zero-shot DiTing / retrain STEAD / Path C).
+
+## 2026-11-16 — Phase 2.6 decision
+
+- ρ-scrub / waveform-edit scale-up: **rejected**. Not manuscript claims; keep as supplement case studies or drop. No new runs.

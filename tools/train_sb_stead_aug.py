@@ -64,6 +64,12 @@ def parse_args():
     p.add_argument("--aug-gap-prob", type=float, default=0.2)
     p.add_argument("--aug-channel-drop-prob", type=float, default=0.1)
     p.add_argument("--aug-phase-absent-prob", type=float, default=0.3)
+    p.add_argument("--resume", type=Path, default=None, help="Resume weights from checkpoint (continues epoch count)")
+    p.add_argument(
+        "--checkpoint-epochs",
+        default="",
+        help="Comma-separated absolute epoch numbers to also save as epXXXX.pt (e.g. 20,40,80,182)",
+    )
     return p.parse_args()
 
 
@@ -173,20 +179,35 @@ def main():
                               drop_last=True, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_ds, batch_size=64, shuffle=False, num_workers=args.num_workers)
     model = build(args.model).to(device)
+    start_ep = 1
+    history = []
+    if args.resume is not None:
+        ckpt = torch.load(args.resume, map_location="cpu")
+        model.load_state_dict(ckpt["state_dict"])
+        start_ep = int(ckpt.get("epoch", 0)) + 1
+        hist_path = args.output_dir / "history.json"
+        if hist_path.exists():
+            history = json.loads(hist_path.read_text())
+        print(f"[sb-aug] resume {args.resume} → next epoch {start_ep}", flush=True)
     n_params = sum(p.numel() for p in model.parameters())
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     steps = len(train_loader)
+    save_eps = {int(x) for x in args.checkpoint_epochs.split(",") if x.strip()}
 
     def lr_at(step):
-        e = step / steps
+        # Global step index across resumed training; cosine over full --epochs horizon.
+        e = (start_ep - 1) + step / steps
         if e < args.warmup:
             return (e + 1e-3) / args.warmup
         return 0.5 * (1 + math.cos(math.pi * (e - args.warmup) / max(args.epochs - args.warmup, 1e-6)))
 
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_at)
-    print(f"[sb-aug] {args.model} params={n_params} train={len(train_ds)} val={len(val_ds)} aug={aug}", flush=True)
-    history = []
-    for ep in range(1, args.epochs + 1):
+    print(
+        f"[sb-aug] {args.model} params={n_params} train={len(train_ds)} val={len(val_ds)} "
+        f"aug={aug} epochs={start_ep}..{args.epochs} save_eps={sorted(save_eps)}",
+        flush=True,
+    )
+    for ep in range(start_ep, args.epochs + 1):
         t0, losses = time.time(), []
         model.train()
         for batch in train_loader:
@@ -205,8 +226,11 @@ def main():
         history.append(row)
         print(f"ep{ep:02d} lr={row['lr']:.2e} loss={row['loss']:.4f} val det={m['det_f1']:.4f} "
               f"P={m['p_f1']:.4f} S={m['s_f1']:.4f} ({time.time() - t0:.0f}s)", flush=True)
-        torch.save({"model_name": args.model, "state_dict": model.state_dict(), "epoch": ep, "val": m},
-                   args.output_dir / "last.pt")
+        payload = {"model_name": args.model, "state_dict": model.state_dict(), "epoch": ep, "val": m}
+        torch.save(payload, args.output_dir / "last.pt")
+        if ep in save_eps:
+            torch.save(payload, args.output_dir / f"ep{ep:04d}.pt")
+            print(f"  saved ep{ep:04d}.pt", flush=True)
         (args.output_dir / "history.json").write_text(json.dumps(history, indent=2))
     print(f"[done] → {args.output_dir}", flush=True)
 
