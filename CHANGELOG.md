@@ -82,3 +82,8 @@
 - SeisT Path A FAIL (DiTing weights) → Path C claim-downgrade note; no download/eval.
 - STEAD dump P@0.5 CI excludes manuscript 0.988; ETHZ/OBS dump abs F1 ≪ paper eval — report only.
 
+
+## 2026-11-16 — 2.2 revised: stop 182-ep; align at 20 ep
+
+- User stopped matched-budget extension to 182. Comparison baseline stays EQT-aug/PN-aug at **20 ep** (already on disk).
+- Partial `results/phase2/2_2_matched_budget/eqt` run discarded for claims.

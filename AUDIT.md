@@ -294,7 +294,7 @@ GPU reference: **NVIDIA RTX 3080 Ti** (same class as Table V). Epoch times from 
 | **2.5** controlled compute | DONE | `results/phase2/2_5_compute/` | Throughput ~−9–12% vs Table V; MiB match; continuous win/s added |
 | **2.3B** PickBlue 4C | DONE | `results/phase2/2_3b_pickblue_obs/` | Separate ID table; n=6932 4C vs paper 11256 3C |
 | **2.3A** SeisT | FAIL → **Path C** | `results/phase2/2_3a_seist_verify/PATH_C.md` | No download/eval; downgrade modern STEAD-only land-picker claim |
-| **2.2** matched budget | NOT STARTED | — | — |
+| **2.2** matched budget | **REVISED→20 ep** | existing `outputs/sb_aug_*` | 182-ep run stopped; align at 20 ep only |
 | **2.1** 20ep×3seeds | NOT STARTED | — | — |
 | **2.4** low-SNR design | NOT STARTED | — | design-only |
 | **2.6** ρ-scrub scale | REJECTED | (this AUDIT) | Not a manuscript claim; supplement or drop — **do not scale** |
