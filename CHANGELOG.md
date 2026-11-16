@@ -1,0 +1,14 @@
+# CHANGELOG
+
+## 2026-11-16 — Phase 0 audit (no manuscript edits)
+
+- **Added** `AUDIT.md`: code–manuscript discrepancy audit (run28 vs c2f/v14), claim–evidence matrix for Abstract/Intro/Conclusion, TGRS compliance preview, and Phase 1–2 blockers.
+- **Reason:** User-requested Phase 0 deliverable before any manuscript changes; establish evidence-backed GO/NO-GO baseline for TGRS preparation.
+- **Not changed:** `paper/tgrs/main.tex`, run28 code path, checkpoints, or experiment outputs.
+
+## 2026-11-16 — Audit correction: PickBlue / DiTingMotion baselines
+
+- **Updated** `AUDIT.md` with CORRECTION section and revised Phase 2 item 3.
+- **Reason:** User correction — (1) PickBlue cannot be used as STEAD→OBS cross-domain baseline without deployment/event-overlap analysis and 3C vs 4C disclosure; at best an in-distribution OBS reference. (2) DiTingMotion has no SeisBench picking weights and is a polarity classifier, not a picker; must verify weight source or replace, not skip.
+- **Verified:** SeisBench 0.4.1 `PickBlue()` → 4C `Z12H` `from_pretrained("obs")`; paper OBS eval is 3C `21Z` on same corpus test split; `DiTingMotion` absent from SeisBench; Zhao 2023 task = FMP polarity.
+- **Not changed:** manuscript, code, or experiment outputs.
