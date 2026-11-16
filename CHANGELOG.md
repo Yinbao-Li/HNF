@@ -18,3 +18,10 @@
 - **Added** `LICENSE` (MIT), pinned `requirements.txt`, `REPRODUCE.md`, `configs/tgrs_v14/*`, `tools/reproduce_table_compute.py`, `paper/tgrs/expected/compute.{json,tex}`.
 - **Reason:** Approved Phase 1 reproducibility package for TGRS v14 (c2f); checkpoint stays on Release, not git.
 - **AUDIT:** appended ERRATA (obliquity ablation; non-physical vP/vS) and Phase 2 GPU-hour cost table (no training launched).
+
+## 2026-11-16 — Phase 1 commit ready; push needs your GitHub token
+
+- **Local commit:** `80a3041` — c2f code, configs, LICENSE, pinned requirements, REPRODUCE.md, README paper-model box.
+- **Local tag:** `tgrs-v14` → same commit.
+- **Reproduce smoke (local):** Table V Params → `600916` / `0.601` OK.
+- **Push blocked in agent environment** (HTTPS auth). Run the commands in the Phase 1 report.
