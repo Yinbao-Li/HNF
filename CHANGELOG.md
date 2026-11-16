@@ -45,3 +45,8 @@
 - SHA256 (local + `gh release download` + public curl): `b79743f8fbd524f25a763c30137de8b873585e6851bfb1d64edc912e9c0a60b1`.
 - Public URL verified: https://github.com/Yinbao-Li/HNF/releases/download/tgrs-v14/stead_c2f_imp_RSP_last.pt
 - Note: first minutes after upload returned public 404 (CDN); later closed-loop OK. Wrong temporary asset name `last.pt` was removed.
+
+## 2026-11-16 — Store agreed TGRS target spec
+
+- Added `docs/TGRS_TARGET_SPEC.md` verbatim (agreed framing 2026-11-16); no edits to the text.
+- Reason: Phase 2 spending gate — every subsequent item must serve a line in this spec.
