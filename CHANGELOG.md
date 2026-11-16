@@ -30,3 +30,18 @@
 
 - Re-ran `reproduce_table_compute.py` on CUDA and `paper_compute_bench.py` → `outputs/paper_tgrs/compute_rerun_2026-11-16.json`.
 - Params/MiB match expected; throughput ~9% below frozen paper numbers on same 3080 Ti (not used to edit manuscript).
+
+## 2026-11-16 — tgrs-v14 Release checkpoint upload BLOCKED (auth)
+
+- Local `outputs/stead_c2f_imp_RSP/last.pt` SHA256 verified OK:
+  `b79743f8fbd524f25a763c30137de8b873585e6851bfb1d64edc912e9c0a60b1` (matches REPRODUCE.md).
+- `gh` installed to `~/.local/bin/gh` (v2.62.0) but **not logged in** (`gh auth status`: not logged into any GitHub hosts).
+- **Did not upload**; did not put checkpoint into git. Manual upload required by owner.
+
+## 2026-11-16 — tgrs-v14 Release checkpoint upload COMPLETE
+
+- Created GitHub Release on existing tag `tgrs-v14` (tag was present; prior “release page” had no Release/assets — API listed 0 releases).
+- Asset: `stead_c2f_imp_RSP_last.pt` (7.1 MiB / 7411145 bytes).
+- SHA256 (local + `gh release download` + public curl): `b79743f8fbd524f25a763c30137de8b873585e6851bfb1d64edc912e9c0a60b1`.
+- Public URL verified: https://github.com/Yinbao-Li/HNF/releases/download/tgrs-v14/stead_c2f_imp_RSP_last.pt
+- Note: first minutes after upload returned public 404 (CDN); later closed-loop OK. Wrong temporary asset name `last.pt` was removed.
