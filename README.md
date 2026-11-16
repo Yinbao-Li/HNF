@@ -6,6 +6,22 @@ complex kernel models wave-like interactions; the same research pattern—
 is developed first on seismology (STEAD picking + Physics Decoder), then
 extended to EEG and sparse fluid flow.
 
+## TGRS manuscript model (v14 / c2f) — start here for the paper
+
+> **The IEEE TGRS draft (`paper/tgrs/`) uses the coarse-to-fine picker, not run28.**
+>
+> | | **Paper model (c2f)** | **Legacy run28 (still supported)** |
+> |---|------------------------|-------------------------------------|
+> | Code | `hnf/picking_coarse_to_fine.py` | `hnf/picking_model.py` |
+> | Train | `tools/train_stead_c2f_picking.py` | `scripts/experiments/run28_stead_ms_fresnel_phys.py` |
+> | Input | native **6000 @ 100 Hz** | resampled **`seq_len=800`** |
+> | Params | **0.601M** (`propose_refine`, R=4) | **~192k** |
+> | Config | `configs/tgrs_v14/` | run28 args under `outputs/run28/` |
+> | Weights | GitHub Release **`tgrs-v14`** asset `stead_c2f_imp_RSP_last.pt` | `outputs/run28/.../best.pt` |
+>
+> Reproduce paper tables: [`REPRODUCE.md`](REPRODUCE.md). License: [`LICENSE`](LICENSE).
+> Do **not** delete or break the run28 path; Parts I–III below still document it.
+
 ```
 I. Model                kernel, architecture, STEAD picking, Physics Decoder
 II. Interpretability    parameter proofs + physical-neuron probing
@@ -15,13 +31,14 @@ IV. Generalization      Domains II (EEG) / III (fluid rheology)
 
 | Stage | Canonical artifact | Headline result |
 |-------|--------------------|-----------------|
-| Picking | `outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt` | STEAD full test: det **0.9986** / P **0.9842** / S **0.9756** (MAE 0.021 / 0.088 s; ~192k params) |
+| **TGRS paper picking (c2f)** | Release `tgrs-v14` / `outputs/stead_c2f_imp_RSP/last.pt` | STEAD full test P/S F1 **0.988/0.975** @0.5 s (0.601M params) |
+| Picking (legacy run28) | `outputs/run28/28_ms_fresnel_phys_50ep_local/best.pt` | STEAD full test: det **0.9986** / P **0.9842** / S **0.9756** (MAE 0.021 / 0.088 s; ~192k params) |
 | Physics Decoder | `outputs/physics_decoder_run28_macro/best_physics_head.pt` | val VpRMSE **0.136**; large-N Route A2 **init** 0.173 (init-win 41 % vs perturb) |
 
-**One model runs the whole seismology story.** All of Parts I–III below use the
-single canonical picking checkpoint **run28** (`seq_len=800`, Huygens–Fresnel,
-50-epoch schedule). Everything else — interpretability, the Physics Decoder,
-magnitude/geography discovery — is computed *on top of this frozen backbone*.
+**Parts I–III (legacy narrative).** The interpretability / Physics Decoder /
+magnitude–geography sections below still use the frozen **run28** backbone
+(`seq_len=800`, Huygens–Fresnel). That path remains supported. The **TGRS
+submission numbers** come from **c2f** only — see the box above and `REPRODUCE.md`.
 
 Figures: [`docs/figures/`](docs/figures/). Outputs index: [`outputs/CURRENT.md`](outputs/CURRENT.md).
 Inversion notes: [`README_ZHIZI_INVERSION.md`](README_ZHIZI_INVERSION.md).

@@ -260,3 +260,36 @@ Keep Discussion “only EQT/PN”; strengthen to: no modern picker with redistri
 Blocking: dual-model public confusion; no LICENSE/REPRODUCE/tag; unmatched budget & multi-seed gaps; **modern picker baseline still unresolved under corrected PickBlue/DiTingMotion constraints**; Abstract Ridgecrest overclaim; author placeholders; scope framing; page budget uncleared.
 
 **Phase 0 complete (+ baseline correction).** Awaiting your approval before any manuscript edits or Phase 1 packaging.
+
+---
+
+## ERRATA (2026-11-16, post Phase-0 approval)
+
+1. **Obliquity ablation:** the manuscript discusses the Fresnel obliquity factor in the kernel but reports **no quantitative obliquity on/off ablation table, no n, and no effect size**. Do not imply an obliquity ablation was run unless new evidence is added.
+2. **Learned \(v_P/v_S\approx 0.9\):** already flagged in §interp as non-physical (`c` enters only through the obliquity factor). **Phase 3 rewrite must not describe learned `c` as velocity inversion / recoverable \(v_P,v_S\).** Keep the cautionary sentence; do not strengthen it into a physics claim.
+
+## Phase 2 cost estimates (no runs authorized yet)
+
+GPU reference: **NVIDIA RTX 3080 Ti** (same class as Table V). Epoch times from existing `history.json` / `run.log` on this machine. All items below need explicit approval before launch; anything >1 h must be re-confirmed.
+
+| Item | What would be run | Est. GPU-hours (3080 Ti) | Primary output |
+|------|-------------------|---------------------------|----------------|
+| **2.1 Multi-seed main** | Replicate full c2f lineage (~182 ep) × (3–5 seeds). At ~0.25–0.46 h/ep (950–1660 s). | **~45–85 h per seed** → **~140–420 h** for 3–5 seeds | mean±std on STEAD / ETHZ / OBS headline F1 |
+| **2.1 Multi-seed free-kernel** | Matched **20 ep** pair protocol (`pair_huygens`/`pair_free` style) × 3–5 seeds each | **~9.3 h × 2 × N_seeds** → **~56–93 h** for N=3–5 | Table kernel ablation with mean±std |
+| **2.1 (cheaper alt.)** | Only multi-seed the **20 ep** recipe for both Huygens and free (skip full 182 ep chain) | **~56–93 h** total | Weaker “main model” claim; disclose short schedule |
+| **2.2 Matched budget EQT-aug / PN-aug** | Extend from 20 ep to ~182 ep (or sensitivity at 20/40/80/182) | EQT ~4–6 min/ep → **~12–18 h** to 182 ep; PN ~2.6 min/ep → **~8–10 h**; sensitivity grid ~**1.5×** that | Fairness vs Table cross / Discussion budget note |
+| **2.3 Path A SeisT** | After weight verify: adapter + STEAD-only eval (no long train if using published ckpt) | **~2–8 h** eval across ETHZ/OBS/Ridgecrest/AE (mostly forward) | Modern land picker row |
+| **2.3 Path B PickBlue 4C** | Forward on OBS test 4C | **~1–3 h** | Separate OBS ID reference table |
+| **2.4 Low-SNR proposal fix** | Design unknown; if FT 6–12 ep from `imp_RSP` + SNR curve | **~3–8 h** FT + **~2–4 h** SNR sweep | Fig. snr / claim scope |
+| **2.5 Efficiency re-bench** | Table V + continuous throughput, same GPU all models | **~1–2 h** | Table V + stream metric |
+| **2.6 ρ-scrub / waveform edit scale-up** | Dataset-level interventions | **CPU-heavy; ~4–20 h** wall depending on n | Supplement or drop |
+| **2.7 Cluster bootstrap + CIs** | Resample existing logits / picks | **CPU ~2–10 h**; little GPU | AE CIs; headline table CIs |
+
+**Not started.** Awaiting per-item approval after Phase 1 acceptance.
+
+## Phase 1 reproduce verification (local, 2026-11-16)
+
+- **Table:** manuscript Table V (`compute`) — **Params** column only  
+- **Command:** `python tools/reproduce_table_compute.py --checkpoint outputs/stead_c2f_imp_RSP/last.pt --expected paper/tgrs/expected/compute.json --device cpu`  
+- **Result:** `n_params=600916`, `params_ok=True` (matches `Ours & 0.601` in `compute.tex` / `expected/compute.json`)  
+- **Not re-run here:** fp32/bf16 traces/s and MiB (no CUDA in this environment; hardware-dependent)

@@ -196,6 +196,41 @@ class HuygensAttention(nn.Module):
         return out
 
 
+class FreeKernelWaveBlock(nn.Module):
+    """Control for HuygensWaveBlock: same residual complex propagation u_out = u + proj(K * u), same causal
+    window shared across feature dims, but K is a free learned complex tap vector instead of a kernel
+    parameterised by wave speed / damping / frequency / medium. Signature-compatible (t, rho ignored)."""
+
+    def __init__(self, dim: int, window_bins: int, dropout: float = 0.0, **_unused):
+        super().__init__()
+        self.window = int(window_bins)
+        lag = torch.arange(self.window - 1, -1, -1, dtype=torch.float32)  # conv tap k ↔ lag W-1-k
+        decay = torch.exp(-lag / 20.0)
+        self.k_real = nn.Parameter(decay / decay.sum() + 0.01 * torch.randn(self.window))
+        self.k_imag = nn.Parameter(0.01 * torch.randn(self.window))
+        self.proj_real = nn.Linear(dim, dim, bias=False)
+        self.proj_imag = nn.Linear(dim, dim, bias=False)
+        self.norm_real = nn.LayerNorm(dim)
+        self.norm_imag = nn.LayerNorm(dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, h_real, h_imag, t=None, rho=None):
+        n = h_real.size(1)
+        device_type = "cuda" if h_real.is_cuda else "cpu"
+        with torch.amp.autocast(device_type=device_type, enabled=False):
+            h_r, h_i = h_real.float(), h_imag.float()
+            k = torch.complex(self.k_real, self.k_imag).flip(0)  # index = lag
+            size = n + self.window - 1
+            y = torch.fft.ifft(
+                torch.fft.fft(torch.complex(h_r, h_i), n=size, dim=1)
+                * torch.fft.fft(k, n=size).view(1, size, 1),
+                dim=1,
+            )[:, :n]
+            out_real = self.dropout(self.proj_real(y.real))
+            out_imag = self.dropout(self.proj_imag(y.imag))
+            return self.norm_real(h_r + out_real), self.norm_imag(h_i + out_imag)
+
+
 class HuygensWaveBlock(nn.Module):
     """
     惠更斯次波传播块: u_out = u + proj(Re(K @ u_complex))

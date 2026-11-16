@@ -1,0 +1,39 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3080 Ti",
+  "batch": 64,
+  "results": {
+    "ours": {
+      "params": 600916,
+      "fp32": {
+        "traces_per_s": 897.7763188424095,
+        "peak_mib": 1517.470703125
+      },
+      "bf16": {
+        "traces_per_s": 1185.3213654750825,
+        "peak_mib": 1314.0302734375
+      }
+    },
+    "EQTransformer": {
+      "params": 376935,
+      "fp32": {
+        "traces_per_s": 10534.753935891917,
+        "peak_mib": 69.06396484375
+      },
+      "bf16": {
+        "traces_per_s": 5184.196831511249,
+        "peak_mib": 61.43505859375
+      }
+    },
+    "PhaseNet": {
+      "params": 268443,
+      "fp32": {
+        "traces_per_s": 33498.55418710255,
+        "peak_mib": 86.2900390625
+      },
+      "bf16": {
+        "traces_per_s": 32123.4184102433,
+        "peak_mib": 52.38037109375
+      }
+    }
+  }
+}

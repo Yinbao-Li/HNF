@@ -12,3 +12,9 @@
 - **Reason:** User correction — (1) PickBlue cannot be used as STEAD→OBS cross-domain baseline without deployment/event-overlap analysis and 3C vs 4C disclosure; at best an in-distribution OBS reference. (2) DiTingMotion has no SeisBench picking weights and is a polarity classifier, not a picker; must verify weight source or replace, not skip.
 - **Verified:** SeisBench 0.4.1 `PickBlue()` → 4C `Z12H` `from_pretrained("obs")`; paper OBS eval is 3C `21Z` on same corpus test split; `DiTingMotion` absent from SeisBench; Zhao 2023 task = FMP polarity.
 - **Not changed:** manuscript, code, or experiment outputs.
+
+## 2026-11-16 — Phase 1 packaging (in progress)
+
+- **Added** `LICENSE` (MIT), pinned `requirements.txt`, `REPRODUCE.md`, `configs/tgrs_v14/*`, `tools/reproduce_table_compute.py`, `paper/tgrs/expected/compute.{json,tex}`.
+- **Reason:** Approved Phase 1 reproducibility package for TGRS v14 (c2f); checkpoint stays on Release, not git.
+- **AUDIT:** appended ERRATA (obliquity ablation; non-physical vP/vS) and Phase 2 GPU-hour cost table (no training launched).

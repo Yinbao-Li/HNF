@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from hnf import fused_band
+
 
 class HuygensKernel(nn.Module):
     """
@@ -401,9 +403,18 @@ class HuygensKernel(nn.Module):
     def dt_step_sec(self, seq_len: int, t: Optional[torch.Tensor] = None) -> float:
         """Seconds between adjacent samples (matches torch.linspace(0, 60, N))."""
         if t is not None and t.size(1) >= 2:
-            t0 = t[0, 0, 0] if t.dim() == 3 else t[0, 0]
-            t1 = t[0, 1, 0] if t.dim() == 3 else t[0, 1]
-            return float((t1 - t0).abs().item())
+            # .item() forces a host sync; cache per time-grid storage (in-place edits bump _version).
+            key = (t.device, t.data_ptr(), t._version, tuple(t.shape), tuple(t.stride()))
+            cache = self.__dict__.setdefault("_dt_cache", {})
+            dt = cache.get(key)
+            if dt is None:
+                t0 = t[0, 0, 0] if t.dim() == 3 else t[0, 0]
+                t1 = t[0, 1, 0] if t.dim() == 3 else t[0, 1]
+                dt = float((t1 - t0).abs().item())
+                if len(cache) > 64:
+                    cache.clear()
+                cache[key] = dt
+            return dt
         return 60.0 / max(seq_len - 1, 1)
 
     def window_bins(self, seq_len: int, t: Optional[torch.Tensor] = None) -> int:
@@ -477,6 +488,41 @@ class HuygensKernel(nn.Module):
                 return False
         return True
 
+    def _band_lag_coeffs(self, lags: torch.Tensor) -> torch.Tensor:
+        """Lag-only factor of the sparse-band kernel, shape (W,); rho term excluded."""
+        if self.is_aniso_diffusion():
+            coef = self._diffusion_amplitude_from_lag(lags) * self._phase_factor(lags)
+        else:
+            amp = self._spherical_amplitude_mag(lags)
+            if self.principle == "huygens_fresnel" or float(self.obliquity_mix.item()) > 0.0:
+                c = self.effective_wave_speed()
+                axial = (c * lags).clamp_min(0.0)
+                alpha = self.effective_obliquity_scale()
+                lateral2 = (alpha ** 2) * (lags.clamp_min(0.0) + self.eps)
+                cos_theta = (axial / torch.sqrt(axial ** 2 + lateral2 + self.eps)).clamp(-1.0, 1.0)
+                chi = 0.5 * (1.0 + cos_theta)
+                if self.principle == "huygens_fresnel":
+                    amp = amp * chi
+                else:
+                    mix = self.effective_obliquity_mix()
+                    amp = amp * (1.0 - mix + mix * chi)
+            amp = amp * torch.exp(-self.effective_gamma() * lags**2)
+            omega = self.effective_omega()
+            if self.use_complex:
+                if self.rhythm_phase:
+                    phase = torch.exp(1j * omega * lags)
+                else:
+                    phase = torch.ones_like(lags, dtype=torch.complex64)
+                if self.principle == "huygens_fresnel":
+                    phase = (1j) * phase
+                coef = amp.to(phase.dtype) * phase
+            else:
+                phase = torch.cos(omega * lags) if self.rhythm_phase else torch.ones_like(lags)
+                coef = amp * phase
+        coef = coef.reshape(-1)
+        lag_ok = lags.reshape(-1) <= (self.local_window_sec or 1e9) + 1e-6
+        return coef * lag_ok.to(coef.real.dtype if coef.is_complex() else coef.dtype)
+
     def forward_apply(
         self,
         h_c: torch.Tensor,
@@ -503,6 +549,9 @@ class HuygensKernel(nn.Module):
             torch.arange(1, w_max + 1, device=device, dtype=dtype_r).view(w_max, 1, 1)
             * dt_step
         )
+        if fused_band.can_use(h_c):
+            coef = self._band_lag_coeffs(lags)
+            return fused_band.band_apply(h_c, coef, lags.view(-1), rho)
         rows = torch.arange(n, device=device)
         src = rows.view(1, n) - torch.arange(1, w_max + 1, device=device).view(w_max, 1)
         valid = (src >= 0) & (lags.squeeze(-1) <= (self.local_window_sec or 1e9) + 1e-6)
