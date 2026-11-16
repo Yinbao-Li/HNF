@@ -75,3 +75,10 @@
 ## 2026-11-16 — Phase 2.6 decision
 
 - ρ-scrub / waveform-edit scale-up: **rejected**. Not manuscript claims; keep as supplement case studies or drop. No new runs.
+
+## 2026-11-16 — Phase 2.7 headline dumps + CI; Path A→C
+
+- Dumped STEAD/ETHZ/OBS hit arrays; recomputed cluster CIs.
+- SeisT Path A FAIL (DiTing weights) → Path C claim-downgrade note; no download/eval.
+- STEAD dump P@0.5 CI excludes manuscript 0.988; ETHZ/OBS dump abs F1 ≪ paper eval — report only.
+

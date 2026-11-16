@@ -290,10 +290,10 @@ GPU reference: **NVIDIA RTX 3080 Ti** (same class as Table V). Epoch times from 
 | Item | Status | Artifacts | Key finding vs manuscript |
 |------|--------|-----------|---------------------------|
 | Spec | DONE | `docs/TGRS_TARGET_SPEC.md` | Verbatim; no main.tex |
-| **2.7** AE cluster CI | DONE (headline dumps in progress) | `results/phase2/2_7_ci/` | Minusil F1@tol50 Δ ours−pn_aug **negative** and excl 0; AP still +excl0. Scope AE F1 claim. |
+| **2.7** cluster CI | DONE | `results/phase2/2_7_ci/` | AE: Minusil F1@50 reverse excl0; headline dumps+CIs in; ETHZ/OBS dump abs F1 suspect vs paper |
 | **2.5** controlled compute | DONE | `results/phase2/2_5_compute/` | Throughput ~−9–12% vs Table V; MiB match; continuous win/s added |
 | **2.3B** PickBlue 4C | DONE | `results/phase2/2_3b_pickblue_obs/` | Separate ID table; n=6932 4C vs paper 11256 3C |
-| **2.3A** SeisT verify | STOP — await confirm | `results/phase2/2_3a_seist_verify/` | MIT; DiTing-trained weights — STEAD-only FAIL as published |
+| **2.3A** SeisT | FAIL → **Path C** | `results/phase2/2_3a_seist_verify/PATH_C.md` | No download/eval; downgrade modern STEAD-only land-picker claim |
 | **2.2** matched budget | NOT STARTED | — | — |
 | **2.1** 20ep×3seeds | NOT STARTED | — | — |
 | **2.4** low-SNR design | NOT STARTED | — | design-only |
