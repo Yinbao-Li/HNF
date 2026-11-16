@@ -25,3 +25,8 @@
 - **Local tag:** `tgrs-v14` → same commit.
 - **Reproduce smoke (local):** Table V Params → `600916` / `0.601` OK.
 - **Push blocked in agent environment** (HTTPS auth). Run the commands in the Phase 1 report.
+
+## 2026-11-16 — Phase 1 GPU smoke (Table V)
+
+- Re-ran `reproduce_table_compute.py` on CUDA and `paper_compute_bench.py` → `outputs/paper_tgrs/compute_rerun_2026-11-16.json`.
+- Params/MiB match expected; throughput ~9% below frozen paper numbers on same 3080 Ti (not used to edit manuscript).

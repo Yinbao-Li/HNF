@@ -293,3 +293,10 @@ GPU reference: **NVIDIA RTX 3080 Ti** (same class as Table V). Epoch times from 
 - **Command:** `python tools/reproduce_table_compute.py --checkpoint outputs/stead_c2f_imp_RSP/last.pt --expected paper/tgrs/expected/compute.json --device cpu`  
 - **Result:** `n_params=600916`, `params_ok=True` (matches `Ours & 0.601` in `compute.tex` / `expected/compute.json`)  
 - **Not re-run here:** fp32/bf16 traces/s and MiB (no CUDA in this environment; hardware-dependent)
+
+## Phase 1 GPU re-verify (2026-11-16, RTX 3080 Ti)
+
+- Params smoke: still `600916` / `params_ok=True`.
+- Full `tools/paper_compute_bench.py` re-run → `outputs/paper_tgrs/compute_rerun_2026-11-16.json`.
+- **Exact match:** params; peak MiB (ours 1517/1314; EQT 69/61; PN 86/52).
+- **Throughput lower than frozen Table V** (same GPU class, load-dependent), e.g. ours fp32 **814** vs paper **898** tr/s (−9%); bf16 **1082** vs **1185** (−9%). Do not overwrite manuscript Table V with this rerun without a controlled re-bench protocol.
