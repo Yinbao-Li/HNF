@@ -159,6 +159,8 @@ def parse_args():
     p.add_argument("--new-lr-mult", type=float, default=10.0, help="lr multiplier for freshly added kalman params")
     p.add_argument("--wave-pos-weight", type=float, default=0.0,
                    help="positive weight of the physics-proposal loss (0 = pick-pos-weight); >1 favours recall")
+    p.add_argument("--proposal-head-only", action="store_true", default=False,
+                   help="freeze backbone+refine; train only p/s_wave_head and wave_bias")
     p.add_argument("--augment", action="store_true", default=True)
     p.add_argument("--no-augment", action="store_false", dest="augment")
     p.add_argument("--skip-final-test", action="store_true")
@@ -513,14 +515,30 @@ def main():
             model.load_state_dict(ckpt["state_dict"], strict=True)
         print(f"[c2f] resumed weights from {args.resume}", flush=True)
 
+    if args.proposal_head_only:
+        allow = ("p_wave_head.", "s_wave_head.", "wave_bias")
+        frozen = 0
+        for n, p in model.named_parameters():
+            if n.startswith(allow) or n == "wave_bias":
+                p.requires_grad = True
+            else:
+                p.requires_grad = False
+                frozen += p.numel()
+        print(f"[c2f] proposal-head-only: froze {frozen:,} params; trainable="
+              f"{sum(p.numel() for p in model.parameters() if p.requires_grad):,}", flush=True)
+
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[c2f] params={n_params:,}", flush=True)
 
-    new_p = [p for n, p in model.named_parameters() if n.startswith("kalman.")]
-    old_p = [p for n, p in model.named_parameters() if not n.startswith("kalman.")]
-    groups = [{"params": old_p, "lr_mult": 1.0}]
+    new_p = [p for n, p in model.named_parameters() if n.startswith("kalman.") and p.requires_grad]
+    old_p = [p for n, p in model.named_parameters() if (not n.startswith("kalman.")) and p.requires_grad]
+    groups = []
+    if old_p:
+        groups.append({"params": old_p, "lr_mult": 1.0})
     if new_p:
         groups.append({"params": new_p, "lr_mult": args.new_lr_mult})
+    if not groups:
+        raise RuntimeError("no trainable parameters")
     opt = torch.optim.AdamW(groups, lr=args.lr, weight_decay=args.weight_decay)
     use_amp = bool(args.amp and device.type == "cuda")
     need_scaler = use_amp and args.amp_dtype == "fp16"

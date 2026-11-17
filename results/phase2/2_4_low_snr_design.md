@@ -1,6 +1,6 @@
 # Phase 2.4 — Low-SNR proposal failure: design only (no runs)
 
-Status: **DESIGN SUBMITTED — await approval before any experiment.**
+Status: **EXECUTED → 未修复 + Prop1 rollback** (see `results/phase2/2_4_low_snr/CONCLUSION.md`).
 
 ## Failure to fix
 

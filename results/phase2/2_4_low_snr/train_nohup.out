@@ -1,0 +1,16 @@
+[2.4] start 2026-11-17T09:29:31+08:00
+[c2f] fine=6000 coarse=750 device=cuda amp=True lr=0.0001 schedule=cosine pos_w=1.0 th=0.3 sparse_band=True principle=huygens_fresnel
+[c2f] train=60000 val=8000 test=126566 (native labels @ 100 Hz → seq_len=6000)
+[c2f] resumed weights from outputs/stead_c2f_imp_RSP/last.pt
+[c2f] proposal-head-only: froze 565,775 params; trainable=35,141
+[c2f] params=35,141
+[c2f] resume baseline shifted P=0.9620 S=0.9637 select=0.9664
+[c2f] resume baseline val det=0.9783 P=0.9751 S=0.9647 pick_focus=0.9699
+ep01 lr=9.50e-05 loss=0.6167 skipped=0 val det=0.9783 P=0.9774 S=0.9640 pick_focus=0.9707 | shifted P=0.9657 S=0.9652 select=0.9681 (137s)
+ep02 lr=8.12e-05 loss=0.6221 skipped=0 val det=0.9783 P=0.9774 S=0.9645 pick_focus=0.9709 | shifted P=0.9666 S=0.9648 select=0.9683 (137s)
+ep03 lr=6.11e-05 loss=0.6193 skipped=0 val det=0.9783 P=0.9776 S=0.9648 pick_focus=0.9712 | shifted P=0.9666 S=0.9653 select=0.9686 (135s)
+ep04 lr=3.89e-05 loss=0.6162 skipped=0 val det=0.9783 P=0.9769 S=0.9649 pick_focus=0.9709 | shifted P=0.9663 S=0.9653 select=0.9684 (136s)
+ep05 lr=1.88e-05 loss=0.6166 skipped=0 val det=0.9783 P=0.9772 S=0.9644 pick_focus=0.9708 | shifted P=0.9667 S=0.9652 select=0.9684 (136s)
+ep06 lr=4.95e-06 loss=0.6082 skipped=0 val det=0.9783 P=0.9771 S=0.9646 pick_focus=0.9708 | shifted P=0.9666 S=0.9649 select=0.9683 (136s)
+[done] → outputs/stead_c2f_2_4_proposal_head
+[2.4] train done 2026-11-17T09:46:27+08:00

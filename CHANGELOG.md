@@ -101,3 +101,10 @@
 - Fixed `phase2_dump_headline_hits.py` to `run_c2f` + metrics_at counts; STEAD now matches manuscript 0.988.
 - Recomputed headline+AE CIs; Minusil tol50 reverse still stands. Details: `results/phase2/2_7_ci/CORRECTION.md`.
 
+## 2026-11-17 — Phase B / 2.4 low-SNR: 未修复 + Prop1 rollback
+
+- Cond1: −5 dB P misses proposal-dominated (`results/phase2/2_4_low_snr/diagnosis_*.json`).
+- Pre-registered MAD-normalized proposal + proposal-head-only FT; −5 dB P F1 Δ=+0.016 (&lt;+0.05 → 未修复).
+- Prop1: ethz_dev created=1 → rolled back SNR-aware code; shipping ckpt remains `imp_RSP`.
+- Deliverable: `results/phase2/2_4_low_snr/{RESULTS,CONCLUSION}.json|md`. No main.tex; Phase C not started.
+
