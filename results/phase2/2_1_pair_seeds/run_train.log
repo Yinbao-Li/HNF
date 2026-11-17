@@ -1,0 +1,72 @@
+[2.1] start 2026-11-16T13:39:01+08:00
+[2.1] train huygens seed=43 → results/phase2/2_1_pair_seeds/huygens_seed43 2026-11-16T13:39:01+08:00
+[2.1] done huygens seed=43 2026-11-16T18:42:32+08:00
+[2.1] train free seed=43 → results/phase2/2_1_pair_seeds/free_seed43 2026-11-16T18:42:32+08:00
+[2.1] done free seed=43 2026-11-16T22:50:35+08:00
+[2.1] train huygens seed=44 → results/phase2/2_1_pair_seeds/huygens_seed44 2026-11-16T22:50:35+08:00
+[2.1] done huygens seed=44 2026-11-17T03:41:52+08:00
+[2.1] train free seed=44 → results/phase2/2_1_pair_seeds/free_seed44 2026-11-17T03:41:52+08:00
+[2.1] done free seed=44 2026-11-17T07:49:31+08:00
+[2.1] training complete; running eval aggregate 2026-11-17T07:49:31+08:00
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f huygens=results/phase2/2_1_pair_seeds/huygens_seed42/last.pt --seisbench  --dataset ethz --device cuda --output results/phase2/2_1_pair_seeds/eval/huygens_seed42_ethz.json
+2026-11-17 07:49:33,986 | seisbench | WARNING | Check available storage and memory before downloading and general use of ETHZ dataset. Dataset size: waveforms.hdf5 ~22Gb, metadata.csv ~13Mb
+[ethz] 9655 event windows (dead-channel dropped 0) (5448 with S), padded 1
+  huygens          tol0.1 P=0.9005 S=0.8659  tol0.2 P=0.9406 S=0.9376  tol0.5 P=0.9577 S=0.9706
+[done] → results/phase2/2_1_pair_seeds/eval/huygens_seed42_ethz.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f huygens=results/phase2/2_1_pair_seeds/huygens_seed42/last.pt --seisbench  --dataset obs --device cuda --output results/phase2/2_1_pair_seeds/eval/huygens_seed42_obs.json
+2026-11-17 07:50:31,838 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs] 11256 event windows (dead-channel dropped 0) (5949 with S), padded 1268
+  huygens          tol0.1 P=0.5026 S=0.4746  tol0.2 P=0.5858 S=0.6242  tol0.5 P=0.6223 S=0.7353
+[done] → results/phase2/2_1_pair_seeds/eval/huygens_seed42_obs.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f huygens=results/phase2/2_1_pair_seeds/huygens_seed43/last.pt --seisbench  --dataset ethz --device cuda --output results/phase2/2_1_pair_seeds/eval/huygens_seed43_ethz.json
+2026-11-17 07:51:18,811 | seisbench | WARNING | Check available storage and memory before downloading and general use of ETHZ dataset. Dataset size: waveforms.hdf5 ~22Gb, metadata.csv ~13Mb
+[ethz] 9655 event windows (dead-channel dropped 0) (5448 with S), padded 1
+  huygens          tol0.1 P=0.9087 S=0.8651  tol0.2 P=0.9445 S=0.9401  tol0.5 P=0.9603 S=0.9717
+[done] → results/phase2/2_1_pair_seeds/eval/huygens_seed43_ethz.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f huygens=results/phase2/2_1_pair_seeds/huygens_seed43/last.pt --seisbench  --dataset obs --device cuda --output results/phase2/2_1_pair_seeds/eval/huygens_seed43_obs.json
+2026-11-17 07:52:16,107 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs] 11256 event windows (dead-channel dropped 0) (5949 with S), padded 1268
+  huygens          tol0.1 P=0.5131 S=0.4695  tol0.2 P=0.5904 S=0.6147  tol0.5 P=0.6283 S=0.7290
+[done] → results/phase2/2_1_pair_seeds/eval/huygens_seed43_obs.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f huygens=results/phase2/2_1_pair_seeds/huygens_seed44/last.pt --seisbench  --dataset ethz --device cuda --output results/phase2/2_1_pair_seeds/eval/huygens_seed44_ethz.json
+2026-11-17 07:53:03,590 | seisbench | WARNING | Check available storage and memory before downloading and general use of ETHZ dataset. Dataset size: waveforms.hdf5 ~22Gb, metadata.csv ~13Mb
+[ethz] 9655 event windows (dead-channel dropped 0) (5448 with S), padded 1
+  huygens          tol0.1 P=0.9066 S=0.8611  tol0.2 P=0.9447 S=0.9366  tol0.5 P=0.9604 S=0.9726
+[done] → results/phase2/2_1_pair_seeds/eval/huygens_seed44_ethz.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f huygens=results/phase2/2_1_pair_seeds/huygens_seed44/last.pt --seisbench  --dataset obs --device cuda --output results/phase2/2_1_pair_seeds/eval/huygens_seed44_obs.json
+2026-11-17 07:54:01,052 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs] 11256 event windows (dead-channel dropped 0) (5949 with S), padded 1268
+  huygens          tol0.1 P=0.5270 S=0.4772  tol0.2 P=0.5999 S=0.6213  tol0.5 P=0.6345 S=0.7314
+[done] → results/phase2/2_1_pair_seeds/eval/huygens_seed44_obs.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f free=results/phase2/2_1_pair_seeds/free_seed42/last.pt --seisbench  --dataset ethz --device cuda --output results/phase2/2_1_pair_seeds/eval/free_seed42_ethz.json
+2026-11-17 07:54:47,746 | seisbench | WARNING | Check available storage and memory before downloading and general use of ETHZ dataset. Dataset size: waveforms.hdf5 ~22Gb, metadata.csv ~13Mb
+[ethz] 9655 event windows (dead-channel dropped 0) (5448 with S), padded 1
+  free             tol0.1 P=0.8938 S=0.8645  tol0.2 P=0.9391 S=0.9416  tol0.5 P=0.9590 S=0.9744
+[done] → results/phase2/2_1_pair_seeds/eval/free_seed42_ethz.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f free=results/phase2/2_1_pair_seeds/free_seed42/last.pt --seisbench  --dataset obs --device cuda --output results/phase2/2_1_pair_seeds/eval/free_seed42_obs.json
+2026-11-17 07:55:44,386 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs] 11256 event windows (dead-channel dropped 0) (5949 with S), padded 1268
+  free             tol0.1 P=0.4962 S=0.4853  tol0.2 P=0.5896 S=0.6424  tol0.5 P=0.6397 S=0.7549
+[done] → results/phase2/2_1_pair_seeds/eval/free_seed42_obs.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f free=results/phase2/2_1_pair_seeds/free_seed43/last.pt --seisbench  --dataset ethz --device cuda --output results/phase2/2_1_pair_seeds/eval/free_seed43_ethz.json
+2026-11-17 07:56:29,937 | seisbench | WARNING | Check available storage and memory before downloading and general use of ETHZ dataset. Dataset size: waveforms.hdf5 ~22Gb, metadata.csv ~13Mb
+[ethz] 9655 event windows (dead-channel dropped 0) (5448 with S), padded 1
+  free             tol0.1 P=0.8915 S=0.8664  tol0.2 P=0.9376 S=0.9409  tol0.5 P=0.9576 S=0.9748
+[done] → results/phase2/2_1_pair_seeds/eval/free_seed43_ethz.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f free=results/phase2/2_1_pair_seeds/free_seed43/last.pt --seisbench  --dataset obs --device cuda --output results/phase2/2_1_pair_seeds/eval/free_seed43_obs.json
+2026-11-17 07:57:25,836 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs] 11256 event windows (dead-channel dropped 0) (5949 with S), padded 1268
+  free             tol0.1 P=0.4841 S=0.4828  tol0.2 P=0.5798 S=0.6282  tol0.5 P=0.6302 S=0.7453
+[done] → results/phase2/2_1_pair_seeds/eval/free_seed43_obs.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f free=results/phase2/2_1_pair_seeds/free_seed44/last.pt --seisbench  --dataset ethz --device cuda --output results/phase2/2_1_pair_seeds/eval/free_seed44_ethz.json
+2026-11-17 07:58:11,734 | seisbench | WARNING | Check available storage and memory before downloading and general use of ETHZ dataset. Dataset size: waveforms.hdf5 ~22Gb, metadata.csv ~13Mb
+[ethz] 9655 event windows (dead-channel dropped 0) (5448 with S), padded 1
+  free             tol0.1 P=0.8930 S=0.8704  tol0.2 P=0.9352 S=0.9407  tol0.5 P=0.9537 S=0.9743
+[done] → results/phase2/2_1_pair_seeds/eval/free_seed44_ethz.json
+[eval] /home/bob/anaconda3/bin/python tools/eval_ethz_cross.py --c2f free=results/phase2/2_1_pair_seeds/free_seed44/last.pt --seisbench  --dataset obs --device cuda --output results/phase2/2_1_pair_seeds/eval/free_seed44_obs.json
+2026-11-17 07:59:07,675 | seisbench | WARNING | Found inconsistent component orders between data format and metadata. Using values from metadata.
+[obs] 11256 event windows (dead-channel dropped 0) (5949 with S), padded 1268
+  free             tol0.1 P=0.4877 S=0.4836  tol0.2 P=0.5799 S=0.6391  tol0.5 P=0.6243 S=0.7539
+[done] → results/phase2/2_1_pair_seeds/eval/free_seed44_obs.json
+[done] → results/phase2/2_1_pair_seeds
+[2.1] ALL DONE 2026-11-17T07:59:51+08:00

@@ -1,11 +1,6 @@
-# Phase 2 status (2026-11-16)
+# Phase 2 status — CLOSED (2026-11-17)
 
-## Completed
-Spec, 2.7, 2.5, 2.3B, 2.3A→Path C, 2.4, 2.6; 2.2 revised to 20-ep (no 182).
+All approved Phase 2 items finished or revised/rejected.  
+See `results/phase2/PHASE2_SUMMARY.md`. **Do not auto-enter Phase 3.**
 
-## Running
-**2.1** pair × seeds 42(reuse)+43+44 — `results/phase2/2_1_pair_seeds/`
-(~9.2 h/run × 4 new ≈ 37 h)
-
-## After 2.1
-Phase 2 summary; no Phase 3.
+Pending only if user later approves: **2.4** low-SNR experiment (design on file).

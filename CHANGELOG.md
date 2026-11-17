@@ -87,3 +87,10 @@
 
 - User stopped matched-budget extension to 182. Comparison baseline stays EQT-aug/PN-aug at **20 ep** (already on disk).
 - Partial `results/phase2/2_2_matched_budget/eqt` run discarded for claims.
+
+## 2026-11-17 — Phase 2.1 complete; Phase 2 closed
+
+- Pair Huygens vs free × seeds 42/43/44 finished; ETHZ/OBS eval + mean±std in `results/phase2/2_1_pair_seeds/`.
+- Finding: at 20 ep, free ≈/slightly above Huygens on F1 — scope kernel claims away from accuracy win.
+- Wrote `results/phase2/PHASE2_SUMMARY.md`. No Phase 3; no main.tex edits.
+
