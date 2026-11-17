@@ -1,0 +1,521 @@
+{
+  "checkpoint": "outputs/stead_c2f_imp_RSP/last.pt",
+  "seed": 0,
+  "n_perm": 200,
+  "pre_registered_bar": {
+    "perm_improvement": "perm_p<0.05 and R2>0.02",
+    "incremental_delta_r2": ">0.02 on STEAD",
+    "exogenous": "|Spearman|>=0.05 and p<0.01 vs distance/snr/depth/ps_gap",
+    "transfer": "same-sign exo on ETHZ (p<0.05) OR ETHZ delta_r2>0.01"
+  },
+  "stead_val": {
+    "p": {
+      "n_valid": 4000,
+      "feat_names": [
+        "ref_at_gt",
+        "ref_at_prop",
+        "tanh_ref_gt",
+        "shift_full_prop_s"
+      ],
+      "perm_predict_physics_abs_err": {
+        "r2_mean": -0.15235100517347297,
+        "r2_std": 0.2802681441422356,
+        "n": 4000,
+        "perm_p": 0.9,
+        "perm_null_mean": -0.1756104301627362
+      },
+      "perm_predict_improvement": {
+        "r2_mean": 0.17698052672722392,
+        "r2_std": 0.6734142670405725,
+        "n": 4000,
+        "perm_p": 0.0,
+        "perm_null_mean": -1.2650595994217135
+      },
+      "incremental": {
+        "r2_physics_features_on_full_err": {
+          "r2_mean": 0.3361094530701682,
+          "r2_std": 0.7174784682074572,
+          "n": 4000
+        },
+        "r2_physics_plus_residual_on_full_err": {
+          "r2_mean": 0.9193333956919572,
+          "r2_std": 0.09496629712198137,
+          "n": 4000
+        },
+        "delta_r2": 0.5832239426217889
+      },
+      "exogenous_spearman": {
+        "snr_db": {
+          "vs_abs_ref_at_gt": {
+            "rho": 0.2580414705025919,
+            "p": 7.3603296618138815e-62,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": 0.15787601256672196,
+            "p": 9.675623122642103e-24,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": 0.17284969872394654,
+            "p": 3.362213024990346e-28,
+            "n": 4000
+          }
+        },
+        "distance_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.4623674535240578,
+            "p": 4.20913277769073e-211,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": -0.009165819267609709,
+            "p": 0.5622327561162208,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": -0.12134021304391049,
+            "p": 1.357499456133974e-14,
+            "n": 4000
+          }
+        },
+        "depth_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.1391594192492969,
+            "p": 9.443048820563363e-19,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": 0.05088300891003147,
+            "p": 0.0012854719959357473,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": -0.007199181684137905,
+            "p": 0.6489798776342025,
+            "n": 4000
+          }
+        },
+        "ps_gap_s": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.4792313192199395,
+            "p": 7.857858230286866e-229,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": 0.004220804128350526,
+            "p": 0.7895732228468412,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": -0.11767826431904423,
+            "p": 8.2509382096342e-14,
+            "n": 4000
+          }
+        }
+      },
+      "noise_contrast": {
+        "event_mean_abs_ref_at_gt": 1.786722183227539,
+        "noise_mean_abs_ref": 8.626483452796936,
+        "event_over_noise_ratio": 0.20712057155204255
+      },
+      "summary_stats": {
+        "mean_abs_err_prop_s": 0.3618549704551697,
+        "mean_abs_err_full_s": 0.09492498636245728,
+        "mean_improvement_s": 0.2669299840927124,
+        "frac_improved": 0.965
+      }
+    },
+    "s": {
+      "n_valid": 4000,
+      "feat_names": [
+        "ref_at_gt",
+        "ref_at_prop",
+        "tanh_ref_gt",
+        "shift_full_prop_s"
+      ],
+      "perm_predict_physics_abs_err": {
+        "r2_mean": -0.28597996889044836,
+        "r2_std": 0.5399842438959663,
+        "n": 4000,
+        "perm_p": 0.995,
+        "perm_null_mean": -0.014728028683083125
+      },
+      "perm_predict_improvement": {
+        "r2_mean": 0.21476016542087156,
+        "r2_std": 0.9529097200105688,
+        "n": 4000,
+        "perm_p": 0.0,
+        "perm_null_mean": -0.04250800488678756
+      },
+      "incremental": {
+        "r2_physics_features_on_full_err": {
+          "r2_mean": 0.67183549943015,
+          "r2_std": 0.3307740197280189,
+          "n": 4000
+        },
+        "r2_physics_plus_residual_on_full_err": {
+          "r2_mean": 0.710416341729054,
+          "r2_std": 0.3134274731279193,
+          "n": 4000
+        },
+        "delta_r2": 0.03858084229890402
+      },
+      "exogenous_spearman": {
+        "snr_db": {
+          "vs_abs_ref_at_gt": {
+            "rho": 0.18361206716325418,
+            "p": 1.150398062862469e-31,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": 0.056804260106347496,
+            "p": 0.00032514458147478686,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": 0.07480205709618333,
+            "p": 2.179186706110032e-06,
+            "n": 4000
+          }
+        },
+        "distance_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.45645417538948907,
+            "p": 4.060948592076933e-205,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": -0.1678385143468178,
+            "p": 1.1631948452306831e-26,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": -0.2154205311399377,
+            "p": 3.2595126048336955e-43,
+            "n": 4000
+          }
+        },
+        "depth_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.13699253083167118,
+            "p": 3.2460296836337638e-18,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": -0.026836409347873943,
+            "p": 0.08968556316801435,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": -0.04475669830720548,
+            "p": 0.00463742748972702,
+            "n": 4000
+          }
+        },
+        "ps_gap_s": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.4680301199949938,
+            "p": 6.049627191379246e-217,
+            "n": 4000
+          },
+          "vs_shift_full_prop": {
+            "rho": -0.1673173227950563,
+            "p": 1.671134685898159e-26,
+            "n": 4000
+          },
+          "vs_improve": {
+            "rho": -0.2113807862829582,
+            "p": 1.2290136535219318e-41,
+            "n": 4000
+          }
+        }
+      },
+      "noise_contrast": {},
+      "summary_stats": {
+        "mean_abs_err_prop_s": 0.32708749175071716,
+        "mean_abs_err_full_s": 0.22391998767852783,
+        "mean_improvement_s": 0.10316749662160873,
+        "frac_improved": 0.84225
+      }
+    }
+  },
+  "ethz_dev": {
+    "p": {
+      "n_valid": 2500,
+      "feat_names": [
+        "ref_at_gt",
+        "ref_at_prop",
+        "tanh_ref_gt",
+        "shift_full_prop_s"
+      ],
+      "perm_predict_physics_abs_err": {
+        "r2_mean": 0.15269192893139444,
+        "r2_std": 0.04622607441569873,
+        "n": 2500,
+        "perm_p": 0.0,
+        "perm_null_mean": -0.009207431492451306
+      },
+      "perm_predict_improvement": {
+        "r2_mean": -0.5125900081713775,
+        "r2_std": 1.2570452529557297,
+        "n": 2500,
+        "perm_p": 0.995,
+        "perm_null_mean": -0.029183478642699226
+      },
+      "incremental": {
+        "r2_physics_features_on_full_err": {
+          "r2_mean": 0.9143351679345011,
+          "r2_std": 0.09523400399055022,
+          "n": 2500
+        },
+        "r2_physics_plus_residual_on_full_err": {
+          "r2_mean": 0.922031736196702,
+          "r2_std": 0.0929349281011739,
+          "n": 2500
+        },
+        "delta_r2": 0.007696568262200887
+      },
+      "exogenous_spearman": {
+        "snr_db": {
+          "vs_abs_ref_at_gt": {
+            "rho": 0.1408543866967019,
+            "p": 1.4999614836989694e-12,
+            "n": 2500
+          },
+          "vs_shift_full_prop": {
+            "rho": 0.38804385299627764,
+            "p": 1.2259775048415343e-90,
+            "n": 2500
+          },
+          "vs_improve": {
+            "rho": 0.3756672574394611,
+            "p": 1.274110553687976e-84,
+            "n": 2500
+          }
+        },
+        "distance_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_shift_full_prop": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_improve": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          }
+        },
+        "depth_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_shift_full_prop": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_improve": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          }
+        },
+        "ps_gap_s": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.21301233571280068,
+            "p": 7.680894868878791e-14,
+            "n": 1206
+          },
+          "vs_shift_full_prop": {
+            "rho": -0.030460647237970342,
+            "p": 0.2905249255932306,
+            "n": 1206
+          },
+          "vs_improve": {
+            "rho": -0.08108769281838858,
+            "p": 0.004836979539370374,
+            "n": 1206
+          }
+        }
+      },
+      "noise_contrast": {},
+      "summary_stats": {
+        "mean_abs_err_prop_s": 0.7954479455947876,
+        "mean_abs_err_full_s": 0.5481759905815125,
+        "mean_improvement_s": 0.24727199971675873,
+        "frac_improved": 0.932
+      }
+    },
+    "s": {
+      "n_valid": 1206,
+      "feat_names": [
+        "ref_at_gt",
+        "ref_at_prop",
+        "tanh_ref_gt",
+        "shift_full_prop_s"
+      ],
+      "perm_predict_physics_abs_err": {
+        "r2_mean": -1.8592482870461797,
+        "r2_std": 3.853781815264318,
+        "n": 1206,
+        "perm_p": 0.985,
+        "perm_null_mean": -0.6276279226956712
+      },
+      "perm_predict_improvement": {
+        "r2_mean": -0.6357065482086668,
+        "r2_std": 0.7810370930490819,
+        "n": 1206,
+        "perm_p": 0.93,
+        "perm_null_mean": -6.3025718152691645
+      },
+      "incremental": {
+        "r2_physics_features_on_full_err": {
+          "r2_mean": 0.3956116693600472,
+          "r2_std": 0.4543197176445074,
+          "n": 1206
+        },
+        "r2_physics_plus_residual_on_full_err": {
+          "r2_mean": 0.9720612055088687,
+          "r2_std": 0.04278143928580258,
+          "n": 1206
+        },
+        "delta_r2": 0.5764495361488214
+      },
+      "exogenous_spearman": {
+        "snr_db": {
+          "vs_abs_ref_at_gt": {
+            "rho": 0.2130076258262877,
+            "p": 7.690784191082752e-14,
+            "n": 1206
+          },
+          "vs_shift_full_prop": {
+            "rho": 0.05166158150131689,
+            "p": 0.07290653661487782,
+            "n": 1206
+          },
+          "vs_improve": {
+            "rho": 0.08448026058386295,
+            "p": 0.00332477885405543,
+            "n": 1206
+          }
+        },
+        "distance_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_shift_full_prop": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_improve": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          }
+        },
+        "depth_km": {
+          "vs_abs_ref_at_gt": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_shift_full_prop": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          },
+          "vs_improve": {
+            "rho": null,
+            "p": null,
+            "n": 0
+          }
+        },
+        "ps_gap_s": {
+          "vs_abs_ref_at_gt": {
+            "rho": -0.42627864233618085,
+            "p": 1.9919797007186321e-54,
+            "n": 1206
+          },
+          "vs_shift_full_prop": {
+            "rho": -0.094251918419868,
+            "p": 0.0010490239288445096,
+            "n": 1206
+          },
+          "vs_improve": {
+            "rho": -0.21775218946039776,
+            "p": 2.0720005573270626e-14,
+            "n": 1206
+          }
+        }
+      },
+      "noise_contrast": {},
+      "summary_stats": {
+        "mean_abs_err_prop_s": 0.43984246253967285,
+        "mean_abs_err_full_s": 0.26414594054222107,
+        "mean_improvement_s": 0.17569652199745178,
+        "frac_improved": 0.824212271973466
+      }
+    }
+  },
+  "verdict": {
+    "exploratory_pass": true,
+    "checks": {
+      "perm_improvement": true,
+      "incremental_delta_r2": true,
+      "exogenous": true,
+      "transfer": true
+    },
+    "exogenous_hit": {
+      "covariate": "snr_db",
+      "key": "vs_abs_ref_at_gt",
+      "rho": 0.2580414705025919,
+      "p": 7.3603296618138815e-62
+    },
+    "transfer_detail": {
+      "type": "same_sign_exo",
+      "rho": 0.1408543866967019,
+      "p": 1.4999614836989694e-12,
+      "n": 2500,
+      "covariate": "snr_db",
+      "key": "vs_abs_ref_at_gt"
+    },
+    "claim_language_if_pass": "Refine residual carries transferable predictive information not explained by physics-proposal features alone (exploratory; not a discovery of new physics).",
+    "claim_language_if_fail": "Residual knowledge probe did not meet pre-registered bar; do not add a 'new knowledge in residual' claim to TGRS."
+  },
+  "verdict_s_informational": {
+    "exploratory_pass": true,
+    "checks": {
+      "perm_improvement": true,
+      "incremental_delta_r2": true,
+      "exogenous": true,
+      "transfer": true
+    },
+    "exogenous_hit": {
+      "covariate": "snr_db",
+      "key": "vs_abs_ref_at_gt",
+      "rho": 0.18361206716325418,
+      "p": 1.150398062862469e-31
+    },
+    "transfer_detail": {
+      "type": "same_sign_exo",
+      "rho": 0.2130076258262877,
+      "p": 7.690784191082752e-14,
+      "n": 1206,
+      "covariate": "snr_db",
+      "key": "vs_abs_ref_at_gt"
+    },
+    "claim_language_if_pass": "Refine residual carries transferable predictive information not explained by physics-proposal features alone (exploratory; not a discovery of new physics).",
+    "claim_language_if_fail": "Residual knowledge probe did not meet pre-registered bar; do not add a 'new knowledge in residual' claim to TGRS."
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "strict_feats": "ref_at_gt,ref_at_prop,tanh_ref_gt (no shift_full_prop)",
+  "stead_p": {
+    "perm_imp": {
+      "r2_mean": 0.011954240915522663,
+      "r2_std": 0.06814553466341233,
+      "n": 4000,
+      "perm_p": 0.0,
+      "perm_null_mean": -0.041549341111440735
+    },
+    "delta_r2": -9.943665907857143,
+    "exo_snr": {
+      "rho": 0.2580414705025919,
+      "p": 7.3603296618138815e-62,
+      "n": 4000
+    },
+    "exo_dist": {
+      "rho": -0.4623674535240578,
+      "p": 4.20913277769073e-211,
+      "n": 4000
+    },
+    "exo_ps": {
+      "rho": -0.4792313192199395,
+      "p": 7.857858230286866e-229,
+      "n": 4000
+    }
+  },
+  "ethz_p": {
+    "perm_imp": {
+      "r2_mean": -0.4179939688224442,
+      "r2_std": 0.5367100158861473,
+      "n": 2500,
+      "perm_p": 0.99,
+      "perm_null_mean": -0.036873541899084206
+    },
+    "delta_r2": 0.02749150308983528,
+    "exo_snr": {
+      "rho": 0.1408543866967019,
+      "p": 1.4999614836989694e-12,
+      "n": 2500
+    },
+    "exo_ps": {
+      "rho": -0.21301233571280068,
+      "p": 7.680894868878791e-14,
+      "n": 1206
+    }
+  },
+  "verdict": {
+    "exploratory_pass": false,
+    "checks": {
+      "perm_improvement": false,
+      "incremental_delta_r2": false,
+      "exogenous": true,
+      "transfer": true
+    },
+    "exogenous_hit": {
+      "covariate": "snr_db",
+      "key": "vs_abs_ref_at_gt",
+      "rho": 0.2580414705025919,
+      "p": 7.3603296618138815e-62
+    },
+    "transfer_detail": {
+      "type": "same_sign_exo",
+      "rho": 0.1408543866967019,
+      "p": 1.4999614836989694e-12,
+      "n": 2500,
+      "covariate": "snr_db",
+      "key": "vs_abs_ref_at_gt"
+    },
+    "claim_language_if_pass": "Refine residual carries transferable predictive information not explained by physics-proposal features alone (exploratory; not a discovery of new physics).",
+    "claim_language_if_fail": "Residual knowledge probe did not meet pre-registered bar; do not add a 'new knowledge in residual' claim to TGRS."
+  }
+}

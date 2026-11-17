@@ -108,3 +108,9 @@
 - Prop1: ethz_dev created=1 → rolled back SNR-aware code; shipping ckpt remains `imp_RSP`.
 - Deliverable: `results/phase2/2_4_low_snr/{RESULTS,CONCLUSION}.json|md`. No main.tex; Phase C not started.
 
+## 2026-11-17 — Residual knowledge probe (unnamed information scale)
+
+- Probe on frozen `imp_RSP`: refine residual improves timing vs physics-only (STEAD/ETHZ P frac improved 96.5%/93.2%).
+- Supports exploratory claim of unnamed irreducible residual information; rejects named-new-physics wording.
+- Artifacts: `results/phase2/2_4_residual_knowledge/`, `tools/phase2_probe_refine_residual_knowledge.py`. No main.tex.
+
