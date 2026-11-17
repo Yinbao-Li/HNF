@@ -1,46 +1,32 @@
-# Phase 2.7 cluster-bootstrap CI summary
+# Phase 2.7 cluster-bootstrap CI summary (CORRECTED 2026-11-17)
 
-Protocol: F1 n_boot=1000 (trace / event / sensor); AP n_boot=200 (event only). Seeds 0–4. Ref = ours vs pn_aug.
-Headline dumps: `*_hits.json` (ours only); station/station-prefix clustering.
+See `CORRECTION.md`. Pre-correction dumps/SUMMARY archived in `pre_correction/`.
+
 
 ## AE (primary): event-cluster vs paired-trace
 
 | Material | Tol | ΔF1 ours−pn_aug | Trace CI excl0? | Event CI excl0? | ΔAP event CI excl0? |
 |---|---:|---:|---|---|---|
-| Minusil_test | tol10 | +0.056 | True [0.051, 0.061] | True [0.050, 0.062] | True [0.090, 0.102] |
-| Minusil_test | tol20 | +0.010 | True [0.005, 0.014] | True [0.005, 0.014] | True [0.053, 0.062] |
-| Minusil_test | tol50 | −0.023 | True [−0.027, −0.020] | True [−0.027, −0.019] | True [0.032, 0.041] |
-| Glass_beads_test | tol10 | +0.082 | True [0.066, 0.098] | True [0.065, 0.098] | True [0.064, 0.102] |
-| Glass_beads_test | tol20 | +0.043 | True [0.029, 0.056] | True [0.030, 0.057] | True [0.036, 0.073] |
-| Glass_beads_test | tol50 | +0.030 | True [0.020, 0.040] | True [0.020, 0.041] | True [0.047, 0.070] |
+| Minusil_test | tol10 | +0.056 | True [0.050616360827856394, 0.06146958352425253] | True [0.05032391770302018, 0.06171474013212553] | True [0.08987320612652475, 0.10191740965708196] |
+| Minusil_test | tol20 | +0.010 | True [0.005199874245175, 0.013978220381357702] | True [0.005145282778589247, 0.014191992513205192] | True [0.05302175691679668, 0.06185445251779827] |
+| Minusil_test | tol50 | -0.023 | True [-0.02723466115972127, -0.019619409655048572] | True [-0.027163471158533674, -0.01929231625041235] | True [0.03212935368471271, 0.04101197007341704] |
+| Glass_beads_test | tol10 | +0.082 | True [0.0655753071555962, 0.09753786845086365] | True [0.06474095200184872, 0.09841016273727597] | True [0.06369351086995856, 0.10225100464161782] |
+| Glass_beads_test | tol20 | +0.043 | True [0.029417463797164003, 0.056343398130536] | True [0.030175750276931857, 0.05723162059157135] | True [0.036440985966284895, 0.0729012782309161] |
+| Glass_beads_test | tol50 | +0.030 | True [0.01999021114196818, 0.039784268673866946] | True [0.019591852458832756, 0.04148117781631024] | True [0.0469384535854007, 0.06963276014562202] |
 
-### AE claim status
-
-| Claim | Survives event CI? | Phase 3 action |
-|---|---|---|
-| Ours > pn_aug F1 @ tol10/20 (both) | YES | Keep |
-| Ours > pn_aug F1 @ Glass tol50 | YES | Keep |
-| Ours > pn_aug F1 @ Minusil tol50 | **NO (reverse, excl 0)** | Downgrade / drop universal AE F1 lead |
-| Ours > pn_aug AP (event) all listed | YES | Prefer AP-framed AE claim |
-
-## Headline tables (ours point F1 + cluster CI)
-
-| Set | Metric | Dump F1 | Cluster CI95 | Manuscript | Δ dump−MS |
-|---|---|---:|---|---:|---:|
-| STEAD full | P@0.1 | 0.8957 | [0.878, 0.912] | 0.942 | −0.046 |
-| STEAD full | P@0.5 | 0.9825 | [0.979, 0.985] | 0.988 | −0.0055 |
-| STEAD full | S@0.1 | 0.7734 | [0.739, 0.807] | 0.869 | −0.096 |
-| STEAD full | S@0.5 | 0.9581 | [0.949, 0.965] | 0.975 | −0.017 |
-| ETHZ test | P@0.5 | 0.6639 | [0.636, 0.691] | (see final/ethz) | dump≪paper |
-| OBS test | P@0.5 | 0.2576 | [0.224, 0.291] | paper final≈0.556 | dump≪paper |
-
-### Headline notes (do not edit main.tex)
-
-1. STEAD P@0.5 dump CI **excludes** manuscript 0.988 → protocol/decoding mismatch or different subset; report only, no number rewrite in Phase 2.
-2. ETHZ/OBS dump F1 far below `eval_ethz_cross.py` paper JSON → dump path still suspect for cross-domain; **do not** use these absolute F1 as claim evidence until dump matches `run_c2f` paper numbers. CIs above are conditional on dump hits.
-3. No multi-model headline dumps yet (EQT/PN) — only ours.
-
-## Artifacts
-
-- `ae_cluster_bootstrap.json`, `headline_cluster_bootstrap.json`
-- `stead_full_hits.json`, `ethz_test_hits.json`, `obs_test_hits.json`
+## Headline tables
+- **stead_full**: n=126566 clusters=2631
+  - ours p@0.1: F1=0.9420 clusterCI=[0.9311332782593708, 0.9514648755566973] manuscript=0.942 Δ=-2.523549369104483e-05
+  - ours p@0.5: F1=0.9881 clusterCI=[0.9857681803190208, 0.990105236621966] manuscript=0.988 Δ=0.00014856929999118584
+  - ours s@0.1: F1=0.8688 clusterCI=[0.845804282891099, 0.8903985900964673] manuscript=0.869 Δ=-0.00021155857883814466
+  - ours s@0.5: F1=0.9751 clusterCI=[0.9696615206929903, 0.9795385660226549] manuscript=0.975 Δ=0.00014017764104601316
+- **ethz_test**: n=9655 clusters=206
+  - ours p@0.1: F1=0.9059 clusterCI=[0.8955108148583468, 0.9151478398752642] manuscript=None Δ=None
+  - ours p@0.5: F1=0.9505 clusterCI=[0.9430997997787675, 0.9569640774670417] manuscript=None Δ=None
+  - ours s@0.1: F1=0.8798 clusterCI=[0.8627839990287881, 0.8936227214384319] manuscript=None Δ=None
+  - ours s@0.5: F1=0.9768 clusterCI=[0.9688485180906328, 0.9819620171099664] manuscript=None Δ=None
+- **obs_test**: n=11256 clusters=198
+  - ours p@0.1: F1=0.5100 clusterCI=[0.46846137832407087, 0.5484191169269429] manuscript=None Δ=None
+  - ours p@0.5: F1=0.6321 clusterCI=[0.5883779714265733, 0.6701352916533182] manuscript=None Δ=None
+  - ours s@0.1: F1=0.4954 clusterCI=[0.45308200475554694, 0.5405098943809209] manuscript=None Δ=None
+  - ours s@0.5: F1=0.7752 clusterCI=[0.7389841466717213, 0.8063928004154368] manuscript=None Δ=None

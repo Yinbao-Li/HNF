@@ -64,3 +64,10 @@ No new training. Manuscript fairness note should state EQT-aug/PN-aug are **matc
 - Did not start Phase 3 rewrite.
 - Did not run 2.4 experiments.
 - Did not scale 2.6.
+
+## Superseded by Phase A (2026-11-17) — do not delete history above
+
+- ~~Headline ETHZ/OBS dump abs F1 ≪ paper / dump path suspect~~ → **FIXED**: dump now matches `run_c2f`+`metrics_at`; see `2_7_ci/CORRECTION.md`.
+- ~~STEAD P@0.5 CI excludes manuscript 0.988~~ → **FIXED**: CI [0.986, 0.990] includes 0.988.
+- AE Minusil tol50 ΔF1 = −0.023 excl0 → **CONFIRMED unchanged**.
+- Manuscript STEAD 0.988 → **confirmed correct** (not a manuscript bug).

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Dump per-window hit/pred/valid arrays for STEAD/ETHZ/OBS cluster-bootstrap CIs.
+"""Dump per-window [tp,fp,fn] for STEAD/ETHZ/OBS cluster-bootstrap CIs.
 
-Matches manuscript eval protocols:
-  - STEAD: STEADPickingDataset test + c2f hard det gate
-  - ETHZ/OBS: same windowing as tools/eval_ethz_cross.py (seed, p_min/p_max, bandpass)
+Aligned with manuscript decoders (Phase A correction 2026-11-17):
+  - ETHZ/OBS: tools.eval_shift_invariance.run_c2f (demean/std + linspace t)
+              + tools.sweep_seisbench_threshold.metrics_at / update_picking_counts
+  - STEAD: dataset-normalized batches + same picking-count rules as metrics_at
 
   python tools/phase2_dump_headline_hits.py --device cuda --output-dir results/phase2/2_7_ci
 """
@@ -18,10 +19,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from scipy.signal import butter, sosfiltfilt
 from torch.utils.data import DataLoader
 
 _REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_REPO))
+for sub in ("", "scripts/paper"):
+    if str(_REPO / sub) not in sys.path:
+        sys.path.insert(0, str(_REPO / sub))
 
 from hnf.picking_metrics import apply_p_before_s_constraint  # noqa: E402
 from hnf.stead_picking_dataset import STEADPickingDataset  # noqa: E402
@@ -34,6 +38,7 @@ from tools.eval_ethz_cross import (  # noqa: E402
     first_arrival,
     load_dataset,
 )
+from tools.eval_shift_invariance import run_c2f  # noqa: E402
 from tools.sweep_stead_c2f_threshold import load_model  # noqa: E402
 from tools.train_stead_picking import move_batch_to_device  # noqa: E402
 
@@ -47,7 +52,7 @@ def parse_args():
     p.add_argument("--det-threshold", type=float, default=0.5)
     p.add_argument("--output-dir", type=Path, default=Path("results/phase2/2_7_ci"))
     p.add_argument("--sets", default="stead_full,ethz_test,obs_test")
-    p.add_argument("--max-traces", type=int, default=0, help="0=all")
+    p.add_argument("--max-traces", type=int, default=0)
     p.add_argument("--p-min", type=float, default=5.0)
     p.add_argument("--p-max", type=float, default=30.0)
     p.add_argument("--seed", type=int, default=0)
@@ -55,30 +60,50 @@ def parse_args():
     return p.parse_args()
 
 
-def pack_phase(pred_idx, pred_ok, gt_idx, valid, tols_bins):
-    out = {}
-    for tol_name, tol in tols_bins.items():
-        hit = pred_ok & valid & (np.abs(pred_idx - gt_idx) <= tol)
-        out[tol_name] = {
-            "hit": hit.astype(bool).tolist(),
-            "pred": pred_ok.astype(bool).tolist(),
-            "valid": valid.astype(bool).tolist(),
-        }
+def per_trace_picking_counts(
+    probs: torch.Tensor,
+    det_pred: torch.Tensor,
+    is_event: torch.Tensor,
+    valid: torch.Tensor,
+    gt_idx: torch.Tensor,
+    pick_th: float,
+    tol: int,
+) -> np.ndarray:
+    """Return (N,3) int counts [tp,fp,fn] matching update_picking_counts semantics."""
+    max_prob, pred_idx = probs.max(dim=-1)
+    n = probs.size(0)
+    out = np.zeros((n, 3), dtype=np.int32)
+    for i in range(n):
+        is_ev = bool(is_event[i].item())
+        has_gt = bool(valid[i].item())
+        detected = bool(det_pred[i].item())
+        pred_exists = float(max_prob[i].item()) >= pick_th
+        pred_i = int(pred_idx[i].item())
+        if not is_ev:
+            if pred_exists:
+                out[i, 1] = 1  # fp
+            continue
+        if not has_gt:
+            continue
+        gt_i = int(gt_idx[i].item())
+        within = pred_exists and abs(pred_i - gt_i) <= tol
+        if not detected:
+            out[i, 2] = 1  # fn
+        elif within:
+            out[i, 0] = 1  # tp
+        else:
+            out[i, 2] = 1  # fn (wrong or missing peak) — NOT fp
     return out
 
 
-def f1_print(d, label):
-    for phase in ("p", "s"):
-        for tol in ("0.1", "0.5"):
-            arr = d["models"]["ours"][phase][tol]
-            hit = np.array(arr["hit"])
-            valid = np.array(arr["valid"])
-            pred = np.array(arr["pred"])
-            tp = (hit & valid & pred).sum()
-            fp = (pred & ~hit).sum()
-            fn = (valid & ~hit).sum()
-            f1 = 2 * tp / max(1, 2 * tp + fp + fn)
-            print(f"  {label} {phase}@{tol}: F1={f1:.4f} n={d['n']} clusters={d['n_clusters']}", flush=True)
+def f1_from_counts(counts: np.ndarray) -> float:
+    tp, fp, fn = counts.sum(0)
+    return float(2 * tp / max(1.0, 2 * tp + fp + fn))
+
+
+def pack_counts(counts_by_tol: dict) -> dict:
+    """Serialize for bootstrap: models.ours.p['0.5'] = {counts: [[tp,fp,fn], ...]}"""
+    return {tol: {"counts": c.tolist()} for tol, c in counts_by_tol.items()}
 
 
 @torch.no_grad()
@@ -89,69 +114,62 @@ def dump_stead(args, device):
         "test", seq_len=seq_len, max_event_traces=10**9, max_noise_traces=10**9, seed=42
     )
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
-    p_max, p_idx, s_max, s_idx, det = [], [], [], [], []
-    p_gt, s_gt, p_valid, s_valid, names = [], [], [], [], []
+    names = []
+    p_counts = {"0.1": [], "0.5": []}
+    s_counts = {"0.1": [], "0.5": []}
+    n_done = 0
     for batch in loader:
         names.extend([str(x) for x in batch.get("trace_name", [""] * len(batch["x"]))])
         batch = move_batch_to_device(batch, device)
         out = model(batch["x"], batch["t"])
-        det_prob = torch.sigmoid(out["det"])
-        gate = (det_prob >= args.det_threshold).float().unsqueeze(-1)
-        p = torch.sigmoid(out["p"]) * gate
-        s = torch.sigmoid(out["s"]) * gate
+        det = torch.sigmoid(out["det"].float())
+        gate = (det >= args.det_threshold).float().unsqueeze(-1)
+        p = torch.sigmoid(out["p"].float()) * gate
+        s = torch.sigmoid(out["s"].float()) * gate
+        # metrics_at applies p_before_s inside; match that
         p, s = apply_p_before_s_constraint(p, s, args.pick_threshold)
-        pm, pi = p.max(-1)
-        sm, si = s.max(-1)
-        p_max.append(pm.cpu().numpy())
-        p_idx.append(pi.cpu().numpy())
-        s_max.append(sm.cpu().numpy())
-        s_idx.append(si.cpu().numpy())
-        det.append(det_prob.cpu().numpy())
-        p_gt.append(batch["p_idx"].cpu().numpy())
-        s_gt.append(batch["s_idx"].cpu().numpy())
-        p_valid.append(batch["p_valid"].cpu().numpy())
-        s_valid.append(batch["s_valid"].cpu().numpy())
-        if args.max_traces and sum(len(x) for x in p_max) >= args.max_traces:
+        det_pred = det >= args.det_threshold
+        is_event = batch["det"] > 0.5
+        for tol_name, tol in (("0.1", 10), ("0.5", 50)):
+            p_counts[tol_name].append(
+                per_trace_picking_counts(
+                    p, det_pred, is_event, batch["p_valid"], batch["p_idx"], args.pick_threshold, tol
+                )
+            )
+            s_counts[tol_name].append(
+                per_trace_picking_counts(
+                    s, det_pred, is_event, batch["s_valid"], batch["s_idx"], args.pick_threshold, tol
+                )
+            )
+        n_done += p.size(0)
+        if args.max_traces and n_done >= args.max_traces:
             break
-    p_max = np.concatenate(p_max)
-    p_idx = np.concatenate(p_idx)
-    s_max = np.concatenate(s_max)
-    s_idx = np.concatenate(s_idx)
-    det = np.concatenate(det)
-    p_gt = np.concatenate(p_gt)
-    s_gt = np.concatenate(s_gt)
-    p_valid = np.concatenate(p_valid).astype(bool)
-    s_valid = np.concatenate(s_valid).astype(bool)
+
+    for k in p_counts:
+        p_counts[k] = np.concatenate(p_counts[k], axis=0)
+        s_counts[k] = np.concatenate(s_counts[k], axis=0)
+        if args.max_traces:
+            p_counts[k] = p_counts[k][: args.max_traces]
+            s_counts[k] = s_counts[k][: args.max_traces]
     if args.max_traces:
-        p_max = p_max[: args.max_traces]
-        p_idx = p_idx[: args.max_traces]
-        s_max = s_max[: args.max_traces]
-        s_idx = s_idx[: args.max_traces]
-        det = det[: args.max_traces]
-        p_gt = p_gt[: args.max_traces]
-        s_gt = s_gt[: args.max_traces]
-        p_valid = p_valid[: args.max_traces]
-        s_valid = s_valid[: args.max_traces]
         names = names[: args.max_traces]
     if not names or names[0] == "":
-        names = [f"trace_{i}" for i in range(len(p_max))]
+        names = [f"trace_{i}" for i in range(len(p_counts["0.5"]))]
     clusters = [n.split("_")[0] if "_" in n else n for n in names]
     uniq = sorted(set(clusters))
     mp = {u: i for i, u in enumerate(uniq)}
     cluster_id = [mp[c] for c in clusters]
-    tols = {"0.1": 10, "0.5": 50}
-    p_pred = (det >= args.det_threshold) & (p_max >= args.pick_threshold)
-    s_pred = (det >= args.det_threshold) & (s_max >= args.pick_threshold)
-    return {
+    d = {
         "source": str(args.ours),
-        "n": int(len(p_max)),
+        "decoder": "stead_dataset_norm+metrics_at_counts",
+        "n": int(len(p_counts["0.5"])),
         "n_clusters": len(uniq),
         "cluster_kind": "station_prefix",
         "cluster_id": cluster_id,
         "models": {
             "ours": {
-                "p": pack_phase(p_idx, p_pred, p_gt, p_valid, tols),
-                "s": pack_phase(s_idx, s_pred, s_gt, s_valid, tols),
+                "p": pack_counts(p_counts),
+                "s": pack_counts(s_counts),
             }
         },
         "manuscript_refs": {
@@ -160,13 +178,19 @@ def dump_stead(args, device):
             "ours_p_0.1": 0.942,
             "ours_s_0.1": 0.869,
         },
+        "point_f1": {
+            "p@0.1": f1_from_counts(p_counts["0.1"]),
+            "p@0.5": f1_from_counts(p_counts["0.5"]),
+            "s@0.1": f1_from_counts(s_counts["0.1"]),
+            "s@0.5": f1_from_counts(s_counts["0.5"]),
+        },
     }
+    return d
 
 
 @torch.no_grad()
 def dump_sb_set(args, device, dataset_name: str):
-    """Match eval_ethz_cross.py window protocol (seeded P placement + bandpass)."""
-    model, cfg, _ = load_model(args.ours, device)
+    model, _, _ = load_model(args.ours, device)
     data = load_dataset(dataset_name, "test")
     rng = np.random.default_rng(args.seed)
     n = len(data) if args.max_traces <= 0 else min(args.max_traces, len(data))
@@ -189,7 +213,6 @@ def dump_sb_set(args, device, dataset_name: str):
         win, _, _ = cut_window(w, p, tp)
         s_rel = None if s is None else int(round(s)) - p + tp
         s_ok = s_rel is not None and 50 <= s_rel <= T - 50 and s_rel > tp
-        g = meta.get(GROUP_COL[dataset_name])
         st = str(meta.get("station_code") or meta.get("trace_name") or meta.get("trace_id") or i)
         waves.append(win)
         meta_rows.append(
@@ -197,66 +220,47 @@ def dump_sb_set(args, device, dataset_name: str):
                 "p_idx": tp,
                 "s_idx": s_rel if s_ok else 0,
                 "s_valid": bool(s_ok),
-                "group": str(g) if g else "unk",
                 "station": st,
             }
         )
 
     waves = np.stack(waves)
     if args.bandpass:
-        from scipy.signal import butter, sosfiltfilt
-
         lo, hi = (float(x) for x in args.bandpass.split(","))
         sos = butter(4, [lo, hi], btype="bandpass", fs=100.0, output="sos")
         waves = sosfiltfilt(sos, waves, axis=-1).astype(np.float32)
 
-    # batched infer: model expects (B, T, 3) + time axis
-    p_max, p_idx, s_max, s_idx, det = [], [], [], [], []
-    for start in range(0, len(waves), args.batch_size):
-        chunk = waves[start : start + args.batch_size]  # (B,3,T)
-        x = torch.from_numpy(chunk).to(device).transpose(1, 2)  # (B,T,3)
-        t = torch.arange(x.shape[1], device=device).float().unsqueeze(0).expand(x.shape[0], -1) * (
-            60.0 / x.shape[1]
-        )
-        out = model(x, t)
-        det_prob = torch.sigmoid(out["det"])
-        gate = (det_prob >= args.det_threshold).float().unsqueeze(-1)
-        p = torch.sigmoid(out["p"]) * gate
-        s = torch.sigmoid(out["s"]) * gate
-        p, s = apply_p_before_s_constraint(p, s, args.pick_threshold)
-        pm, pi = p.max(-1)
-        sm, si = s.max(-1)
-        p_max.append(pm.cpu().numpy())
-        p_idx.append(pi.cpu().numpy())
-        s_max.append(sm.cpu().numpy())
-        s_idx.append(si.cpu().numpy())
-        det.append(det_prob.cpu().numpy())
+    # Manuscript decoder
+    det, p, s = run_c2f(model, waves, device, args.batch_size, args.det_threshold)
+    # metrics_at applies p_before_s internally — replicate before count
+    p = p.float()
+    s = s.float()
+    p, s = apply_p_before_s_constraint(p, s, args.pick_threshold)
+    det_pred = det >= args.det_threshold
+    is_event = torch.ones(len(waves), dtype=torch.bool)
+    p_idx = torch.tensor([m["p_idx"] for m in meta_rows])
+    s_idx = torch.tensor([m["s_idx"] for m in meta_rows])
+    p_valid = torch.ones(len(waves), dtype=torch.bool)
+    s_valid = torch.tensor([m["s_valid"] for m in meta_rows], dtype=torch.bool)
 
-    p_max = np.concatenate(p_max)
-    p_idx = np.concatenate(p_idx)
-    s_max = np.concatenate(s_max)
-    s_idx = np.concatenate(s_idx)
-    det = np.concatenate(det)
-    p_gt = np.array([m["p_idx"] for m in meta_rows])
-    s_gt = np.array([m["s_idx"] for m in meta_rows])
-    s_valid = np.array([m["s_valid"] for m in meta_rows], dtype=bool)
-    p_valid = np.ones(len(meta_rows), dtype=bool)
+    p_counts, s_counts = {}, {}
+    for tol_name, tol in (("0.1", 10), ("0.5", 50)):
+        p_counts[tol_name] = per_trace_picking_counts(
+            p, det_pred, is_event, p_valid, p_idx, args.pick_threshold, tol
+        )
+        s_counts[tol_name] = per_trace_picking_counts(
+            s, det_pred, is_event, s_valid, s_idx, args.pick_threshold, tol
+        )
+
     clusters = [m["station"] for m in meta_rows]
     uniq = sorted(set(clusters))
     mp = {u: i for i, u in enumerate(uniq)}
     cluster_id = [mp[c] for c in clusters]
-    tols = {"0.1": 10, "0.5": 50}
-    p_pred = (det >= args.det_threshold) & (p_max >= args.pick_threshold)
-    s_pred = (det >= args.det_threshold) & (s_max >= args.pick_threshold)
-
-    # manuscript refs from final compare (ours rows)
-    refs = {}
-    if dataset_name == "ethz":
-        refs = {"ours_p_0.5": None, "ours_s_0.5": None}  # filled from final JSON if needed
     return {
         "source": str(args.ours),
         "dataset": dataset_name,
-        "n": int(len(p_max)),
+        "decoder": "run_c2f+metrics_at_counts",
+        "n": int(len(waves)),
         "n_clusters": len(uniq),
         "n_dead_dropped": n_dead,
         "cluster_kind": "station",
@@ -266,14 +270,16 @@ def dump_sb_set(args, device, dataset_name: str):
             "p_min": args.p_min,
             "p_max": args.p_max,
             "bandpass": args.bandpass,
+            "normalize": "demean_std_per_channel",
+            "time_axis": "linspace_0_60_BT1",
         },
-        "models": {
-            "ours": {
-                "p": pack_phase(p_idx, p_pred, p_gt, p_valid, tols),
-                "s": pack_phase(s_idx, s_pred, s_gt, s_valid, tols),
-            }
+        "models": {"ours": {"p": pack_counts(p_counts), "s": pack_counts(s_counts)}},
+        "point_f1": {
+            "p@0.1": f1_from_counts(p_counts["0.1"]),
+            "p@0.5": f1_from_counts(p_counts["0.5"]),
+            "s@0.1": f1_from_counts(s_counts["0.1"]),
+            "s@0.5": f1_from_counts(s_counts["0.5"]),
         },
-        "manuscript_refs": refs,
     }
 
 
@@ -291,7 +297,7 @@ def main():
             d = dump_sb_set(args, device, "obs")
         else:
             raise ValueError(name)
-        f1_print(d, name)
+        print(f"  point_f1={d.get('point_f1')} n={d['n']} clusters={d['n_clusters']}", flush=True)
         out = args.output_dir / f"{name}_hits.json"
         out.write_text(json.dumps(d))
         print(f"  -> {out}", flush=True)

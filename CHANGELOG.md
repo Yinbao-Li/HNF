@@ -94,3 +94,10 @@
 - Finding: at 20 ep, free ≈/slightly above Huygens on F1 — scope kernel claims away from accuracy win.
 - Wrote `results/phase2/PHASE2_SUMMARY.md`. No Phase 3; no main.tex edits.
 
+
+## 2026-11-17 — Phase A: correct 2.7 dump decoder; recompute CIs
+
+- Root cause: ETHZ/OBS dump skipped demean/std normalize; dump F1 counted wrong-picks as FP+FN.
+- Fixed `phase2_dump_headline_hits.py` to `run_c2f` + metrics_at counts; STEAD now matches manuscript 0.988.
+- Recomputed headline+AE CIs; Minusil tol50 reverse still stands. Details: `results/phase2/2_7_ci/CORRECTION.md`.
+

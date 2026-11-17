@@ -286,21 +286,27 @@ def headline_block(args, rng) -> dict:
         members = members_list(clusters)
         boots = bootstrap_indices(rng, members, args.n_boot)
         set_rep = {"source": d.get("source"), "n": d["n"], "n_clusters": d.get("n_clusters"), "models": {}}
+        set_rep["decoder"] = d.get("decoder")
+        set_rep["point_f1_from_dump"] = d.get("point_f1")
         for model, md in d["models"].items():
             set_rep["models"][model] = {}
             for phase in ("p", "s"):
                 for tol_key, arr in md[phase].items():
-                    hit = np.asarray(arr["hit"], dtype=bool)
-                    valid = np.asarray(arr["valid"], dtype=bool)
-                    pred = np.asarray(arr["pred"], dtype=bool)
-                    counts = np.stack(
-                        [
-                            (hit & valid & pred).astype(np.int32),
-                            (pred & ~hit).astype(np.int32),
-                            (valid & ~hit).astype(np.int32),
-                        ],
-                        axis=1,
-                    )
+                    if "counts" in arr:
+                        counts = np.asarray(arr["counts"], dtype=np.int32)
+                    else:
+                        # legacy hit/pred/valid (pre-correction; biased F1)
+                        hit = np.asarray(arr["hit"], dtype=bool)
+                        valid = np.asarray(arr["valid"], dtype=bool)
+                        pred = np.asarray(arr["pred"], dtype=bool)
+                        counts = np.stack(
+                            [
+                                (hit & valid & pred).astype(np.int32),
+                                (pred & ~hit).astype(np.int32),
+                                (valid & ~hit).astype(np.int32),
+                            ],
+                            axis=1,
+                        )
                     point = f1_from_counts(counts)
                     dist = np.array([f1_from_counts(counts[idx]) for idx in boots])
                     ci = [float(np.percentile(dist, 2.5)), float(np.percentile(dist, 97.5))]
