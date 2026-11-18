@@ -114,3 +114,9 @@
 - Supports exploratory claim of unnamed irreducible residual information; rejects named-new-physics wording.
 - Artifacts: `results/phase2/2_4_residual_knowledge/`, `tools/phase2_probe_refine_residual_knowledge.py`. No main.tex.
 
+## 2026-11-18 — Residual meta-filter (Branch A/B)
+
+- Small MLP maps (SNR, distance, P–S, depth) → (|ref|, refine shift).
+- Meta filters **amplitude** (STEAD R²≈0.24) but not timing shift (R²≈0); leftover≈full shift.
+- Conclusion: no clean filterable physical law behind corrective residual. `results/phase2/2_4_residual_filter/`.
+

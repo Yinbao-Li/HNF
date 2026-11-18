@@ -1,0 +1,433 @@
+{
+  "question": "Can we name new regularities in the refine residual?",
+  "corrective_behavior": {
+    "stead": {
+      "split": "STEAD-P",
+      "pattern": "refine_opposes_physics_bias",
+      "spearman_signed_prop_err_vs_refine_shift": {
+        "rho": -0.5023955047518931,
+        "p": 7.296208247599046e-255,
+        "n": 4000
+      },
+      "frac_corrective": 0.97975
+    },
+    "ethz": {
+      "split": "ETHZ-P",
+      "pattern": "refine_opposes_physics_bias",
+      "spearman_signed_prop_err_vs_refine_shift": {
+        "rho": -0.5879071105595798,
+        "p": 2.471218781993332e-232,
+        "n": 2500
+      },
+      "frac_corrective": 0.9476
+    }
+  },
+  "stead_distance_bins_mean_abs_ref": [
+    {
+      "lo": 0.0,
+      "hi": 20.0,
+      "n": 1176,
+      "mean": 2.4741992950439453,
+      "median": 2.5485262870788574
+    },
+    {
+      "lo": 20.0,
+      "hi": 40.0,
+      "n": 846,
+      "mean": 1.8604240417480469,
+      "median": 1.9035824537277222
+    },
+    {
+      "lo": 40.0,
+      "hi": 60.0,
+      "n": 659,
+      "mean": 1.4183547496795654,
+      "median": 1.3846179246902466
+    },
+    {
+      "lo": 60.0,
+      "hi": 80.0,
+      "n": 540,
+      "mean": 1.3042482137680054,
+      "median": 1.1506980657577515
+    },
+    {
+      "lo": 80.0,
+      "hi": 120.0,
+      "n": 537,
+      "mean": 1.1725974082946777,
+      "median": 1.053521752357483
+    },
+    {
+      "lo": 120.0,
+      "hi": 200.0,
+      "n": 138,
+      "mean": 1.3348815441131592,
+      "median": 0.8931025862693787
+    },
+    {
+      "lo": 200.0,
+      "hi": 400.0,
+      "n": 104,
+      "mean": 2.0233001708984375,
+      "median": 1.1580665111541748
+    }
+  ],
+  "stead_distance_bins_mean_refine_shift": [
+    {
+      "lo": 0.0,
+      "hi": 20.0,
+      "n": 1176,
+      "mean": 0.25247445702552795,
+      "median": 0.28999999165534973
+    },
+    {
+      "lo": 20.0,
+      "hi": 40.0,
+      "n": 846,
+      "mean": 0.2918202877044678,
+      "median": 0.28999999165534973
+    },
+    {
+      "lo": 40.0,
+      "hi": 60.0,
+      "n": 659,
+      "mean": 0.33408188819885254,
+      "median": 0.28999999165534973
+    },
+    {
+      "lo": 60.0,
+      "hi": 80.0,
+      "n": 540,
+      "mean": 0.2874259054660797,
+      "median": 0.28999999165534973
+    },
+    {
+      "lo": 80.0,
+      "hi": 120.0,
+      "n": 537,
+      "mean": 0.28856608271598816,
+      "median": 0.28999999165534973
+    },
+    {
+      "lo": 120.0,
+      "hi": 200.0,
+      "n": 138,
+      "mean": 0.2667391002178192,
+      "median": 0.29999998211860657
+    },
+    {
+      "lo": 200.0,
+      "hi": 400.0,
+      "n": 104,
+      "mean": 0.24336537718772888,
+      "median": 0.25999999046325684
+    }
+  ],
+  "stead_snr_bins_mean_abs_ref": [
+    {
+      "lo": -5,
+      "hi": 0,
+      "n": 31,
+      "mean": null
+    },
+    {
+      "lo": 0.0,
+      "hi": 5.0,
+      "n": 323,
+      "mean": 1.4513224363327026,
+      "median": 1.0396205186843872
+    },
+    {
+      "lo": 5.0,
+      "hi": 10.0,
+      "n": 687,
+      "mean": 1.4911739826202393,
+      "median": 1.3105356693267822
+    },
+    {
+      "lo": 10.0,
+      "hi": 15.0,
+      "n": 737,
+      "mean": 1.6261332035064697,
+      "median": 1.5504124164581299
+    },
+    {
+      "lo": 15.0,
+      "hi": 20.0,
+      "n": 593,
+      "mean": 1.796352744102478,
+      "median": 1.7724897861480713
+    },
+    {
+      "lo": 20.0,
+      "hi": 30.0,
+      "n": 939,
+      "mean": 1.9538800716400146,
+      "median": 1.9584301710128784
+    },
+    {
+      "lo": 30.0,
+      "hi": 50.0,
+      "n": 645,
+      "mean": 2.155925750732422,
+      "median": 2.2019877433776855
+    }
+  ],
+  "stead_ps_bins_mean_abs_ref": [
+    {
+      "lo": 0.0,
+      "hi": 2.0,
+      "n": 640,
+      "mean": 2.617344379425049,
+      "median": 2.6990301609039307
+    },
+    {
+      "lo": 2.0,
+      "hi": 4.0,
+      "n": 928,
+      "mean": 2.210792303085327,
+      "median": 2.261038064956665
+    },
+    {
+      "lo": 4.0,
+      "hi": 6.0,
+      "n": 615,
+      "mean": 1.6806049346923828,
+      "median": 1.6700663566589355
+    },
+    {
+      "lo": 6.0,
+      "hi": 8.0,
+      "n": 516,
+      "mean": 1.4058785438537598,
+      "median": 1.340477466583252
+    },
+    {
+      "lo": 8.0,
+      "hi": 12.0,
+      "n": 767,
+      "mean": 1.2452795505523682,
+      "median": 1.1602303981781006
+    },
+    {
+      "lo": 12.0,
+      "hi": 20.0,
+      "n": 379,
+      "mean": 1.122388482093811,
+      "median": 0.8910512924194336
+    }
+  ],
+  "ethz_snr_bins_mean_abs_ref": [
+    {
+      "lo": -5,
+      "hi": 0,
+      "n": 3,
+      "mean": null
+    },
+    {
+      "lo": 0.0,
+      "hi": 5.0,
+      "n": 63,
+      "mean": 2.3045334815979004,
+      "median": 1.2261883020401
+    },
+    {
+      "lo": 5.0,
+      "hi": 10.0,
+      "n": 272,
+      "mean": 1.7053619623184204,
+      "median": 1.089827537536621
+    },
+    {
+      "lo": 10.0,
+      "hi": 15.0,
+      "n": 449,
+      "mean": 1.2554751634597778,
+      "median": 1.011311650276184
+    },
+    {
+      "lo": 15.0,
+      "hi": 20.0,
+      "n": 461,
+      "mean": 1.2634934186935425,
+      "median": 1.1307997703552246
+    },
+    {
+      "lo": 20.0,
+      "hi": 30.0,
+      "n": 812,
+      "mean": 1.2990405559539795,
+      "median": 1.2421607971191406
+    },
+    {
+      "lo": 30.0,
+      "hi": 50.0,
+      "n": 434,
+      "mean": 1.6662442684173584,
+      "median": 1.6649130582809448
+    }
+  ],
+  "ethz_ps_bins_mean_abs_ref": [
+    {
+      "lo": 0.0,
+      "hi": 2.0,
+      "n": 118,
+      "mean": 1.729803442955017,
+      "median": 1.6311302185058594
+    },
+    {
+      "lo": 2.0,
+      "hi": 4.0,
+      "n": 308,
+      "mean": 1.6248283386230469,
+      "median": 1.608492136001587
+    },
+    {
+      "lo": 4.0,
+      "hi": 6.0,
+      "n": 371,
+      "mean": 1.514817237854004,
+      "median": 1.4740623235702515
+    },
+    {
+      "lo": 6.0,
+      "hi": 8.0,
+      "n": 222,
+      "mean": 1.3031178712844849,
+      "median": 1.194489598274231
+    },
+    {
+      "lo": 8.0,
+      "hi": 12.0,
+      "n": 138,
+      "mean": 1.1519054174423218,
+      "median": 1.036957025527954
+    },
+    {
+      "lo": 12,
+      "hi": 20,
+      "n": 49,
+      "mean": null
+    }
+  ],
+  "partial": {
+    "abs_ref_vs_distance_ctrl_snr_stead": {
+      "rho": -0.42939007764937986,
+      "p": 3.438232409909513e-179,
+      "n": 4000
+    },
+    "abs_ref_vs_ps_ctrl_snr_stead": {
+      "rho": -0.4467173793573362,
+      "p": 1.6167695836759514e-195,
+      "n": 4000
+    },
+    "abs_ref_vs_snr_ctrl_distance_stead": {
+      "rho": 0.1722283251392703,
+      "p": 5.248407370599852e-28,
+      "n": 4000
+    },
+    "abs_ref_vs_ps_ctrl_snr_ethz": {
+      "rho": -0.15103523385249853,
+      "p": 1.3650037087088463e-07,
+      "n": 1206
+    },
+    "abs_ref_vs_snr_ctrl_distance_ethz": null
+  },
+  "asymmetry_stead": {
+    "prop_late": {
+      "n": 66,
+      "mean_abs_ref": 3.918765068054199,
+      "mean_refine_shift": -0.5393939018249512,
+      "frac_improved": 0.10606060606060606,
+      "mean_improve_s": 0.5006059408187866
+    },
+    "prop_early": {
+      "n": 3900,
+      "mean_abs_ref": 1.7504063844680786,
+      "mean_refine_shift": 0.2986999750137329,
+      "frac_improved": 0.9871794871794872,
+      "mean_improve_s": 0.26695123314857483
+    },
+    "prop_ok": {
+      "n": 34,
+      "mean_abs_ref": 1.8136929273605347,
+      "mean_refine_shift": 0.20323529839515686,
+      "frac_improved": 0.08823529411764706,
+      "mean_improve_s": -0.1891176402568817
+    }
+  },
+  "improve_vs_snr_stead": {
+    "rho": 0.17284969872394654,
+    "p": 3.362213024990346e-28,
+    "n": 4000
+  },
+  "improve_vs_distance_stead": {
+    "rho": -0.12134021304391049,
+    "p": 1.357499456133974e-14,
+    "n": 4000
+  },
+  "improve_vs_snr_ethz": {
+    "rho": 0.3756672574394611,
+    "p": 1.274110553687976e-84,
+    "n": 2500
+  },
+  "tree_abs_ref_from_meta": {
+    "cv_r2_mean": 0.20348787469902874,
+    "cv_r2_std": 0.04774230232727469,
+    "rules": [
+      "if ps_gap_s<=3.275:",
+      "  if snr_db<=17.424:",
+      "    value=2.026 n=421",
+      "  else:  # snr_db>17.424",
+      "    value=2.727 n=860",
+      "else:  # ps_gap_s>3.275",
+      "  if ps_gap_s<=5.815:",
+      "    value=1.747 n=860",
+      "  else:  # ps_gap_s>5.815",
+      "    value=1.316 n=1859"
+    ]
+  },
+  "noise_vs_event": {
+    "event_mean_abs_ref_at_gt": 1.786722183227539,
+    "noise_mean_abs_ref": 8.626483452796936
+  },
+  "named_regularities_candidates": [
+    {
+      "law": "After controlling SNR, |refine| still decreases with source distance (STEAD).",
+      "stats": {
+        "rho": -0.42939007764937986,
+        "p": 3.438232409909513e-179,
+        "n": 4000
+      },
+      "ethz_note": "ETHZ distance often missing/NaN \u2014 transfer weak for distance",
+      "novelty": "weak \u2014 likely geometric/attenuation difficulty proxy still entangled with PS gap"
+    },
+    {
+      "law": "After controlling SNR, |refine| decreases with P\u2013S gap on STEAD and ETHZ (same sign).",
+      "stats_stead": {
+        "rho": -0.4467173793573362,
+        "p": 1.6167695836759514e-195,
+        "n": 4000
+      },
+      "stats_ethz": {
+        "rho": -0.15103523385249853,
+        "p": 1.3650037087088463e-07,
+        "n": 1206
+      },
+      "novelty": "moderate candidate \u2014 closer/faster phases need larger refine? or short PS = near events"
+    },
+    {
+      "law": "Refine shift predominantly opposes physics-proposal timing bias (corrective, not random).",
+      "frac_corrective_stead": 0.97975,
+      "frac_corrective_ethz": 0.9476,
+      "novelty": "expected for a working refine head \u2014 confirms role, not a new Earth-science law"
+    }
+  ],
+  "bottom_line": {
+    "found_unnamed_useful_info": true,
+    "found_new_geophysical_law": false,
+    "best_named_pattern": "After controlling SNR, |refine| decreases with P\u2013S gap on STEAD and ETHZ (same sign).",
+    "recommendation": "You can report corrective residual behavior + |refine|~f(SNR, distance, PS-gap) as model phenomenology. Do not claim a new Earth-science regularity; PS-gap/distance effects remain confounded."
+  }
+}

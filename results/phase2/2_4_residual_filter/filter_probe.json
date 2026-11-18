@@ -1,0 +1,137 @@
+{
+  "checkpoint": "outputs/stead_c2f_imp_RSP/last.pt",
+  "meta_features": [
+    "snr_db",
+    "distance_km",
+    "ps_gap_s",
+    "depth_km"
+  ],
+  "targets": [
+    "abs_ref",
+    "shift_full_prop_s"
+  ],
+  "n_stead_train": 3000,
+  "n_stead_test": 1000,
+  "branch_A": {
+    "val_loss_standardized": 28.749950408935547,
+    "best_epoch": 79,
+    "stead_test": {
+      "r2_abs_ref": 0.23760535218619927,
+      "r2_shift": -0.0013133500150854793,
+      "spearman_abs_ref": {
+        "rho": 0.5356116076116076,
+        "p": 2.515077454952847e-75,
+        "n": 1000
+      },
+      "spearman_shift": {
+        "rho": 0.09547058767212771,
+        "p": 0.002509657752024497,
+        "n": 1000
+      }
+    },
+    "ethz": {
+      "r2_abs_ref": -0.08532184047780578,
+      "r2_shift": -0.001891879277742703,
+      "spearman_abs_ref": {
+        "rho": 0.18173199810111973,
+        "p": 5.2663987821181964e-20,
+        "n": 2500
+      },
+      "spearman_shift": {
+        "rho": -0.013304084652865342,
+        "p": 0.5061138300739266,
+        "n": 2500
+      },
+      "n": 2500,
+      "note": "distance/depth often imputed from STEAD stats when missing"
+    }
+  },
+  "branch_B_stead": {
+    "split": "stead_test",
+    "spearman_|pred|_vs_improve": {
+      "rho": 0.04495600828095072,
+      "p": 0.1554406457805006,
+      "n": 1000
+    },
+    "spearman_|leftover|_vs_improve": {
+      "rho": -0.35997498374873255,
+      "p": 5.852352305745023e-32,
+      "n": 1000
+    },
+    "spearman_pred_vs_true_shift": {
+      "rho": 0.09547058767212771,
+      "p": 0.002509657752024497,
+      "n": 1000
+    },
+    "spearman_leftover_vs_true_shift": {
+      "rho": 0.8902688474804686,
+      "p": 0.0,
+      "n": 1000
+    },
+    "r2_pred_explains_true_shift": -0.8810847679234768,
+    "frac_var_pred": 0.0003204345703125,
+    "mean_abs_err_prop": 0.39848998188972473,
+    "mean_abs_err_full": 0.09390999376773834,
+    "mean_improve": 0.3045799434185028,
+    "spearman_|leftover_abs_ref|_vs_improve": {
+      "rho": -0.06769658206903208,
+      "p": 0.03231177153753235,
+      "n": 1000
+    },
+    "spearman_pred_abs_ref_vs_improve": {
+      "rho": 0.15612257602426302,
+      "p": 7.002046933973394e-07,
+      "n": 1000
+    }
+  },
+  "branch_B_ethz": {
+    "split": "ethz",
+    "spearman_|pred|_vs_improve": {
+      "rho": -0.04939997389480915,
+      "p": 0.01350104950197345,
+      "n": 2500
+    },
+    "spearman_|leftover|_vs_improve": {
+      "rho": -0.5992413484447772,
+      "p": 1.3017810555049483e-243,
+      "n": 2500
+    },
+    "spearman_pred_vs_true_shift": {
+      "rho": -0.013304084652865342,
+      "p": 0.5061138300739266,
+      "n": 2500
+    },
+    "spearman_leftover_vs_true_shift": {
+      "rho": 0.9159240685462462,
+      "p": 0.0,
+      "n": 2500
+    },
+    "r2_pred_explains_true_shift": -0.0022449487231919196,
+    "frac_var_pred": 0.00014734268188476562,
+    "mean_abs_err_prop": 0.7954479455947876,
+    "mean_abs_err_full": 0.5481759905815125,
+    "mean_improve": 0.24727199971675873,
+    "spearman_|leftover_abs_ref|_vs_improve": {
+      "rho": -0.1943663598348765,
+      "p": 1.0491332444587373e-22,
+      "n": 2500
+    },
+    "spearman_pred_abs_ref_vs_improve": {
+      "rho": 0.3493562621098966,
+      "p": 1.1284313576669836e-72,
+      "n": 2500
+    }
+  },
+  "verdict": {
+    "branch_A_meta_predicts_residual": true,
+    "branch_B_leftover_still_useful_cross_domain": true,
+    "checks": {
+      "A_stead_r2_abs_ref": true,
+      "A_ethz_spearman_abs_ref": true,
+      "A_frac_var_shift_explained": false,
+      "B_leftover_stead": true,
+      "B_leftover_ethz": true
+    },
+    "interpretation": "Part of residual is meta-predictable; a transferable leftover remains \u2014 unnamed extra information survives filtering (still not a named physical law)."
+  }
+}
