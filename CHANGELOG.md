@@ -120,3 +120,8 @@
 - Meta filters **amplitude** (STEAD R²≈0.24) but not timing shift (R²≈0); leftover≈full shift.
 - Conclusion: no clean filterable physical law behind corrective residual. `results/phase2/2_4_residual_filter/`.
 
+## 2026-11-18 — Input filter → frozen c2f (design + pilot)
+
+- Design: residual Conv front-end \(x'=x+\alpha\mathrm{CNN}(x)\), picker frozen; see `results/phase2/2_4_input_filter/DESIGN.md`.
+- Pilot 3 ep: −5 dB P F1 Δ≈+0.01 vs imp_RSP; clean Δ≈0. Not a Phase-B success. `tools/train_c2f_input_filter.py`.
+
