@@ -1,0 +1,25 @@
+{
+  "project": "huygens_degradation_diffusion",
+  "paper": "HDD (new; not TGRS)",
+  "mode": "huygens",
+  "best": {
+    "mse": 0.6092449893951416,
+    "epoch": 2
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.0545812640190124,
+      "val_mse": 0.7082948625087738,
+      "sec": 9.371113061904907
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.7742952294349671,
+      "val_mse": 0.6092449893951416,
+      "sec": 8.333273887634277
+    }
+  ],
+  "n_params": 63507,
+  "n_trainable": 63507
+}

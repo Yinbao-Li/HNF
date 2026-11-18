@@ -125,3 +125,8 @@
 - Design: residual Conv front-end \(x'=x+\alpha\mathrm{CNN}(x)\), picker frozen; see `results/phase2/2_4_input_filter/DESIGN.md`.
 - Pilot 3 ep: −5 dB P F1 Δ≈+0.01 vs imp_RSP; clean Δ≈0. Not a Phase-B success. `tools/train_c2f_input_filter.py`.
 
+## 2026-11-18 — New paper (HDD): Huygens physical-degradation diffusion
+
+- **Not TGRS.** Minimal trainable stack: `hnf/huygens_degradation.py`, `tools/train_huygens_degradation_diffusion.py`.
+- Forward \(h_t=\mathcal{H}(h_{t-1})+\sigma_t\varepsilon\); reverse → \(\hat x_0\). Smoke under `results/hdd/smoke/`.
+
